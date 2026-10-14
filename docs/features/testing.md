@@ -335,3 +335,17 @@ daphne 서버 자체는 따로 띄운 프로세스에서 돌고 그 프로세스
 - [튜토리얼: 테스트 가이드](../tutorials/09-testing-components.md)
 - [live_session](./live-session.md)
 - [Streams 튜토리얼](../tutorials/06-streams-api.md)
+
+## Phoenix LiveView와 다른 점
+
+[LiveViewTest](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveViewTest.html)의 모든 헬퍼가 있는 것은 아니다.
+`mount`·`call`·렌더·내비게이션 단언·스트림 검사는 지원한다. 다음은 공개 헬퍼가 없다.
+
+- `element`·`form` 선택자로 실제 바인딩을 읽는 `render_click`·change·submit·key·focus·blur와 submitter 검사
+- `file_input`·`preflight_upload`·`render_upload`로 업로드 프로토콜을 구동하는 헬퍼
+- `render_async`처럼 관리 중인 비동기 작업이 끝날 때까지 기다리는 헬퍼
+- `assert_push_event`·`assert_reply`·page title 전용 단언, hook 이벤트·자식 탐색·HTTP action 제출 헬퍼
+
+`call`은 DOM에 핸들러가 연결됐는지 검증하지 않는다. `render`는 자식의 라이브 수명주기를 구동하지 않는다.
+이 부분은 컨슈머 통합 테스트와 브라우저 E2E로 확인한다. `sent_messages` 목록은 공개지만 그 메시지 형식은 내부 프로토콜이다.
+Phoenix 1.2의 중복 ID·컴포넌트·복구 폼 ID 누락별 `raise`/`warn`/`ignore` 설정도 제공하지 않는다.

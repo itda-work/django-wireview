@@ -339,8 +339,8 @@ window.wireview.hooks.FormHandler = {
 
 ### 4. 제출하면 전부 보인다
 
-폼을 제출하면 그 폼의 필드가 모두 건드린 것이 되어, 아직 손대지 않은 필드의 오류도 보인다. Phoenix의
-`phx-feedback-for`와 같은 동작이라 따로 할 일이 없다.
+폼을 제출하면 그 폼의 필드가 모두 건드린 것이 되어, 아직 손대지 않은 필드의 오류도 보인다.
+이는 wireview의 클라이언트 피드백 규칙이다. Phoenix 1.2.12의 서버 측 `used_input?`와는 구분한다.
 
 ## CSS 예
 
@@ -405,15 +405,33 @@ async def check_email(self, email: str = ""):
     self.email = email
 ```
 
-값 없이 다는 형태는 Phoenix의 `phx-auto-recover` 기본 동작과 같다. 그 폼에 `{% on "change" %}` 바인딩이
+값 없이 다는 형태는 폼의 change를 재실행한다. Phoenix와 달리 복구하려는 폼에 속성을 명시해야 한다. 그 폼에 `{% on "change" %}` 바인딩이
 있어야 한다. 핸들러 이름을 Phoenix처럼 `validate`로 짓지 않는다 — Pydantic `BaseModel`이 가진 이름이라
 클라이언트가 부를 수 없고, `{% on %}`이 렌더 때 거절한다(`manage.py check`의 `wireview.W018`이 미리 알린다). 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
 
 ## Phoenix LiveView 대응
 
-| 기능 | Phoenix LiveView | django-wireview |
-|------|------------------|-----------------|
-| 속성 | `phx-feedback-for` | `wire-feedback-for` |
-| 감추는 클래스 | `phx-no-feedback` | `wire-no-feedback` |
-| 계기 | blur, change | blur, change |
-| JavaScript API | 없음 | `wireview.feedback.*` |
+[Phoenix 1.2.12 폼](https://phoenix-live-view.hexdocs.pm/1.2.12/form-bindings.html)은 `_unused_` 파라미터와
+`used_input?`로 오류 표시 여부를 서버에서 판단한다. wireview의 `wire-feedback-for`·`wire-no-feedback`는
+브라우저에서 표시를 제어하는 방식이며 그 서버 API는 없다. 건드린 필드는 페이지 전체에서 이름으로 기억하므로
+서로 다른 폼에 같은 필드 이름이 있으면 피드백 상태를 공유한다.
+
+## Phoenix LiveView와 다른 점
+
+- `{% on "change" %}`는 DOM change, 즉 보통 값 확정 시점에 반응한다. 타이핑마다 검사하려면 `input`을 바인딩한다.
+  Phoenix의 `phx-change`와 이벤트 발생 시점이 같지 않다.
+- 일반 이벤트는 가까운 폼 또는 컴포넌트의 이름 있는 요소를 수집한다. 개별 input 바인딩도 그 필드만 보내는 것이 아니다.
+  바뀐 필드의 `_target`, `_unused_`, 제출 버튼 식별을 자동으로 붙이지 않는다. `on` 내부의 대상 지정과 폼의 `_target`은 별개다.
+- 중첩 이름은 wireview의 점 경로와 숫자 인덱스 규칙을 따른다. Phoenix의 `user[email]` 형식을 그대로 옮기지 않는다.
+  일반 이벤트의 수집은 HTML의 성공한 폼 컨트롤 규칙과도 다르며, disabled 입력이나 제출하지 않은 버튼을 자동 제외하지 않는다.
+- `phx-trigger-action`처럼 서버 렌더를 계기로 HTTP action 제출로 전환하는 속성은 없다.
+  일반 `action` 폼이나 `wire-boost`는 사용자가 제출하는 경로이며 이 기능의 대체 속성이 아니다.
+- 복구는 `wire-auto-recover`를 단 폼의 소켓 재연결에만 적용한다. change 폼의 기본 자동 복구와 컴포넌트 오류 후
+  재마운트 복구는 제공하지 않는다. `wire-auto-recover="ignore"`도 비활성화 값이 아니라 핸들러 이름으로 해석된다.
+- 폼 reset 뒤 change와 reset 대상 정보를 자동 전송하거나, 잘못된 number 입력의 change를 특별히 억제하는 처리는 없다.
+- 제출 중 전체 입력 readonly·버튼 disabled 전환은 자동 제공하지 않는다. 현재 로딩 표시는
+  [Optimistic UI](./optimistic-ui.md)의 `wire-disabled-with` 규칙이다.
+
+Phoenix 1.2의 `phx-no-unused-field`는 used-input 전송을 끄는 옵션이다. wireview는 원래 `_unused_`를
+전송하지 않으므로 대응 옵션도 없다. `phx-patch-focused`처럼 포커스된 폼 컨트롤에 서버 패치를
+우선시키는 선택 속성도 없다. 기본 입력 보존과 IME 처리는 이미 지원한다.

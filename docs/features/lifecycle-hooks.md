@@ -396,3 +396,11 @@ class AuditLog:
 - [시스템 체크](./checks.md) — 부를 수 없는 `Meta.on_mount` 항목을 잡는 `wireview.W007`,
   경계와 어긋난 선언을 잡는 `wireview.W010`
 - [LiveComponent](./live-component.md) — 중첩 컴포넌트와 그 수명주기
+
+## Phoenix LiveView와 다른 점
+
+`attach_hook`의 공개 단계는 `handle_event`·`handle_params`·`after_render`다.
+Phoenix의 `handle_info`·`handle_async` 단계와 halt 시 reply를 함께 반환하는 계약은 없다.
+알림·비동기 결과의 공통 처리는 현재 `notification`·`handle_async` 오버라이드로 구현한다.
+Python 인스턴스와 asyncio 태스크의 종료는 BEAM의 `handle_call`·`handle_cast`·프로세스 종료 사유와 같지 않으며,
+그 프로세스 전용 API는 설계상 제외한다.

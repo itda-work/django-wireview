@@ -137,3 +137,9 @@ toast(request.session.session_key, "장바구니에 담았습니다")
 
 - [튜토리얼: Notifications - 알림 센터](../tutorials/14-notifications.md) — 저장하는 알림과 토스트를 함께 쓴다
 - [세션 읽기](./session.md) — 로그인하지 않은 방문자를 가리키는 값이 필요할 때
+
+## Phoenix LiveView와 다른 점
+
+wireview 플래시는 브라우저 DOM에 보내는 일회성 메시지다. Phoenix의 서버 flash 맵처럼 종류별로 값을 읽거나,
+리다이렉트 목적지로 자동 전달하는 계약은 없다. `clear_flash`의 인자도 종류 키가 아니라 DOM id다.
+이동 뒤에 보여야 하는 알림은 Django messages 등 HTTP 요청 사이에 전달되는 저장 방식을 별도로 사용한다.

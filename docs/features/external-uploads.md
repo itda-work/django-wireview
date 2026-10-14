@@ -288,3 +288,15 @@ def _presign_upload(self, entry, component):
 - [튜토리얼: File Uploads 심화](../tutorials/08-file-uploads.md)
 - [chunked-uploads.md](./chunked-uploads.md) — 서버를 지나는 청크 경로
 - [Phoenix LiveView External Uploads](https://hexdocs.pm/phoenix_live_view/uploads.html#external-uploads)
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix 외부 업로더](https://raw.githubusercontent.com/phoenixframework/phoenix_live_view/v1.2.12/guides/client/external-uploads.md)는
+사용자가 업로더 구현을 등록하는 방식이다. wireview의 `ExternalUploadMeta.uploader`는 구현을 선택하는 레지스트리 키가
+아니라 식별자이며, 클라이언트는 URL·method·headers로 XHR을 보내는 단일 경로를 사용한다.
+따라서 multipart 업로드, 별도 SDK, 재시도·재개 전략을 등록하는 `uploaders` API는 없다.
+외부 진행률은 브라우저 이벤트로만 오며 서버에 진행률 콜백을 자동 전달하지 않는다.
+훅의 `upload`·`uploadTo` 대신 전역 `wireview.addFiles`를 사용한다.
+
+Phoenix 1.2의 외부 uploader 취소 알림 계약도 제공하지 않는다. wireview의 기본 XHR 취소와
+사용자 uploader가 정리 콜백을 받는 기능은 구분한다.

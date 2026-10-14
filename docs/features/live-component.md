@@ -457,3 +457,12 @@ class Modal(LiveComponent):
 ---
 
 *마지막 업데이트: 2026-09-09*
+
+## Phoenix LiveView와 다른 점
+
+부모 소유·독립 상태·`update_many`·슬롯·직접 대상 지정은 지원한다. 다만 `update`에는 부모가 이전에 준 값과
+달라진 props만 전달하며, `update_many`의 묶음도 부모 렌더 단위다. Phoenix의 콜백 빈도와 배치 범위를 그대로 가정하지 않는다.
+`send_update`는 이 연결의 자식 id를 대상으로 하고 `send_update_after`에 해당하는 지연 전송 헬퍼는 없다.
+필요하면 수명이 관리되는 `start_async` 작업으로 지연한다. 다른 BEAM 프로세스의 pid로 보내는 API와
+중첩 LiveView의 프로세스 격리는 Django·asyncio 모델에서 설계상 제외한다.
+선언형 속성·슬롯 검증의 차이는 [함수 컴포넌트](./function-components.md#phoenix-liveview와-다른-점)에 있다.

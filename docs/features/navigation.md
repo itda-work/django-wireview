@@ -167,3 +167,17 @@ URL 패턴의 인자 이름이 그 옵션과 겹치면 `reverse()`의 결과를 
 다른 경로면 `follow_push(Destination)`으로 목적지를 새로 마운트한다. 경로가 있는 목적지를 판단하려면
 컴포넌트가 놓인 경로를 `mount(..., path="/items/")`로 알려 준다. 둘이 같은 결과를 내는지는
 `tests/test_history_e2e.py::test_follow_push_and_the_browser_agree`가 본다.
+
+## Phoenix LiveView와 다른 점
+
+같은 Django 경로인지로 patch를 고르는 규칙은 Phoenix의 명시적 `push_patch`·`push_navigate` 선택과 다르다.
+같은 LiveView를 가리키는 서로 다른 경로라도 wireview는 가져오기를 한다. 클라이언트 `JS.patch`와
+링크의 명시적 patch 바인딩은 없다. `JS.navigate`는 boost 가져오기 경로다.
+`redirect_to`를 Phoenix의 HTTP 전체 이동 `redirect`와 동일하다고 가정하지 않는다.
+현재 `live_session` 경계와 뒤로 가기 규칙은 위 표가 기준이다.
+이동 전후의 이벤트 이름·취소 가능 범위도 wireview 고유 계약이다([Boost](./boost.md)).
+
+Phoenix 1.2의 이동 취소에 대응하는 `wireview:before-navigate`는 이미 있다. 단, 서버 redirect와 일부
+뒤로 가기 경로는 취소할 수 없다. 서버에서 목적지의 이동 유형을 조회하는 `navigation_type` 대응 API는 없다.
+목적지는 `resolve_url`로 해석하며, 이 API 자체가 URL 스킴·제어문자 허용 정책을 검증하지는 않는다.
+사용자 입력을 목적지로 쓸 때는 애플리케이션에서 검증한다.

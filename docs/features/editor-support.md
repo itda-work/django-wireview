@@ -261,3 +261,16 @@ node editors/vscode/scripts/diagnose.ts [--strict] metadata.json myapp/templates
 
 경로마다 문제 목록을 JSON으로 찍고, 종료 코드는 위 표와 같다(error면 `1`, `--strict`면 warning도, 사용법 오류는
 `2`). node 자신이 죽어도 `1`로 끝나므로 JSON을 읽지 못하면 문제가 아니라 실패로 다룬다.
+
+## Phoenix LiveView와 다른 점
+
+템플릿 완성·진단·SQL 귀속·CI 검사는 지원하지만 HEEx의 모든 컴파일 검증과 동일하지 않다.
+특히 [속성·슬롯 선언](./function-components.md#phoenix-liveview와-다른-점)의 허용 값·global 속성·슬롯 속성 검증은 없다.
+Phoenix `ColocatedHook`·`ColocatedJS`의 템플릿 내 JS 추출도 제공하지 않는다. 외부 훅 파일 수집과 구분한다.
+템플릿 수정 시 재join은 지원하지만 `phx-track-static`·`static_changed?`에 해당하는 배포 자산 변경 감지는 없다.
+
+Phoenix 1.2의 `ColocatedCSS`, script/style용 `TagFormatter`, 모듈별 HEEx 디버그 주석 제외 설정은
+대응 API가 없다. wireview의 외부 정적 파일·템플릿 진단과는 별개다.
+
+브라우저 지연 시뮬레이션도 세부 의미가 다르다. wireview는 송신에 고정 지연을 더하고,
+Phoenix의 요청·응답 지연 및 브라우저 세션 저장 규칙을 그대로 구현하지 않는다.

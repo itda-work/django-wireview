@@ -434,3 +434,17 @@ validated = fc.validate_args({"text": "Click"})
 ---
 
 *마지막 업데이트: 2026-10-01*
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix의 `attr`·`slot` 선언](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.Component.html#attr/3)을
+그대로 제공하지 않는다. 함수 시그니처로 필수 인자·기본값·예상 밖 인자를 검사하고 기본 타입을 렌더 시 변환한다.
+Pydantic `Component` 필드 검증과 함수 컴포넌트의 이 변환은 별개다.
+
+`values`·`examples` 선언, `:global`의 HTML 속성 허용 목록·사용자 접두사·include, 속성 문서 자동 생성,
+슬롯 항목의 속성 선언·타입 검증은 없다. `**attrs`는 나머지 키워드를 받을 뿐 `:global`과 같은 검증을 하지 않는다.
+편집기·CI 템플릿 진단은 있지만 HEEx 전체의 컴파일 시점 검증과 같지는 않다.
+슬롯의 구체적 범위는 [Slots의 차이](./slots.md#phoenix-liveview와-다른-점)를 본다.
+
+Phoenix의 `portal`처럼 DOM을 다른 컨테이너로 옮기면서 이벤트 소유권과 패치를 유지하는 내장 컴포넌트도 없다.
+단순히 훅에서 요소를 옮기는 것만으로 같은 계약을 얻지는 못한다.

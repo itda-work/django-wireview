@@ -46,7 +46,7 @@ class Panel(Component):
 | `add_class`·`remove_class`·`toggle_class` | 명령이 실제로 더하거나 뺀 클래스 |
 | `set_attr`·`remove_attr` | 그 속성의 마지막 값, 또는 없음 |
 | `show`·`hide`·`toggle` | 마지막으로 보이거나 숨긴 상태 |
-| `transition`, 명령의 `transition=` | 트랜지션이 도는 동안의 클래스. 끝나면 빠진다 |
+| `transition`, 명령의 `transition=` | 양수 시간을 지정한 트랜지션의 클래스. 시간이 끝나면 빠진다. 시간을 생략한 경우는 아래 차이 참고 |
 
 - **클래스는 명령이 만든 차이만 기록한다.** 이미 있던 클래스를 `add_class`하면 아무것도 기록하지 않는다. 그래서 뒤의
   렌더가 그 클래스를 빼면 빠진다. 앞서 명령으로 뺀 클래스를 다시 더하면 그 기록이 지워지고, 요소는 다시 서버의 HTML을
@@ -87,3 +87,34 @@ class Panel(Component):
 체인의 나머지 명령도 boost 이동 뒤에는 돌지 않는다. sticky 컴포넌트 안에서 시작한 체인만 이동을 건너 이어진다.
 
 `{% on %}` 하나에 명령과 서버 호출을 함께 묶는 이유는 [Optimistic UI](./optimistic-ui.md#즉시-반응은-js-명령으로)에 있다.
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix의 명령·옵션](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveView.JS.html) 중 다음은 지원하지 않는다.
+
+| 항목 | 현재 wireview |
+|------|---------------|
+| `toggle_attribute` | `set_attr`·`remove_attr`만 있다. 속성 유무 또는 두 값의 토글 명령은 없다 |
+| `exec`·`concat` | 다른 속성에 든 명령 실행·기존 체인 결합 빌더는 없다. 전역 `wireview.exec`와 구분한다 |
+| `push_focus`·`pop_focus` | 포커스 저장·복원 스택은 없다 |
+| `ignore_attributes` | 특정 속성·와일드카드만 패치에서 제외하는 명령은 없다 |
+| `to: {:inner, ...}`·`{:closest, ...}` | 선택자는 문서 전체의 CSS 문자열이며 상대 범위 선택은 없다 |
+| `push`의 `loading`·`page_loading` | 임의 요소 로딩·잠금과 페이지 로딩 이벤트 옵션은 없다. `target`은 첫 일치 컴포넌트 루트를 고른다 |
+| `patch` | 별도 JS 명령이 없다. 서버의 `push_to`·`replace_to`와 `navigate`를 구분한다 |
+| `dispatch`의 `blocking`·`done`·`dispatcher` | 제공하지 않는다. click도 `MouseEvent`가 아닌 `CustomEvent`로 보낸다 |
+
+트랜지션은 클래스 문자열과 시간만 받는다. Phoenix의 세 클래스 묶음(transition/start/end), `blocking` 옵션,
+show/hide 시작·종료 이벤트는 없다. 시간을 생략하면 기본 200ms 후 제거하는 것이 아니라 클래스가 남으며 다음 렌더가
+덮어쓸 수 있다. 시간 있는 트랜지션은 **다음 `push`까지 지연**시킨다. Phoenix는 명령을 순서대로 시작하되 트랜지션
+완료를 기다려 다음 push를 시작하지 않는다([실행부](https://raw.githubusercontent.com/phoenixframework/phoenix_live_view/v1.2.12/assets/js/phoenix_live_view/js.js)).
+
+표시 판정도 다르다. wireview의 `toggle`은 요소의 `hidden`을 검사한다. CSS로만 감춘 요소를 Phoenix의 가시성 판정과
+같다고 가정하지 않는다. `focus_first`의 탐색 대상도 input·textarea·select·button·tabindex 요소로 한정되어 있어,
+`href`만 가진 링크나 숨은 조상을 가진 요소까지 포함하는 일반적인 접근성 포커스 탐색과 같지 않다.
+
+Phoenix 1.2는 JS 명령을 이벤트 payload에 JSON으로 넣을 수 있다. wireview도 `to_json`과 서버의
+`js` 명령 전송을 제공한다. 다만 JS 객체를 임의 payload에 넣었을 때 자동 인코딩하는 규약은 없으며,
+Phoenix의 명령 배열과 wireview의 명령 객체 배열은 서로 다른 형식이다.
+
+`show`·`toggle`의 `display` 지정은 지원한다. 생략하면 inline display를 비워 CSS에 맡기므로
+Phoenix의 block/table-row/table-cell 기본 선택과 다르다. CSS가 계속 숨기면 show만으로 보이지 않을 수 있다.

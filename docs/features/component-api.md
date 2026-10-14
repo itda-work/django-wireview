@@ -153,3 +153,26 @@ class Dashboard(Component):
 
 밑줄이 없지만 공개가 아닌 것: `LiveComponent.myself`. Pydantic `BaseModel`에서 온 멤버
 (`model_dump` 등)는 Pydantic의 것이고 wireview가 약속하지 않는다.
+
+## Phoenix LiveView와 다른 점
+
+### 스트림 옵션
+
+스트림의 기본 삽입·삭제·reset·`update_only`·viewport 바인딩은 제공하지만,
+[Phoenix 1.2.12 스트림](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveView.html#stream/4)과 옵션 의미는 다르다.
+`stream()`은 기본이 reset이고 `reset=False`를 줘야 누적 삽입한다. `limit`은 양수만 적용하고, 삭제 방향은
+삽입 위치(`at=0`이면 뒤, 나머지는 앞)로 고른다. 음수 limit은 제한하지 않는다.
+`stream_configure` 같은 이름별 영구 설정은 없어서 사용자 `dom_id` 함수는 삽입마다 전달한다.
+`stream_delete`는 객체가 아니라 dom id 또는 정수 pk를 받는다.
+
+컨테이너는 스트림 전용으로 둔다. reset이 자식을 모두 지우므로 Phoenix의 스트림 밖 고정 자식 보존 규칙은 없다.
+항목 삭제를 지연하는 `phx-remove` 대응도 없다. `wire-viewport-*` 값은 핸들러 이름이며 JS 체인 옵션을 받지 않는다.
+`stream_async`는 [비동기 작업의 차이](./async-operations.md#phoenix-liveview와-다른-점)를 본다.
+
+### 연결 정보와 편의 API
+
+Phoenix의 `get_connect_params`·`get_connect_info`에 해당하는 공개 메서드는 없다.
+`self.wire.params`는 페이지 쿼리이고 임의 연결 메타데이터가 아니다.
+`assign_new`·`update`·`changed?`·`render_with`를 그대로 옮기는 API도 없다. 필드·property·템플릿과
+[렌더 최적화](./html-diff.md#phoenix-liveview와-다른-점)를 사용한다.
+`push_title`은 문자열 전체를 바꾸며 `live_title`의 prefix·suffix·default 헬퍼는 제공하지 않는다.

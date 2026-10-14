@@ -1,6 +1,8 @@
 # 기능 레퍼런스
 
-django-wireview의 주요 기능에 대한 상세 문서입니다.
+django-wireview의 주요 기능에 대한 상세 문서입니다. Phoenix LiveView와 목적이 같아도 하위 옵션까지
+호환되는 것은 아닙니다. 각 문서의 **Phoenix LiveView와 다른 점**을 함께 확인하세요.
+비교 기준은 Phoenix LiveView 1.2.12입니다. 바인딩은 CSP, 스트림 옵션은 Component API, 폼은 폼 피드백 문서를 참고하세요.
 
 **[Component API](./component-api.md)** — `Component`·`LiveComponent`의 공개 멤버 전부. 여기 없으면 내부다.
 **[설정](./settings.md)** — `settings.WIREVIEW`의 키 전부와 기본값.

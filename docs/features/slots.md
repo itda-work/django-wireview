@@ -458,3 +458,11 @@ rc1~rc3의 스크립트로 열린 페이지에서는 같은 페이지로 이동�
 ---
 
 *마지막 업데이트: 2025-12-09*
+
+## Phoenix LiveView와 다른 점
+
+기본·명명·반복 슬롯, `let:` 전달, `required` 검사와 `doc` 메시지는 지원한다.
+그러나 [Phoenix 슬롯 선언](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.Component.html#slot/3)의 항목별 속성
+(예: 열 슬롯의 label), 그 속성의 타입·필수 검증, 미선언 슬롯 진단은 제공하지 않는다.
+`fill`은 슬롯 이름 뒤에 `let:변수`만 받는다. `Meta.slots`에 임의 검증 키를 적어도 검사 기능이 생기지 않는다.
+필수 슬롯 검사는 렌더 시 수행하며, HEEx의 컴파일 경고와는 시점도 다르다.

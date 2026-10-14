@@ -206,3 +206,19 @@ join을 보내지 않는 LiveComponent도 같은 규칙으로 다뤄진다.
 - [checks.md](./checks.md) — `wireview.W008`, `wireview.W009`
 - [design/distributed-uploads.md](../design/distributed-uploads.md) — 왜 이 설계인지
 - [DEPLOYMENT.md](../DEPLOYMENT.md)
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix의 업로드 옵션](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveView.html#allow_upload/3) 전체를
+지원하지는 않는다. `accept`는 확장자 목록으로 검사하며 MIME·`image/*` 매칭은 하지 않는다.
+`auto_upload` 기본값은 True이고, False일 때 폼 submit과 업로드 완료를 자동으로 묶는 계약은 없다.
+파일 크기·청크 크기 기본값도 Phoenix와 다르므로 [설정](./settings.md)을 따른다.
+
+진행률 상태와 `on_upload_complete`는 있지만 진행률마다 호출하는 사용자 `progress` 콜백, 업로드 설정을 철회하는
+`disallow_upload`, 업로드별 `chunk_timeout`, 교체 가능한 UploadWriter는 없다.
+`consume_uploads`는 완료된 파일을 순회하며 항목을 빠져나갈 때 정리한다. 단일 ref 소비와 `postpone` 반환으로
+소비를 유예하는 API는 없다. 업로드 토큰의 만료는 청크 간 정지 시간 제한과는 다르다.
+외부 업로더의 차이는 [External Uploads](./external-uploads.md#phoenix-liveview와-다른-점)에 있다.
+
+Phoenix 1.2.12의 `max_entries_mode`(현재 선택/누적 소비 개수)와 사용자 `validator` 옵션도 없다.
+wireview의 개수 제한은 자체 활성 entry 계산을 따르며, 두 모드 중 선택하는 API는 제공하지 않는다.

@@ -240,7 +240,6 @@ const off = this.handleEvent("progress", ({ percent }) => this.render(percent));
 off();
 ```
 
-
 ### 서버 쪽 핸들러
 
 ```python
@@ -298,7 +297,9 @@ class Dashboard(Component):
 훅이나 서드파티 위젯이 엘리먼트를 바꿔도, 그 컴포넌트가 다시 렌더되면 morph가 템플릿 모양으로 되돌린다.
 `updated()`에서 다시 입히면 대부분 가려지지만, 재연결 때처럼 훅이 늦게 마운트되는 사이에는 틈이 보인다.
 **`wire-update="ignore"`를 단 엘리먼트는 첫 렌더 뒤로 어떤 렌더도 건드리지 않는다.** 속성, 자식, 텍스트
-모두다. Phoenix의 `phx-update="ignore"`와 같다.
+모두다. Phoenix의 `phx-update="ignore"`는 `data-*` 속성을 서버 값으로 병합하지만,
+wireview는 그 속성까지 보존한다. 서버가 보낸 새 데이터를 무시된 요소의 `dataset`에서 읽으려 하지 않는다 —
+서버 상태를 넘겨받는 외부 위젯은 [섬](./islands.md)으로 둔다. 섬은 props를 바깥 요소에 싣고 안쪽만 지킨다.
 
 ```html
 <div wire-hook="Banner" wire-update="ignore" hidden></div>
@@ -537,3 +538,31 @@ wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
 | 콜백 시그니처 | `(fromEl, toEl)` | `(fromEl, toEl)` |
 | 반환값 | 무시 | 무시 |
 | 호출 대상 | 모든 노드 | 엘리먼트 노드만 |
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix 1.2.12 훅 API](https://raw.githubusercontent.com/phoenixframework/phoenix_live_view/v1.2.12/assets/js/phoenix_live_view/view_hook.ts)와 비교하면,
+수명주기 콜백과 `el`·`pushEvent`·`handleEvent`는 있지만 컨텍스트의 전체 API가 같지는 않다.
+
+- `pushEvent`는 콜백을 받거나, 콜백 없이 부르면 응답의 Promise를 돌려준다([Promise로 받기](#promise로-받기)).
+  콜백이 받는 것은 응답 하나이고 Phoenix처럼 ref를 함께 받지 않는다. 응답이 오지 않을 때 Promise는 거절되지만
+  콜백은 불리지 않는다. 다른 컴포넌트를 겨냥하는 `pushEventTo`는 없다.
+- `handleEvent`는 ref 대신 핸들러를 떼는 함수를 돌려주고, `removeHandleEvent`는 없다. 남은 핸들러는 훅 파괴 때
+  함께 지워진다.
+- 훅의 `js()`·`liveSocket`·`upload()`·`uploadTo()`는 없다. 공개 전역 API인 `wireview.exec(element, commands)`와
+  `wireview.addFiles(element, name, files)`를 사용한다. 전자는 wireview 명령 배열을 받으며 Phoenix의 인코딩과 호환되지 않는다.
+- `push_event`는 해당 컴포넌트의 훅에 전달한다. Phoenix처럼 모든 서버 이벤트를 `window` 이벤트로도 내보내거나,
+  `dispatch: :before`로 패치 전 실행을 선택하는 옵션은 없다.
+- `wireview.dom.onBeforeElUpdated`는 지원한다. 그러나 `LiveSocket` 생성자의 `metadata`·연결 `params`·
+  `bindingPrefix`·사용자 `uploaders`를 받는 공통 설정 API는 없다.
+- 훅 등록은 함수 멤버를 가진 객체 방식이다. Phoenix의 `ViewHook` 클래스, 컴포넌트 밖 정적 페이지의 훅,
+  HEEx `ColocatedHook`·`ColocatedJS` 추출은 지원하지 않는다. `static/<app>/hooks/` 자동 수집은 외부 파일 로딩 규약이다.
+
+Phoenix 1.2.12의 훅 `beforeUpdate(toEl)`와 달리 wireview는 인자 없이 컴포넌트의 훅들을 호출한다.
+요소별 다음 DOM은 전역 `onBeforeElUpdated`에서 볼 수 있다. 같은 요소의 `wire-hook` 이름을 바꾸어도
+기존 훅을 새 정의로 교체하는 규약은 없다.
+
+연결 재시도 설정은 Django 설정으로 제공하지만 `LiveSocket`의 수동 connect/disconnect·getSocket,
+주입 가능한 storage/logger·로딩 지연·IME 전송 옵션을 한 객체에서 제어하는 API는 없다.
+DOM 설정도 `onBeforeElUpdated`만 공개하며 `onDocumentPatch`·`onPatchStart/End`·`onNodeAdded`·
+`jsQuerySelectorAll`에 해당하는 등록 API는 없다.

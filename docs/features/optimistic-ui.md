@@ -215,3 +215,11 @@ wireview.debug.disableProfiling();
 
 - [JS 명령](../implementation/js-commands.md)
 - [튜토리얼: Counter 컴포넌트](../tutorials/02-counter-component.md)
+
+## Phoenix LiveView와 다른 점
+
+로딩 클래스와 `wire-disabled-with`는 지원하지만, 폼 전체의 모든 입력을 readonly로 만들고 모든 제출 버튼을
+자동 잠그는 계약은 없다. 비활성화가 필요한 버튼에 `wire-disabled-with`를 지정한다.
+`JS.push`의 임의 `loading` 선택자·그 요소의 패치 잠금·`page_loading` 옵션도 없다.
+Phoenix의 해당 옵션과 wireview의 입력값 보호·로딩 응답 ref 추적은 다른 기능이다.
+[JS 명령의 차이](./js-commands.md#phoenix-liveview와-다른-점)와 [폼의 차이](./form-feedback.md#phoenix-liveview와-다른-점)를 함께 본다.

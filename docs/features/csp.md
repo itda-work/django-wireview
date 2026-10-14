@@ -67,7 +67,8 @@ SECURE_CSP = {
 수정자를 건너뛰므로, 거절하지 않으면 `click.away`·`click.once`·`click.self`는 조건 없는 click이 되고 `keydown.escape`는
 모든 키에 반응한다. 인자가 필요한 수정자에 인자가 없거나(`keydown.key`, `input.debounce`), `debounce`·`throttle`·`key_code`의
 인자가 정수가 아니어도(`input.debounce.abc`, 순서를 틀린 `keydown.debounce.enter`) 같은 `ValueError`다. 클라이언트에서는
-`keydown.key`가 어떤 키에도 반응하지 않고, 지연이 `NaN`인 `debounce`·`throttle`은 아무것도 늦추지 않는다. Phoenix의 `phx-click-away`·`.once`·`.capture`·`.passive`·`.self`에 해당하는 것은 없다.
+`keydown.key`가 어떤 키에도 반응하지 않고, 지연이 `NaN`인 `debounce`·`throttle`은 아무것도 늦추지 않는다. Phoenix의 `phx-click-away`에 대응하는 바인딩은 없다. `.once`·`.capture`·`.passive`·`.self`도 지원하지 않지만,
+이 점 표기 수정자들은 Phoenix LiveView의 공개 바인딩 문법도 아니다. Phoenix 기능 갭과 혼동하지 않는다.
 
 ### 같은 이벤트를 여러 번
 
@@ -138,3 +139,20 @@ SECURE_CSP = {
 
 - 설계와 버린 대안: [csp-event-binding.md](../design/csp-event-binding.md)
 - [JS 명령](../implementation/js-commands.md), [훅](./hooks.md)
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix 1.2.12 바인딩](https://phoenix-live-view.hexdocs.pm/1.2.12/bindings.html)을 그대로 옮길 수는 없다.
+
+- 요소의 click·focus·blur·keydown·keyup은 `{% on %}`으로 바인딩하지만, `phx-click-away`와
+  `phx-window-keydown`·`keyup`·`focus`·`blur`에 해당하는 창 단위 바인딩은 없다. 훅에서 리스너를 등록하고 해제해야 한다.
+- `phx-mounted`·`phx-remove`·`phx-connected`·`phx-disconnected` 같은 선언적 JS 실행 속성도 없다.
+  이름을 `on`에 넣어도 컴포넌트 수명주기 이벤트가 자동 발생하지 않는다. 훅의 수명주기 콜백을 쓴다.
+- 숫자 debounce·throttle과 키 필터는 지원한다. `debounce="blur"`, 생략 시 기본 지연,
+  다른 입력의 change·submit 시 타이머 초기화, 서로 다른 키의 throttle 예외는 구현하지 않는다.
+- 키 필터는 브라우저에서 판단할 뿐 `event.key`를 서버 인자로 자동 전송하지 않는다. 이벤트별 `metadata`
+  콜백이나 `phx-value-*` 수집도 없다. 정해진 값은 `on`의 키워드 인자, 동적 이벤트 정보는 훅으로 보낸다.
+- `phx-track-static`처럼 배포 전후 정적 자산을 비교하는 바인딩은 없다. 번들 URL의 버전 쿼리는 새 페이지의
+  캐시를 갱신할 뿐, 이미 열린 페이지의 자산 변경 감지와는 다르다.
+
+CSP nonce와 인라인 없는 바인딩은 이미 지원한다. 위 항목들은 CSP를 완화해서 해결할 문제가 아니다.

@@ -126,3 +126,15 @@ morph는 조합 중인 칸(`compositionstart`부터 `compositionend`까지)의 �
 - [temporary_assigns](./temporary-assigns.md)
 - [Streams 튜토리얼](../tutorials/06-streams-api.md)
 - [성능 가이드](../PERFORMANCE.md)
+
+## Phoenix LiveView와 다른 점
+
+[HEEx의 assign 변경 추적](https://phoenix-live-view.hexdocs.pm/1.2.12/assigns-eex.html)은 의존 값이 같으면
+동적 식의 계산 자체를 건너뛴다. wireview의 일반 diff는 템플릿을 렌더한 결과를 비교하므로 **전송량 감소가 곧
+계산 생략은 아니다**. temporary assign의 유지, `skip_render`, `lazy_properties`, `shared_render`는 별도의 제한된 최적화다.
+
+목록 이동은 렌더된 내용으로 짝짓는다. HEEx `:key`처럼 앱이 항목 식별 키를 선언하는 문법은 없다.
+이름이 같은 최적화라도 CPU 비용·DOM 정체성까지 동등하다고 해석하지 않는다.
+BEAM 프로세스의 `hibernate_after`는 asyncio 객체 모델에서 설계상 제외한다.
+또한 wireview의 `data-state`에는 서명된 필드가 들어간다. Phoenix의 서버 전용 assigns와 달리
+화면에 출력하지 않은 필드도 브라우저에서 읽을 수 있으므로 비밀값은 제외한다.

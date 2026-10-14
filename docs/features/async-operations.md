@@ -393,5 +393,18 @@ async def handle_async(self, name, result):
 | 취소 | `cancel_async/3` | `cancel_async()` |
 | 결과 처리 | `handle_async/3` | `handle_async()` |
 | 결과 래퍼 | `AsyncResult` 구조체 | `AsyncResult` dataclass |
-| 자동 취소 | 같은 이름이면 교체 | 같은 이름이면 교체 |
+| 같은 이름으로 다시 시작 | 이전 결과는 무시한다. 취소는 `cancel_async/3`를 따로 부른다 | 이전 태스크를 취소하고 시작한다 |
 | 떠날 때 | 프로세스와 함께 종료 | `leaving()` 뒤 취소 |
+
+## Phoenix LiveView와 다른 점
+
+[Phoenix 1.2.12 비동기 API](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveView.html#assign_async/4)와
+결과 상태를 추적한다는 목적은 같지만 인자와 교체 규칙이 다르다.
+
+- `assign_async`는 코루틴 하나의 새 `AsyncResult`를 반환한다. 키 목록의 일괄 할당, 이전 성공값을 유지하는 재로딩,
+  `reset` 옵션, assign 작업을 이름으로 교체·취소하는 API는 없다. 이런 제어는 `start_async`와 필드를 조합한다.
+- wireview의 `start_async`는 같은 이름의 이전 작업을 취소한다. Phoenix의 낡은 결과 무시 규칙과 동일한 취소 부작용을
+  가정하지 않는다. `cancel_async`의 사용자 지정 취소 사유도 없다.
+- `stream_async`는 없다. `start_async`의 결과를 `handle_async`에서 `stream`으로 전달하고 로딩 필드는 직접 관리한다.
+  `.async_result` 같은 내장 슬롯 컴포넌트 대신 템플릿 조건문을 쓴다.
+- BEAM Task supervisor·프로세스 링크는 설계상 대상이 아니다. wireview 작업은 asyncio 태스크이며 컴포넌트 종료 때 취소된다.
