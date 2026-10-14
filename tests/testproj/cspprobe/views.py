@@ -13,6 +13,20 @@ def strict_policy(nonce: str) -> str:
     )
 
 
+#: The header's inline <style>, allowed by its hash: docs/features/react-islands.md's policy for a page
+#: a public cache keeps (tests/test_csp_e2e.py holds the two to the same value)
+HEADER_STYLE_HASH = "'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='"
+
+
+def cached_policy() -> str:
+    """No nonce at all: the HTML a cache kept carries another response's (#224)."""
+    return (
+        "default-src 'self'; script-src 'self'; "
+        f"style-src 'self' {HEADER_STYLE_HASH}; "
+        "connect-src 'self'; img-src 'self' blob: data:"
+    )
+
+
 def index(request):
     # Set by hand rather than through Django's CSP middleware, which only exists
     # from 6.0: this fixture has to run on every Django the CI matrix tests. The
@@ -22,7 +36,9 @@ def index(request):
     response = render(request, "cspprobe/page.html")
     # ?csp=0 serves the same page without a policy: the not-live fallback has to
     # be checked where an inline handler, had there been one, would have run.
-    if request.GET.get("csp") != "0":
+    if request.GET.get("csp") == "cached":
+        response["Content-Security-Policy"] = cached_policy()
+    elif request.GET.get("csp") != "0":
         response["Content-Security-Policy"] = strict_policy(nonce)
     return response
 

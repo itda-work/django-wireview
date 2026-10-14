@@ -148,3 +148,34 @@ def test_a_form_submits_to_its_action_when_the_page_is_not_live(page, server):
 
     expect_text(by(page, "submitted-page"), "offline")
     assert "/cspprobe/submitted/" in page.url
+
+
+def test_a_page_a_public_cache_keeps_works_under_the_guides_hash_policy(page, server):
+    """docs/features/react-islands.md: no nonce in the policy, the header's <style> allowed by its hash. The
+    nonce in the HTML is another response's, as in a page a CDN kept, and nothing is refused (#224)."""
+    import re
+    from pathlib import Path
+
+    from testproj.cspprobe.views import HEADER_STYLE_HASH
+
+    guide = Path(__file__).resolve().parent.parent / "docs" / "features" / "react-islands.md"
+    assert re.findall(r"'sha256-[^']+'", guide.read_text(encoding="utf-8")) == [HEADER_STYLE_HASH]
+
+    page.add_init_script(COLLECT_VIOLATIONS)
+    open_live(page, f"{server}/cspprobe/?csp=cached")
+    by(page, "increment").click()
+    expect_text(by(page, "count"), "1")
+
+    # The header's style applies: a disconnected element is dimmed
+    opacity = page.evaluate(
+        """() => {
+          const probe = document.createElement("div");
+          probe.className = "wireview-disconnected";
+          document.body.appendChild(probe);
+          const value = getComputedStyle(probe).opacity;
+          probe.remove();
+          return value;
+        }"""
+    )
+    assert opacity == "0.8"
+    assert page.evaluate("window.__violations") == []

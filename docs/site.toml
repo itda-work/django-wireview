@@ -310,6 +310,10 @@ source = "docs/features/islands.md"
 slug = "islands"
 
 [[sections.pages]]
+source = "docs/features/react-islands.md"
+slug = "react-islands"
+
+[[sections.pages]]
 source = "docs/features/type-stubs.md"
 slug = "type-stubs"
 

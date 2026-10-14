@@ -285,7 +285,7 @@ tests/
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다(staff-func/ 는 경계 안 패널을 첫 태그인 함수 컴포넌트의 템플릿이 그리는 페이지),
                            listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
-                           cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처,
+                           cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처(?csp=cached 는 nonce 없이 헤더 style을 해시로 허용하는 공개 캐시 페이지의 정책 — 해시는 react-islands.md와 같다),
                            valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지, 렌더가 지운 포커스 칸의 blur·change가 나가지 않고 폼 피드백도 건드림으로 치지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(holder 는 join이 실패한 컴포넌트와, 역시 join이 실패하는 held-nest 안의 LiveComponent held-child 를 렌더마다 다시 그린다, late/ 는 같은 id로 다시 join되는 페이지,
                            그 안의 ErrorNest 는 LiveComponent 하나를 들고 ?visit=swap 은 그 id를 루트로 바꾼다. remove가 지운 포커스 칸의 blur도 여기서 본다.

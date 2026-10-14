@@ -180,3 +180,28 @@ async def test_a_render_that_changes_the_props_sends_their_json_and_not_the_isla
     assert not any("wire-island" in value for value in values)
     (props,) = [value for value in values if "zoom" in value]
     assert json.loads(html.unescape(props)) == {"zoom": 4, "label": '<"a" & b>'}
+
+
+# --- the guide's policy for publicly cached pages ----------------------------------------
+
+
+@pytest.mark.unit
+def test_the_guides_style_hash_is_the_headers():
+    """docs/features/react-islands.md gives a policy without nonces, the header's inline ``<style>`` allowed by its
+    hash. Change the style and that policy blocks it on every such page: the doc's hash, and the changelog, move too."""
+    import base64
+    import hashlib
+    import re
+    from pathlib import Path
+
+    from django.template import Engine
+
+    # The file the tag renders, through the app directories (this module's fixture swaps the project's loaders)
+    engine = Engine(app_dirs=True, libraries={"static": "django.templatetags.static"})
+    rendered = engine.get_template("wireview_header.html").render(Context({}))
+    (body,) = re.findall(r"<style>(.*?)</style>", rendered, re.S)
+    digest = base64.b64encode(hashlib.sha256(body.encode()).digest()).decode()
+    guide = (Path(__file__).resolve().parent.parent / "docs" / "features" / "react-islands.md").read_text(
+        encoding="utf-8"
+    )
+    assert re.findall(r"'sha256-([^']+)'", guide) == [digest]

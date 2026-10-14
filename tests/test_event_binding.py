@@ -276,6 +276,29 @@ class TestHeaderNonce:
 
         assert "nonce" not in html
 
+    def test_a_nonce_nothing_used_before_the_header_is_in_the_header_and_the_policy(self):
+        """Django 6.0's middleware leaves a ``LazyNonce``, false until something makes it a string. The header
+        tested it for truth: first on the page, it rendered no nonce, the policy had none, and its <style> was
+        refused (#224)."""
+        csp = pytest.importorskip("django.middleware.csp")
+        from django.test import override_settings
+        from django.utils.csp import CSP
+
+        request = RequestFactory().get("/")
+        middleware = csp.ContentSecurityPolicyMiddleware(lambda request: None)
+        middleware.process_request(request)
+
+        html = self._header(request)
+
+        (nonce,) = set(re.findall(r'nonce="([^"]+)"', html))
+        assert re.search(r"<style\s+nonce=", html), html
+        from django.http import HttpResponse
+
+        policy = {"default-src": [CSP.SELF], "style-src": [CSP.SELF, CSP.NONCE]}
+        with override_settings(SECURE_CSP=policy):
+            response = middleware.process_response(request, HttpResponse(html))
+        assert f"'nonce-{nonce}'" in response["Content-Security-Policy"]
+
 
 EVENTS_MJS = Path(__file__).resolve().parent.parent / "wireview" / "static" / "wireview" / "events.mjs"
 

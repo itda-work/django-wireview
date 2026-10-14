@@ -14,6 +14,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `docs/features/react-islands.md`: React on an island -- registering it, a Vite bundle and its dev server, CSP
+  nonces, and a policy without nonces for pages a public cache keeps, which allows the header's inline `<style>` by
+  its hash (`'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='`; it changes with that style, and the changelog
+  says so) (#224).
 - `{% island "Map" props=... %}` puts an element the page's own JavaScript draws -- a React tree, a map -- in a
   component, fed the component's state (#221). The page registers what draws it (`wireview.islands.Map = { mount(el,
   props, ctx) }`, returning `update`/`unmount`); a built-in hook mounts it once, hands it the props again only when a
@@ -156,6 +160,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `{% wireview_header %}` left its nonces out under Django 6.0's CSP middleware whenever it was the first thing on the
+  page to use the nonce (#224). The middleware's `LazyNonce` is false until something makes it a string, the header
+  tested it for truth, and the policy then had no nonce either: under a nonce-only `style-src` the header's `<style>`
+  was refused. The header now makes it a string.
 - A hook a morph handed to another component, its element moved there by id, was not mounted again: the element
   kept the marks of the old component's hooks, and the new component's scan took them for mounted (#221). When the
   old component left, it had destroyed them; when it stayed, they lived on and pushed to it. Destroying a hook takes

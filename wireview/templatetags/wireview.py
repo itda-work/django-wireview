@@ -74,10 +74,9 @@ def wireview_header(context):
         "HOOK_FILES": hook_files() if settings.COLLECT_HOOKS else (),
         # Django's CSP middleware (6.0+) puts a per-request nonce here; the
         # header's <style> needs it under a style-src without 'unsafe-inline'
-        # and the scripts carry it for policies built on nonces (#90). Reading
-        # it makes the middleware include it in the header. Absent on older
-        # Django or without the middleware, and then nothing is added.
-        "CSP_NONCE": getattr(request, "_csp_nonce", None) if request is not None else None,
+        # and the scripts carry it for policies built on nonces (#90). Absent
+        # on older Django or without the middleware, and then nothing is added.
+        "CSP_NONCE": _csp_nonce(request),
         # How long the client waits before opening the socket again (#124)
         "RECONNECT": {
             "min_delay": settings.RECONNECT_MIN_DELAY_MS,
@@ -86,6 +85,19 @@ def wireview_header(context):
             "grow_factor": settings.RECONNECT_GROW_FACTOR,
         },
     }
+
+
+def _csp_nonce(request: t.Any) -> str | None:
+    """The request's CSP nonce as a string, generated if nothing has used it yet.
+
+    Django's is a ``LazyNonce``: false until something turns it into a string,
+    and the middleware puts it in the policy only then. Tested for truth as it
+    came, it was false whenever the header was the first to want it -- the
+    header went out without nonces, the policy without the nonce, and its
+    ``<style>`` was refused (#224).
+    """
+    nonce = getattr(request, "_csp_nonce", None) if request is not None else None
+    return str(nonce) if nonce is not None else None
 
 
 def _signed_state(component: Component, repo: ComponentRepository) -> str:

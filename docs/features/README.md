@@ -70,6 +70,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **CSP** | 인라인 스크립트 없는 이벤트 바인딩, `'unsafe-inline'` 없는 정책과 함께 동작 | [문서](./csp.md) |
 | **JavaScript Hooks** | 서드파티 JS 라이브러리 통합 | [문서](./hooks.md) |
 | **섬 (island)** | `{% island %}`: React·지도처럼 페이지의 JS가 그리는 영역에 서버 상태를 props로. `wireview.islands` | [문서](./islands.md) |
+| **React 섬과 함께 쓰기** | React 등록, Vite 번들·개발 서버, CSP nonce와 공개 캐시 페이지의 해시 정책, 로그인 뒤의 섬 | [문서](./react-islands.md) |
 
 ## 개발자 도구
 
