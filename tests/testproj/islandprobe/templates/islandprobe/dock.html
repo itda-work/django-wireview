@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <b data-testid="dock-count">{{ this.count }}</b>
+  {% island "Probe" props=this.count data_who="dock" %}
+  <button type="button"
+          data-testid="dock-increment"
+          {% on "click" "increment" %}>+</button>
+</div>

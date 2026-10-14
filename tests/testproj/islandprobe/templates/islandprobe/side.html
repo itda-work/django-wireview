@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span>{{ this.id }}</span>
+  {% if this.holds %}
+    {% island "Probe" props=this.id id="moving-island" data_who=this.id %}
+  {% endif %}
+</div>

@@ -14,6 +14,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `{% island "Map" props=... %}` puts an element the page's own JavaScript draws -- a React tree, a map -- in a
+  component, fed the component's state (#221). The page registers what draws it (`wireview.islands.Map = { mount(el,
+  props, ctx) }`, returning `update`/`unmount`); a built-in hook mounts it once, hands it the props again only when a
+  render changes them, and unmounts it when its element leaves, while `wire-update="ignore"` keeps every render out of
+  what it drew. The props are one dynamic part of the template, so a render sends their JSON alone. `ctx.push` is a
+  Promise of the reply (#222), `ctx.on` hears `push_event`, `ctx.onStatus` the connection. A definition registered
+  after the page loaded mounts the islands waiting for it.
 - A hook's `pushEvent` without a callback returns a Promise of the reply, settled when the callback would run
   (after the render the event caused is on the page), and rejected with a `WireviewPushError` when no reply will
   come: the socket closed or was down (`disconnected`), the hook or its component left (`destroyed`), the
@@ -149,6 +156,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A hook a morph handed to another component, its element moved there by id, was not mounted again: the element
+  kept the marks of the old component's hooks, and the new component's scan took them for mounted (#221). When the
+  old component left, it had destroyed them; when it stayed, they lived on and pushed to it. Destroying a hook takes
+  its mark off the element, and a component whose scan finds another's hooks on its element destroys them and
+  mounts its own.
+- `manage.py wireview_lsp --skip-checks`, and `extract_metadata()` called on its own, left out the components of a
+  module only a view imports: the system checks were what imported the URLconf. The editor called those components
+  unknown. The metadata now imports the URLconf itself (#221).
 - `manage.py wireview_check_templates` read the report of the template diagnostics in the locale's encoding (#217):
   node writes UTF-8, and on a Windows machine whose code page is not, a report naming a non-ASCII path or text came
   back garbled or failed to parse. It is read as UTF-8.

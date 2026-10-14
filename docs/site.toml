@@ -306,6 +306,10 @@ source = "docs/features/hooks.md"
 slug = "hooks"
 
 [[sections.pages]]
+source = "docs/features/islands.md"
+slug = "islands"
+
+[[sections.pages]]
 source = "docs/features/type-stubs.md"
 slug = "type-stubs"
 

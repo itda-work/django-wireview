@@ -1,0 +1,21 @@
+{% load wireview static %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>island probe</title>
+    {% wireview_header %}
+    {% if not late %}
+      <script defer src="{% static 'islandprobe/islands.js' %}"></script>
+    {% endif %}
+  </head>
+  <body>
+    {% component 'IslandDock' id="dock" %}
+    {% if board %}
+      {% component 'IslandBoard' id="board" %}
+    {% endif %}
+    <a href="{% url 'islandprobe:elsewhere' %}" data-testid="leave">elsewhere</a>
+    <a href="{% url 'islandprobe:index' %}" data-testid="back">back</a>
+    <a href="{% url 'islandprobe:again' %}" data-testid="again">again</a>
+  </body>
+</html>

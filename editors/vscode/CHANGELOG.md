@@ -10,6 +10,12 @@ A version's section says "Unreleased" until the commit that publishes it dates i
 the release workflow refuses a tag whose section has no date
 ([release procedure](../../docs/ROADMAP.md#vs-code-확장-릴리스-절차)).
 
+## [Unreleased]
+
+### Added
+
+- A completion snippet for django-wireview's `{% island %}` tag (#221).
+
 ## [0.2.1] - 2026-10-09
 
 ### Fixed

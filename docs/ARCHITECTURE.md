@@ -358,7 +358,7 @@ wireview/
 └── static/wireview/
     ├── wireview.js        # 소스 (wireview.min.js는 make build-js의 산출물)
     ├── wireview-boost.js
-    ├── rendered.mjs  streams.mjs  targets.mjs  replies.mjs  events.mjs  values.mjs  live-session.mjs  ready.mjs  reload.mjs
+    ├── rendered.mjs  streams.mjs  targets.mjs  replies.mjs  islands.mjs  events.mjs  values.mjs  live-session.mjs  ready.mjs  reload.mjs
     ├── loading.mjs  navigation.mjs  reconnect.mjs  uploads.mjs  joins.mjs  rejoins.mjs  tab.mjs  renew.mjs  viewport.mjs  sticky.mjs
     └── types.d.ts
 ```

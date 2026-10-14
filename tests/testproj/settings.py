@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     "testproj.streamprobe",
     "testproj.offlineprobe",
     "testproj.hookprobe",
+    "testproj.islandprobe",
     "testproj.tempprobe",
     "testproj.slotprobe",
     "testproj.stickyprobe",

@@ -844,3 +844,24 @@ class TestFrameworkMethodsDescribedOnce:
 
 def _without_handler(method: dict) -> dict:
     return {key: value for key, value in method.items() if key != "is_handler"}
+
+
+@pytest.mark.integration
+def test_a_component_only_a_view_imports_is_in_the_metadata():
+    """``examples/slots/components.py`` is imported by the slots views alone, so only the URLconf brings
+    ``SlotsGallery`` in. The command's system checks import it; ``--skip-checks`` does not, and neither did
+    ``extract_metadata()`` called in a process that had not -- this suite's own fixture, run alone."""
+    import subprocess
+    import sys
+
+    tests = Path(__file__).resolve().parent
+    result = subprocess.run(
+        [sys.executable, "manage.py", "wireview_lsp", "--skip-checks"],
+        cwd=tests,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
+        check=True,
+    )
+    assert "SlotsGallery" in json.loads(result.stdout)["components"]

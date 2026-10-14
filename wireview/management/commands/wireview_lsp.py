@@ -113,8 +113,28 @@ def get_class_attribute_safe(cls: type, attr_name: str, default: t.Any = None) -
     return getattr(cls, attr_name, default)
 
 
+def load_urlconf() -> None:
+    """Import the URLconf, and with it the views and the modules they import.
+
+    A component is registered when its module is imported. The ``live`` and
+    ``live_sessions`` modules are imported at startup (apps.py); one that only
+    a view imports comes in with the URLconf. The command's system checks
+    import it, but not under ``--skip-checks``, nor for a caller of
+    ``extract_metadata()`` -- whose editor then called every component of such
+    a module unknown. A URLconf that fails to import leaves what was found,
+    with a warning.
+    """
+    from django.urls import get_resolver
+
+    try:
+        get_resolver().url_patterns
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to import the URLconf: {e}\n")
+
+
 def extract_metadata() -> dict[str, t.Any]:
     """Extract metadata from all registered components."""
+    load_urlconf()
     components: dict[str, dict[str, t.Any]] = {}
     framework_methods: dict[str, dict[str, dict[str, t.Any]]] = {}
 

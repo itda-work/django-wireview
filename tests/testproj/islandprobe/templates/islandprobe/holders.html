@@ -1,0 +1,15 @@
+{% load wireview static %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>island holders</title>
+    {% wireview_header %}
+    <script defer src="{% static 'islandprobe/islands.js' %}"></script>
+  </head>
+  <body>
+    {% component 'IslandHolder' id=holder %}
+    <a href="{% url 'islandprobe:holder' 'a' %}" data-testid="holder-a">a</a>
+    <a href="{% url 'islandprobe:holder' 'b' %}" data-testid="holder-b">b</a>
+  </body>
+</html>

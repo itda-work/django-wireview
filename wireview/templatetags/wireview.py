@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import json
 import logging
 import re
 import typing as t
@@ -8,7 +9,8 @@ from importlib import metadata
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django import template
-from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
+from django.core.serializers.json import DjangoJSONEncoder
+from django.template.base import FilterExpression, Node, NodeList, Parser, TextNode, Token, VariableNode, token_kwargs
 from django.template.context import Context
 from django.utils.html import escape, format_html, format_html_join
 from django.utils.safestring import mark_safe
@@ -1082,6 +1084,97 @@ def upload_preview(entry, **attrs):
         ref=ref,
         attrs=_html_attrs(attrs),
     )
+
+
+# Islands (#221)
+
+#: The client's built-in hook that mounts an island (static/wireview/islands.mjs)
+ISLAND_HOOK = "wireview-island"
+
+
+@register.tag("island")
+def do_island(parser: Parser, token: Token):
+    """An element the page's own JavaScript draws, fed the component's state (#221).
+
+    ``{% island "Map" props=this.map_props class="h-96" %}`` renders::
+
+        <div wire-hook="wireview-island" wire-island="Map" class="h-96"
+             wire-island-props="{...JSON...}"><div wire-update="ignore"></div></div>
+
+    The page mounts ``window.wireview.islands.Map`` into the inner element once,
+    and hands it the props again whenever a render changes them; no render
+    touches what it drew there. The props are a dynamic part of the template,
+    so a render sends their JSON and nothing else of the island.
+
+    ``props`` is JSON-encoded with Django's encoder (dates, decimals, UUIDs);
+    left out or ``None``, it is ``{}``. Other keyword arguments are attributes of
+    the outer element, ``data_x`` written ``data-x``.
+    """
+    bits = token.split_contents()[1:]
+    if not bits:
+        raise template.TemplateSyntaxError('{% island %} names the island: {% island "Map" props=... %}')
+    name = parser.compile_filter(bits.pop(0))
+    kwargs = token_kwargs(bits, parser)
+    if bits:
+        raise template.TemplateSyntaxError(
+            f"{{% island %}} takes the island's name, then keyword arguments only; got {' '.join(bits)!r}"
+        )
+    props = kwargs.pop("props", None) or parser.compile_filter("None")
+    return IslandNode(name, props, kwargs)
+
+
+class IslandNode(Node):
+    """The island's markup. The props are a node of their own in ``nodelist``, a
+    variable the marker engine wraps like any ``{{ }}`` (template_engine), so
+    they diff as one dynamic part. The rest is static to the diff."""
+
+    child_nodelists = ("nodelist",)
+
+    def __init__(self, name: FilterExpression, props: FilterExpression, attrs: dict[str, FilterExpression]) -> None:
+        self.name = name
+        self.attrs = attrs
+        self.nodelist = NodeList(
+            [
+                _IslandOpening(name, attrs),
+                _IslandProps(props),
+                TextNode('"><div wire-update="ignore"></div></div>'),
+            ]
+        )
+
+    def render(self, context: Context) -> str:
+        return self.nodelist.render(context)
+
+
+class _IslandOpening(Node):
+    def __init__(self, name: FilterExpression, attrs: dict[str, FilterExpression]) -> None:
+        self.name = name
+        self.attrs = attrs
+
+    def render(self, context: Context) -> str:
+        name = self.name.resolve(context)
+        if not isinstance(name, str) or not name:
+            raise template.TemplateSyntaxError(f"{{% island %}} names the island with a string; got {name!r}")
+        attrs = _html_attrs({key: value.resolve(context) for key, value in self.attrs.items()})
+        return format_html(
+            '<div wire-hook="{hook}" wire-island="{name}"{space}{attrs} wire-island-props="',
+            hook=ISLAND_HOOK,
+            name=name,
+            space=" " if attrs else "",
+            attrs=attrs,
+        )
+
+
+class _IslandProps(VariableNode):
+    """The props as escaped JSON, for the attribute the opening leaves open."""
+
+    def render(self, context: Context) -> str:
+        props = self.filter_expression.resolve(context)
+        try:
+            # No NaN or Infinity: json.dumps writes them, and the page's JSON.parse refuses them
+            encoded = json.dumps({} if props is None else props, cls=DjangoJSONEncoder, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise type(error)(f"{{% island %}} props must be JSON: {error}") from error
+        return escape(encoded)
 
 
 # Function component template tags

@@ -222,6 +222,9 @@ UPGRADE_NOTE = {
 
 EXAMPLE = "저장소의 예제만 바뀌었다"
 NO_UPGRADE_NOTE = {
+    "A hook a morph handed to another component": "마운트되지 않던 훅이 마운트될 뿐이다",
+    "`manage.py wireview_lsp --skip-checks`": "편집기 메타데이터가 빠뜨리던 컴포넌트를 실을 뿐이다",
+    '`{% island "Map" props=... %}` puts an element': "새 태그라 할 일이 없다",
     "A message naming a component by something that is not a string": "no client of ours sends one",
     "`examples/chat_lv2`, the second step": EXAMPLE,
     "`examples/chat_lv3`, the third step": EXAMPLE,

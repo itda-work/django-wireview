@@ -1,0 +1,10 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <b data-testid="zoom">{{ this.zoom }}</b>
+  <i data-testid="note">{{ this.note }}</i>
+  {% island "Probe" props=this.map_props data_who="board" %}
+  <button type="button" data-testid="zoom-in" {% on "click" "zoom_in" %}>zoom</button>
+  <button type="button" data-testid="write-note" {% on "click" "write_note" %}>note</button>
+  <button type="button" data-testid="boom" {% on "click" "boom" %}>boom</button>
+</div>

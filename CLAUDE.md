@@ -197,7 +197,8 @@ wireview/
                            streams.mjs (스트림 DOM 판단 순수 함수. pinContainerIds: morph 전에 렌더의 컨테이너에 화면 컨테이너의 id를 붙여 자리 짝짓기로 지워지지 않게 한다),
                            targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별.
                            whenPatched: 훅 pushEvent의 응답은 예약된 패치 뒤에 — 그 렌더의 DOM을 읽는다, #223),
-                           replies.mjs (훅 pushEvent가 기다리는 응답의 장부. 콜백 또는 Promise, 끊김·떠남·서버 error에 Promise를 거절한다, #222), reload.mjs (reload 쿨다운 판단),
+                           replies.mjs (훅 pushEvent가 기다리는 응답의 장부. 콜백 또는 Promise, 끊김·떠남·서버 error·gone에 Promise를 거절한다. 받은 응답은 취소하지 않는다, #222),
+                           islands.mjs (섬의 수명: 내장 훅 wireview-island가 mount·props가 바뀐 update·unmount를 잇고, 늦게 등록된 정의를 기다린다. wireview.islands가 등록부(Proxy), #221), reload.mjs (reload 쿨다운 판단),
                            viewport.mjs (wire-viewport-top/bottom이 불리는가. 방향은 스크롤하는 조상들과 창 중 하나라도 그쪽으로 움직였는가, "지나침"은 실제로 넘치는 가장 가까운 상자(없으면 창)에서 잰다 — 자기 스크롤바가 있는 채팅 목록, 스크롤하지 않는 overflow-x: hidden 래퍼, #199),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
@@ -292,6 +293,7 @@ tests/
                            그 LiveComponent는 업로드를 받는다(슬롯의 것은 실패 뒤에도 끝내야 한다).
                            핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
+                           islandprobe/ 는 섬의 수명(한 번 mount·바뀐 props만 update·예외 뒤 다시 join·재연결·boost 이동·sticky·늦은 등록·뒤로 가기의 사본)과 ctx를 보는 E2E(test_islands_e2e.py)의 픽스처(again/ 은 같은 id의 board, holder/ 는 같은 섬 id를 다른 컴포넌트가, sides/ 는 남아 있는 두 컴포넌트 사이로 섬이 옮겨 가는 페이지),
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처(?nest=1 은 호스트의 패스, 다른 컴포넌트의 슬롯 안, 호스트 값을 그리는 fill을 받은 component_block으로 그려진 probe, ?rows=1 은 행을 중첩 컴포넌트가 그리는 목록, ?live=1 은 호스트의 패스가 그리는 블록에 목록과 함께 든 LiveComponent, ?notes=1 은 서명 상태 밖의 temporary assign이 바뀌는 중첩 컴포넌트를 목록과 함께 든 블록, ?joined=1 은 그 temporary assign을 joined()에서 불러오는 것, ?func=1 은 그 자리를 함수 컴포넌트의 템플릿이 그리고 그것의 joined()가 서명 필드를 바꾸는 것, ?nestrows=1 은 호스트의 패스가 그리는 컴포넌트가 유지한 id 없는 행이 계속 답하는지),
                            slotprobe/ 는 슬롯에 넣은 LiveComponent·일반 컴포넌트가 슬롯을 그리는 컴포넌트(component_block·live_component_block)의 자기 렌더, 슬롯을 숨겼다 보이기, 예외 뒤·같은 페이지 boost의 다시 join 뒤에도 남는지 보는 E2E(test_slot_live_components_e2e.py)의 픽스처(?other=1 은 같은 id의 frame을 fill 없이 두는 다른 페이지, ?otherhost=1 은 다른 호스트가 그 frame을 fill 없이 그리는 페이지),
@@ -404,10 +406,11 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 | `on` | 이벤트 바인딩. `{% on "click.prevent" "handler" arg=1 %}` |
 | `cond`, `class` (태그), `str`, `concat` (필터) | 조건, 클래스, 문자열 헬퍼 |
 | `upload_input`, `upload_drop_zone`, `upload_button`, `upload_preview` | 파일 업로드 |
+| `island` | 페이지의 JavaScript가 그리는 섬. `{% island "Map" props=this.map_props %}`, props는 동적 부분 하나(#221) |
 
 ### 클라이언트 DOM 속성
 
-`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`, `wire-island`·`wire-island-props`(`{% island %}`가 그린다). 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
 
 ## 명령
 

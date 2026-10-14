@@ -17,6 +17,7 @@ import { planInsert, planTrim } from "./streams.mjs";
 import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
 import { TargetQueue, whenPatched } from "./targets.mjs";
 import { Replies } from "./replies.mjs";
+import { ISLAND_HOOK, Island, Islands } from "./islands.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
@@ -1656,6 +1657,36 @@ class WireviewComponent {
  *   stayed on the page through (a sticky component's, #128)
  */
 
+/** The page's islands (#221): `window.wireview.islands` is their registry. */
+const islands = new Islands();
+
+/**
+ * The hooks wireview defines itself, ahead of the page's: a template cannot
+ * name one of the page's in their place.
+ * @type {Record<string, HookDefinition>}
+ */
+const BUILTIN_HOOKS = {
+  // `{% island %}`'s element: its life is the island's (islands.mjs)
+  [ISLAND_HOOK]: {
+    mounted() {
+      this.__island = new Island(islands, this);
+      this.__island.mount();
+    },
+    updated() {
+      this.__island?.updated();
+    },
+    destroyed() {
+      this.__island?.destroy();
+    },
+    disconnected() {
+      this.__island?.hear("disconnected");
+    },
+    reconnected() {
+      this.__island?.hear("reconnected");
+    },
+  },
+};
+
 /**
  * Context object for hook callbacks.
  * Provides access to DOM element and server communication.
@@ -1790,15 +1821,33 @@ class HookManager {
       // A nested component's hooks are its own. The parent joins first, and a
       // hook it took was one the nested component's push_event never reached (#107).
       if (element.closest("[wireview-component]") !== root) return;
+      this.takeOver(element);
       if (!element.__wireviewHookIds) {
         this.mountHooks(element);
       }
     });
 
     // Check if root itself has hooks
+    if (root.hasAttribute("wire-hook")) this.takeOver(root);
     if (root.hasAttribute("wire-hook") && !root.__wireviewHookIds) {
       this.mountHooks(root);
     }
+  }
+
+  /**
+   * An element this component holds whose hooks another component mounted: a
+   * morph moved it here by its id, both components staying on the page (#221).
+   * Nothing destroys the other's hooks then -- it did not leave, and the
+   * element did not leave the document -- so they went on pushing to it. Its
+   * hooks go, and this component mounts its own.
+   * @param {HTMLElement & {__wireviewHookIds?: string[], __wireviewHookOwner?: HookManager}} element
+   */
+  takeOver(element) {
+    const owner = element.__wireviewHookOwner;
+    if (!element.__wireviewHookIds || owner === undefined || owner === this) return;
+    for (const hookId of [...element.__wireviewHookIds]) owner.destroyHook(hookId);
+    // Whatever the old owner no longer held
+    delete element.__wireviewHookIds;
   }
 
   /**
@@ -1812,9 +1861,14 @@ class HookManager {
     const hookNames = hookAttr.split(/\s+/).filter(Boolean);
     /** @type {string[]} */
     el.__wireviewHookIds = [];
+    /** Which component's they are: a morph can move the element to another (takeOver) */
+    el.__wireviewHookOwner = this;
 
     for (const hookName of hookNames) {
-      const definition = window.wireview.hooks[hookName];
+      // Own properties only: a page's hook named `constructor` is not shadowed by Object's
+      const definition = Object.prototype.hasOwnProperty.call(BUILTIN_HOOKS, hookName)
+        ? BUILTIN_HOOKS[hookName]
+        : window.wireview.hooks[hookName];
       if (!definition) {
         console.warn(`[wireview] Hook "${hookName}" not registered`);
         continue;
@@ -1919,6 +1973,16 @@ class HookManager {
     debugLog("hook", `Destroyed: ${context.__hookName}`, { hookId });
     context.__destroy();
     this.instances.delete(hookId);
+    // The element forgets it too. A morph can hand an element with an id to
+    // another component (idiomorph moves it by id across parents); left marked,
+    // that component's scan took its hooks for mounted, and they never were (#221).
+    const element = /** @type {HTMLElement & {__wireviewHookIds?: string[]}} */ (context.el);
+    const ids = element.__wireviewHookIds;
+    if (ids) {
+      const at = ids.indexOf(hookId);
+      if (at !== -1) ids.splice(at, 1);
+      if (!ids.length) delete element.__wireviewHookIds;
+    }
     // Its Promises: whoever awaits them is told the hook left. A callback is
     // still called, as before (replies.mjs)
     connection.replies.fail((waiting) => waiting.hook === hookId && waiting.promised, "destroyed");
@@ -3894,6 +3958,23 @@ window.wireview = {
    * @type {Object<string, HookDefinition>}
    */
   hooks: {},
+
+  /**
+   * What draws each `{% island %}` (#221), by the name the tag gives. Assign a
+   * name -- do not replace the object -- before or after the page loads: an
+   * element waiting for its island is mounted when it comes.
+   *
+   * @example
+   * window.wireview.islands.Map = {
+   *   mount(el, props, ctx) {
+   *     const map = new MapLibrary(el, props);
+   *     return { update: (props) => map.set(props), unmount: () => map.remove() };
+   *   },
+   * };
+   *
+   * @type {Record<string, import("./islands.mjs").IslandDefinition>}
+   */
+  islands: islands.registry,
 
   /**
    * Forwards a user event to a component.

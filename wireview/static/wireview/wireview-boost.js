@@ -22,6 +22,7 @@ import {
   stamped,
   TraversalUndo,
 } from "./navigation.mjs";
+import { isIslandPair, syncAttributes } from "./islands.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { StickyOps } from "./sticky.mjs";
 import { ValueGuard } from "./values.mjs";
@@ -194,6 +195,17 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
         // Only call for elements, not text nodes
         if (fromEl.nodeType === Node.ELEMENT_NODE) {
           for (const callback of beforeElUpdated) callback(fromEl, toEl);
+        }
+
+        // An island's element (#221): its attributes are the render's -- the
+        // props among them -- and what is inside is the island's. Morphing the
+        // children would pair the element it draws in by position, which an id
+        // its library gave it breaks: the render's empty one took its place.
+        // A navigation's too: the next page's component under the same id
+        // keeps the element's hooks, the island among them.
+        if (isIslandPair(fromEl, toEl)) {
+          syncAttributes(/** @type {Element} */ (fromEl), /** @type {Element} */ (toEl));
+          return false;
         }
         return true; // Continue with morph
       },

@@ -118,6 +118,28 @@ interface WireviewHookContext {
   handleEvent(event: string, callback: (payload: any) => void): () => void;
 }
 
+/** What an island's `mount` is handed besides its props (docs/features/islands.md, #221). */
+interface WireviewIslandContext {
+  /** The island's outer element, the one `{% island %}` names. */
+  readonly el: HTMLElement;
+  /** Where the island draws: the element no render touches. */
+  readonly root: HTMLElement;
+  /** The props last handed over. */
+  readonly props: any;
+  readonly status: "connected" | "disconnected";
+  /** The component's `handle_hook_event()`: a Promise of its reply, as a hook's `pushEvent` without a callback. */
+  push(event: string, payload?: Record<string, unknown>): Promise<any>;
+  /** Hear the component's `push_event(event, ...)`. Returns what removes the handler. */
+  on(event: string, callback: (payload: any) => void): () => void;
+  /** Hear the connection drop and come back. Returns what removes the callback. */
+  onStatus(callback: (status: "disconnected" | "reconnected") => void): () => void;
+}
+
+/** What `window.wireview.islands.<Name>` is: what draws an `{% island "<Name>" %}`. */
+interface WireviewIsland {
+  mount(el: HTMLElement, props: any, ctx: WireviewIslandContext): { update?(props: any): void; unmount?(): void } | void;
+}
+
 /** What `window.wireview.hooks.<Name>` may define (docs/features/hooks.md). `this` is the hook's context. */
 interface WireviewHook {
   mounted?(): void;
@@ -149,5 +171,7 @@ interface Window {
     ): void;
     debug: WireviewDebug;
     hooks: Record<string, WireviewHook & ThisType<any>>;
+    /** Assign a name, do not replace the object: an element waiting for its island is mounted when it comes (#221). */
+    islands: Record<string, WireviewIsland>;
   };
 }
