@@ -447,7 +447,7 @@ def button(text: str, variant: str = "primary"):
 Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올린다. 처음 한 번 맞춰 둔 것은 다음과 같다.
 
 - **Marketplace publisher** `itda`. 확장 ID는 `itda.django-wireview`다.
-- **Azure**: 구독 '종량제', 리소스 그룹 `rg-wireview-publish`, 사용자 할당 관리 ID `id-wireview-vscode-publish`(koreacentral).
+- **Azure**: dev@itda.work 의 구독 'Azure 종량제'(테넌트 `devitda.onmicrosoft.com`), 리소스 그룹 `rg-wireview-publish`, 사용자 할당 관리 ID `id-wireview-vscode-publish`(koreacentral). 2026-10-19 옛 구독(allieus@live.com)에서 다시 만들어 옮겼다 (itda-skills/website#271) — 클라이언트 ID `d18df3a0-9b96-43e5-b733-1e699d7f331c`, Marketplace 신원 `5dcb2f94-64a3-6475-9890-75c284ae6f87`.
   그 federated credential의 subject는 `repo:itda-work/django-wireview:environment:vscode-marketplace`(GitHub Actions 발급자,
   audience는 기본값). 구독의 역할 할당은 필요 없다 — `azure/login`이 `allow-no-subscriptions`로 로그인한다.
 - **GitHub environment** `vscode-marketplace`: 배포는 태그 `vscode-v*`와 브랜치 `main`(dry run)만. 변수(secret 아님)
@@ -466,4 +466,4 @@ Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올�
 
 ---
 
-*마지막 업데이트: 2026-10-10*
+*마지막 업데이트: 2026-10-19*
