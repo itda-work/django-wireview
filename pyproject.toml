@@ -1,7 +1,7 @@
 [project]
 name = "django-wireview"
 version = "1.5.1"
-description = "Brings LiveView from Phoenix framework into Django"
+description = "[Experimental] Brings LiveView from Phoenix framework into Django"
 # readme and urls: hatch_build.py pins their links to the release tag
 dynamic = ["readme", "urls"]
 license = "MIT"
@@ -13,7 +13,7 @@ maintainers = [
     { name = "Chinseok Lee", email = "dev@itda.work" },
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",
     "Framework :: Django",
     "Framework :: Django :: 5.2",

@@ -1,5 +1,7 @@
 # Wireview - Django를 위한 Phoenix LiveView
 
+> ⚠️ **실험적 프로젝트입니다 (Experimental).** itda-work 가 실험 목적으로 공개하는 라이브러리입니다. API·동작·지원 범위가 예고 없이 바뀔 수 있으니, 운영 환경에 쓸 때는 버전을 고정하고 CHANGELOG 를 확인하세요.
+
 Wireview는 화면의 상태를 서버의 Django 컴포넌트에 두고, 브라우저의 이벤트를 WebSocket으로 받아 다시 렌더한 HTML의 바뀐 부분만 내려보내는 Django 라이브러리입니다. Phoenix LiveView와 같은 방식이라 프런트엔드를 위한 API 계층을 따로 두지 않습니다.
 
 코딩 에이전트로 바로 시작하려면 [AI 에이전트로 시작하기](#ai-에이전트로-시작하기)로 갑니다.
@@ -132,7 +134,7 @@ https://itda.work/wireview/llms.txt 를 참고해 django-wireview를 설치하�
 
 wireview는 검증된 Django·Channels 위의 얇은 층입니다. 템플릿·폼·ORM·인증·세션은 Django의 것이고, WebSocket과 채널 레이어는 Channels의 것입니다. 그 근거는 이렇습니다.
 
-- 1.2.0은 PyPI에 `Development Status :: 5 - Production/Stable`로 올라 있습니다.
+- 실험적 프로젝트라 다음 릴리스부터 PyPI 분류를 `Development Status :: 3 - Alpha`로 둡니다(1.2.0까지는 `5 - Production/Stable`이었습니다).
 - CI가 Python 3.12·3.13·3.14와 Django 5.2·6.0·6.1의 아홉 조합을 모두 돌립니다([지원 범위](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md#지원-범위)).
 - 1.0부터 공개 API를 마이너·패치 릴리스에서 깨지 않고, 없앨 때는 경고를 거친 뒤 다음 메이저에서 없앱니다([호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md)).
 - `make test`가 5,000개가 넘는 테스트를 돌리고, 릴리스 태그는 이것과 NATS·Redis 위의 브라우저 E2E를 모두 통과해야 PyPI에 올라갑니다.

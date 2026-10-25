@@ -222,6 +222,7 @@ UPGRADE_NOTE = {
 
 EXAMPLE = "저장소의 예제만 바뀌었다"
 NO_UPGRADE_NOTE = {
+    "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",
     "`docs/features/react-islands.md`": "문서만 더해졌다",
     "A hook a morph handed to another component": "마운트되지 않던 훅이 마운트될 뿐이다",

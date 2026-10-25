@@ -203,18 +203,16 @@ def test_the_build_starts_from_an_empty_dist():
     assert "uv build --clear" in recipe
 
 
-def test_the_development_status_says_whether_the_version_is_a_prerelease():
-    """A final release says ``5 - Production/Stable`` and a pre-release does not. The
-    classifier is bumped by hand in the release commit, and nothing read it: a 1.0.0 wheel
-    would have gone to PyPI as ``4 - Beta``."""
-    from packaging.version import Version
-
+def test_the_development_status_says_the_project_is_experimental():
+    """The project is published as experimental (owner's decision, 2026-10-25): the README opens
+    with that warning, and PyPI must not say ``5 - Production/Stable`` next to it. The classifier
+    used to follow the version, and a final release went up as stable."""
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     statuses = [c for c in project["classifiers"] if c.startswith("Development Status :: ")]
-    stable = not Version(project["version"]).is_prerelease
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert len(statuses) == 1, statuses
-    assert (statuses[0] == "Development Status :: 5 - Production/Stable") == stable, (project["version"], statuses)
+    assert statuses == ["Development Status :: 3 - Alpha"], statuses
+    assert "실험적 프로젝트" in readme.split("\n\n", 2)[1], "README must open with the experimental warning"
 
 
 def test_the_lock_files_say_the_same_version():

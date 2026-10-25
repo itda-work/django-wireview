@@ -90,6 +90,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- README marks the project as experimental: APIs, behaviour and supported ranges may change without notice; pin the
+  version in production and read this changelog before upgrading. The PyPI classifier goes from
+  `5 - Production/Stable` to `3 - Alpha` to match.
 - A hook's `pushEvent` callback runs after the render its event caused is on the page (#223). The server
   sent `hook_reply` before that render, and the page patches a render on the next frame, so a callback that
   hid a spinner did it over the old value. The server now sends the render first, and the page runs the callback

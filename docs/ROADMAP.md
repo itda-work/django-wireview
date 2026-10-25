@@ -367,8 +367,8 @@ def button(text: str, variant: str = "primary"):
    `tests/test_upgrading.py`의 표에 적는다. 여러 브랜치가 각자 CHANGELOG에만 적은 변경이 이렇게 빠졌다. 그 표는
    1.2에서 1.3으로 가는 절을 본다(`PREVIOUS`·`SECTION`). 다음 릴리스는 표와 절을 그 버전으로 옮긴다.
 2. `pyproject.toml`과 `package.json`의 `version`을 함께 올리고, `uv lock`과 `npm install --package-lock-only`로
-   두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). 사전 릴리스가 아니면 classifier가
-   `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).
+   두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). classifier는 실험적 프로젝트라
+   버전과 상관없이 `Development Status :: 3 - Alpha`로 둔다(2026-10-25 결정, 같은 파일이 본다).
 3. 이 문서의 릴리스 이력 표에 행을 ✅로 두고 맨 아래 "마지막 업데이트" 날짜를 바꾼다. 마이너·메이저 릴리스면
    `SECURITY.md`의 지원 버전 표("지금은 1.3.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
 4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`, `make docs-site-bundle`(`make docs-site`를 먼저 돈다).
