@@ -46,7 +46,7 @@ Windows 수치는 macOS 호스트의 Parallels 랩 클론(`win11-parlab`, ARM Wi
 source "${PMLAB_SH:-$HOME/.claude/skills/windows-parallels-lab/scripts/pmlab.sh}"   # 저장소 밖
 pmlab_start && pmlab_wait_ready          # 랩 클론 기동 (마스터 VM은 건드리지 않는다)
 bench/windows/run.sh stage               # HEAD 아카이브, channels-nats wheel, nats-server arm64, 게스트 스크립트를 공유 폴더로
-bench/windows/run.sh provision           # C:\bench 에 uv, Python 3.12 (arm64 + x64), venv 둘, nats-server
+bench/windows/run.sh provision           # C:\bench 에 uv, Python 3.13 (arm64 + x64), venv 둘, nats-server
 bench/windows/run.sh run                 # 여섯 구성을 분리 실행하고 끝날 때까지 기다린다 (약 3분)
 bench/windows/run.sh collect             # bench/results/win11-parlab-*.json 으로 복사
 pmlab_stop

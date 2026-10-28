@@ -90,6 +90,27 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- **Breaking: Python 3.13 or newer is required; 3.12 is no longer supported** (#225). channels-nats, the NATS
+  channel layer, requires 3.13 since 0.7.0, and the 3.12 floor held its dev dependency at `<0.7`. The supported grid
+  is Python 3.13 and 3.14 on Django 5.2, 6.0 and 6.1; `pip` on Python 3.12 stays on 1.5.x. The NATS layer is now
+  verified on channels-nats 0.10.1 and nats-server 2.15 (was 0.6.1 and 2.14), and the dev extra takes channels-nats'
+  newest release as its floor (`channels-nats>=0.10.1`). The pydantic floor goes from 2.7 to 2.8: pydantic-core
+  2.18, which 2.7 pins, has no wheel for Python 3.13.
+- `docs/DEPLOYMENT.md` runs uvicorn with `--ws websockets` (#225). Since uvicorn 0.50 its default WebSocket
+  implementation is websockets-sansio, whose shutdown raises `InvalidState: connection is closing` on a socket the
+  page is closing; the exception ends the server's shutdown, so the remaining sockets are not closed with 1012 and
+  the wait for the apps (`leaving()`) is skipped. The implementation that was the default up to 0.49 does not, and
+  it is what the tests, the E2E servers and the demo run. Reported upstream as
+  [Kludex/uvicorn#3241](https://github.com/Kludex/uvicorn/discussions/3241).
+- The Redis layer's settings in `docs/DEPLOYMENT.md`, the test project, the benchmarks and the demo set
+  `"socket_timeout": None` on each host (#225). redis-py 8 times a read out after 5 seconds by default, and
+  channels_redis 4.3 blocks 5 seconds waiting for a message, so a channel quiet for 5 seconds raised
+  `redis.exceptions.TimeoutError` and the sockets dropped and came back over and over
+  ([django/channels_redis#422](https://github.com/django/channels_redis/issues/422)). A host written as a tuple takes
+  no options; it is written as a dict.
+- Dependencies upgraded to their newest releases: the lock (Django 6.1.2, pydantic 2.14.1, uvicorn 0.54, websockets
+  17.3, ruff 0.17.3, ...), the client bundle's idiomorph 0.8.0 and esbuild 0.28, TypeScript 7 for the type check
+  (`moduleResolution` is now `bundler`; TypeScript 7 removed `node`), and the pre-commit hooks.
 - README marks the project as experimental: APIs, behaviour and supported ranges may change without notice; pin the
   version in production and read this changelog before upgrading. The PyPI classifier goes from
   `5 - Production/Stable` to `3 - Alpha` to match.

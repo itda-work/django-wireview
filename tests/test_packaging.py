@@ -24,7 +24,7 @@ def test_package_json_is_private_and_says_the_same_version():
 
 
 def test_the_classifiers_name_the_supported_range():
-    """docs/COMPATIBILITY.md: the Django releases Django supports, on Python 3.12 and up."""
+    """docs/COMPATIBILITY.md: the Django releases Django supports, on Python 3.13 and up."""
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     djangos = {c.rsplit(" :: ", 1)[1] for c in project["classifiers"] if c.startswith("Framework :: Django :: ")}
     pythons = {

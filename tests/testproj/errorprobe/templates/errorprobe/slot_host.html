@@ -7,7 +7,7 @@
   {% if this.shown %}
     {% component_block 'ErrorSlotNest' id="slot-nest" %}
     {% fill body %}{% live_component 'ErrorSlotLeaf' id="slot-leaf" %}{% endfill %}
-  {% endcomponent %}
-  {% component 'ErrorSlotNest' id="own-nest" %}
+{% endcomponent %}
+{% component 'ErrorSlotNest' id="own-nest" %}
 {% endif %}
 </div>

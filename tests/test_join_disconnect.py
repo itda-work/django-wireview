@@ -396,6 +396,7 @@ def _sansio_closing() -> t.Any:
     protocol.handshake_complete = True
     protocol.initial_response = None
     protocol.close_sent = False
+    protocol.disconnected = False  # connection_lost() has not run yet (uvicorn 0.40+)
     protocol.transport = Mock()
     protocol.transport.is_closing.return_value = True
     return protocol
@@ -413,7 +414,8 @@ async def test_closing_a_socket_the_page_closed_before_it_was_heard_is_quiet(cap
 
     protocol.transport.write.assert_not_called()
     assert consumer._socket.gone
-    assert [r.levelno for r in caplog.records if "before it closed" in r.getMessage()] == [logging.DEBUG]
+    # Uvicorn up to 0.38 refused the close (logged at DEBUG); later ones drop it without a word
+    assert [r for r in caplog.records if r.levelno > logging.DEBUG] == []
 
     # Closed from a task of its own (falling behind, a mailbox overflowing), it leaves no exception unretrieved
     other = WireviewConsumer()
@@ -421,6 +423,22 @@ async def test_closing_a_socket_the_page_closed_before_it_was_heard_is_quiet(cap
     closing = asyncio.ensure_future(other.close(code=1013))
     await closing
     assert closing.exception() is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_close_refused_for_a_gone_socket_is_logged_at_debug(caplog):
+    caplog.set_level(logging.DEBUG, logger="wireview")
+    consumer = WireviewConsumer()
+
+    async def send(message):
+        raise ClientDisconnected()
+
+    consumer.base_send = send
+    await consumer.close(code=1013)
+
+    assert consumer._socket.gone
+    assert [r.levelno for r in caplog.records if "before it closed" in r.getMessage()] == [logging.DEBUG]
 
 
 @pytest.mark.unit
@@ -476,13 +494,13 @@ def test_a_real_server_logs_no_error_for_a_page_that_left_while_its_join_was_ans
     proc = _serve(server, port, log, events)
     try:
         wait_until_serving(port, proc, log, 20)
-        socket = connect(f"ws://127.0.0.1:{port}/__wireview__?vsn={PROTOCOL_VERSION}")
         state = sign_state(SlowJoin(user=AnonymousUser(), wire=WireviewMeta(params={}), id="slow", seconds=0.5))
-        socket.send(json.dumps({"command": "join", "payload": {"name": "SlowJoin", "state": state, "children": {}}}))
-        deadline = time.monotonic() + 5
-        while "joining slow" not in events.read_text(encoding="utf-8") and time.monotonic() < deadline:
-            time.sleep(0.02)
-        socket.close()
+        join = {"command": "join", "payload": {"name": "SlowJoin", "state": state, "children": {}}}
+        with connect(f"ws://127.0.0.1:{port}/__wireview__?vsn={PROTOCOL_VERSION}") as socket:
+            socket.send(json.dumps(join))
+            deadline = time.monotonic() + 5
+            while "joining slow" not in events.read_text(encoding="utf-8") and time.monotonic() < deadline:
+                time.sleep(0.02)
         deadline = time.monotonic() + 5
         while "<<< DISCONNECT" not in log.read_text(encoding="utf-8") and time.monotonic() < deadline:
             time.sleep(0.05)

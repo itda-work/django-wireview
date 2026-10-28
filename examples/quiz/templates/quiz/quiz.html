@@ -1,7 +1,7 @@
 {% load wireview %}
 
 <div {% tag_header %} class="quiz-card">
-  {% if state == 'intro' %}
+  {% if state == "intro" %}
     <!-- Intro State: Show quiz title and start button -->
     <div class="intro">
       <h2>{{ this.quiz.title }}</h2>
@@ -20,7 +20,7 @@
     {% if this.leaderboard %}
       {% component 'XLeaderboard' id="leaderboard" quiz=quiz %}
     {% endif %}
-  {% elif state == 'playing' %}
+  {% elif state == "playing" %}
     <!-- Playing State: Show current question -->
     <div class="progress-bar">
       <div class="progress-fill" style="width: {{ progress_percentage }}%"></div>
@@ -53,7 +53,7 @@
         {% endif %}
       {% endif %}
     {% endwith %}
-  {% elif state == 'results' %}
+  {% elif state == "results" %}
     <!-- Results State: Show score and leaderboard -->
     <div class="results">
       <h2>Quiz Complete!</h2>

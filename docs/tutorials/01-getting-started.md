@@ -10,7 +10,7 @@
 
 ## 전제 조건
 
-- Python 3.12 이상
+- Python 3.13 이상
 - Django 5.2 이상 프로젝트
 - 기본적인 Django 지식
 

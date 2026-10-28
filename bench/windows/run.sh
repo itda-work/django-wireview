@@ -3,7 +3,7 @@
 # Needs the windows-parallels-lab skill (pmlab.sh) and a running lab clone.
 #
 #   bench/windows/run.sh stage       # archive HEAD, fetch nats-server, push the guest scripts
-#   bench/windows/run.sh provision   # C:\bench: uv, Python 3.12 (arm64 + x64), venvs, nats-server
+#   bench/windows/run.sh provision   # C:\bench: uv, Python 3.13 (arm64 + x64), venvs, nats-server
 #   bench/windows/run.sh run         # start seq.ps1 detached, wait for ALL-DONE.txt, print progress
 #   bench/windows/run.sh collect     # copy results into bench/results as win11-parlab-*.json
 #

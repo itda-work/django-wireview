@@ -245,6 +245,7 @@ class _PartNode(Node):
                 owner.kept_components.update(name for kind, name, _drawn in carried if kind == "c")
         if frame is None:
             return
+        assert wire is not None  # _record() gives a frame only with the owner's meta
         frames = self.marker_context.frames
         frames.pop()
         if kept:

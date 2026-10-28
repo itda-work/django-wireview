@@ -52,7 +52,7 @@ def _restore(instance: Model, sent: t.Iterable[str]) -> Model:
     meta = instance._meta
     for field in meta.concrete_fields:
         if field.attname != meta.pk.attname and field.name not in sent:
-            instance.__dict__.pop(field.attname, None)
+            vars(instance).pop(field.attname, None)
     _link_parents(instance, meta)
     instance._state.adding = False
     instance._state.db = router.db_for_write(type(instance), instance=instance)
@@ -69,8 +69,9 @@ def _link_parents(instance: Model, meta: t.Any) -> None:
     deferred, so ``save()`` reads it from the row instead of guessing it.
     """
     for parent, link in meta.parents.items():
-        if link is not None and link.attname in instance.__dict__:
-            instance.__dict__[parent._meta.pk.attname] = instance.__dict__[link.attname]
+        fields = vars(instance)
+        if link is not None and link.attname in fields:
+            fields[parent._meta.pk.attname] = fields[link.attname]
             _link_parents(instance, parent._meta)
 
 

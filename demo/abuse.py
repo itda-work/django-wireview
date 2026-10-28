@@ -74,6 +74,7 @@ class Visitor:
             origin=f"{parts.scheme}://{parts.netloc}",  # type: ignore[arg-type]
             additional_headers=headers,
             open_timeout=10,
+            legacy=True,  # the checks hold several at once and close them themselves
         )
 
 

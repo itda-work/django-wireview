@@ -1232,13 +1232,14 @@ def watching(component: Component, check: bool) -> t.Iterator[None]:
     owner = type(component).__qualname__
     reads: list[str] = []
     component.wire._watched_reads = reads
-    kept = {name: component.__dict__[name] for name in WATCHED_FIELDS if name in component.__dict__}
+    fields = vars(component)
+    kept = {name: fields[name] for name in WATCHED_FIELDS if name in fields}
     for name in kept:
-        component.__dict__[name] = _watched(name, owner, reads)
+        fields[name] = _watched(name, owner, reads)
     try:
         yield
     finally:
-        component.__dict__.update(kept)
+        fields.update(kept)
         component.wire._watched_reads = None
     if reads:
         raise _read_error(owner, reads[0])

@@ -126,7 +126,7 @@ ARM Windows에서 uv는 ARM용 Python을 받는다. 그런데 브라우저 테�
 에뮬레이션으로 돌린다. 처음의 `uv sync`만 이렇게 바꾼다.
 
 ```shell
-uv sync --all-extras --python cpython-3.12-windows-x86_64-none
+uv sync --all-extras --python cpython-3.13-windows-x86_64-none
 ```
 
 `.venv`가 x64 Python으로 만들어지고, 그 뒤의 `uv run …`은 모두 이것을 쓴다. 나머지 명령은 위와 같다.

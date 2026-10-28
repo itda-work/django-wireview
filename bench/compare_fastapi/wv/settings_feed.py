@@ -21,7 +21,9 @@ if _LAYER == "redis":
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [os.environ["REDIS_URL"]], "capacity": 1500},
+            # socket_timeout=None: redis-py 8 times a read out after 5 s by default, and channels_redis
+            # blocks 5 s on BZPOPMIN (django/channels_redis#422, #225)
+            "CONFIG": {"hosts": [{"address": os.environ["REDIS_URL"], "socket_timeout": None}], "capacity": 1500},
         }
     }
 elif _LAYER == "nats":

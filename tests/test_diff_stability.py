@@ -143,14 +143,14 @@ async def test_signed_state_round_trips_and_rejects_legacy_format():
 async def test_signed_state_is_deterministic_and_compact_for_lists():
     from django.core.signing import Signer
 
-    class ListProbe(DiffProbe):
+    class StateListProbe(DiffProbe):
         items: list[dict] = []
 
     # The v1 envelope costs a fixed ~60 bytes that do not compress (the class
     # FQN and the timestamp, #76), so the ratio below is measured on a list
     # long enough for the state itself to dominate.
     items = [{"name": f"item {i}", "qty": i} for i in range(100)]
-    view = await mount(ListProbe, items=items)
+    view = await mount(StateListProbe, items=items)
     component = view.component
 
     assert sign_state(component) == sign_state(component)

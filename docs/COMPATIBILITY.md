@@ -111,8 +111,9 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 
 ## 지원 범위
 
-**Django가 보안 지원하는 Django 버전**과, 그 버전들이 지원하는 Python 중 **3.12 이상**을 지원한다. 지금은
-Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
+**Django가 보안 지원하는 Django 버전**과, 그 버전들이 지원하는 Python 중 **3.13 이상**을 지원한다. 지금은
+Django 5.2 LTS·6.0·6.1, Python 3.13·3.14다.
+하한이 3.13인 것은 NATS 레이어(`channels-nats`)가 0.7.0부터 3.13 이상을 요구하기 때문이다(#225).
 
 - Django가 한 버전의 지원을 끝내면 그다음 **마이너** 릴리스에서 그 버전을 뺀다. 메이저를 올리지 않는다 —
   Django가 이미 끝낸 버전을 붙잡는 것은 사용자를 지키는 일이 아니다.
@@ -123,7 +124,7 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - 정본은 `pyproject.toml`(의존성·classifier)과 `.github/workflows/ci.yml`의 매트릭스다. 같은 격자를 로컬에서
   `make test-matrix`로 돈다(CI는 수동으로만 돈다).
 - **의존성의 하한도 약속이다.** `pyproject.toml`이 허용하는 가장 오래된 조합(지금은 Django 5.2, channels 4.2.1,
-  pydantic 2.7.0)을 `make test-lowest`가 Python 3.12에서 설치해 스위트를 돈다. CI의 `test-lowest` 잡이 같은 것이다.
+  pydantic 2.8.0)을 `make test-lowest`가 Python 3.13에서 설치해 스위트를 돈다. CI의 `test-lowest` 잡이 같은 것이다.
   하한 조합이 깨지면 하한을 올리고 `CHANGELOG.md`에 적는다(#132). 반대쪽 끝, 새 설치가 받는 최신 해는 `make test-latest`다.
 - **설치되지 않거나 지원하는 기능(채널 레이어 포함)에서 동작하지 않던 하한을 올리는 것은 패치 릴리스다.** 그 하한에
   머문 사용자는 그 기능이 동작하는 조합을 갖고 있지 않았다. 지원하는 모든 기능에서 동작하던 하한을 올리는 것은 마이너 릴리스다.
@@ -141,7 +142,7 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 
 | 레이어 | 패키지 | 검증한 버전 | 브로커 | 여러 프로세스 | 가득 찼을 때 |
 |--------|--------|-------------|--------|---------------|--------------|
-| NATS | `channels-nats` | 0.6.1 | nats-server 2.14 | 된다 | 받는 쪽 프로세스가 `channels_nats` 로거에 WARNING을 남기고 버린다 |
+| NATS | `channels-nats` | 0.10.1 | nats-server 2.15 | 된다 | 받는 쪽 프로세스가 `channels_nats` 로거에 WARNING을 남기고 버린다 |
 | Redis | `channels-redis` | 4.3.0 | Redis 8 | 된다 | `send`는 `ChannelFull`, `group_send`는 `channels_redis.core` 로거에 INFO를 남기고 버린다 |
 | InMemory | `channels`에 포함 | — | 없음 | **안 된다** | `group_send`가 아무 흔적 없이 버린다 |
 
@@ -154,10 +155,9 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - **channels-nats는 channels 4.2.1 이상에서만 동작한다.** 4.2.1에서 생긴 `require_valid_channel_name`을 부른다.
   0.2.1부터는 자신도 `channels>=4.2.1`을 선언하지만 0.2.0은 `channels>=4`라고 선언했고 여전히 설치된다.
   django-wireview의 하한이 `channels>=4.2.1`인 이유다(#132).
-- **channels-nats 0.7.0부터는 Python 3.13 이상이 필요하다.** 그래서 표의 버전은 Python 3.12에서도 설치되는
-  0.6.x다. 저장소의 dev 의존성이 `channels-nats<0.7`로 묶여 있어 `uv.lock`이 Python 버전에 따라 갈라지지 않는다 —
-  갈라지면 CI의 E2E 레인(Python 3.12)이 한 버전만 검증한다(#150). 3.13 이상에서 pip가 고르는 0.7 이후 버전은
-  이 표가 검증한 것이 아니다. 표의 버전을 쓰려면 `channels-nats<0.7`로 고정한다.
+- **channels-nats 0.7.0부터는 Python 3.13 이상이 필요하다.** django-wireview도 1.6부터 Python 3.13 이상이라
+  표의 버전은 그 최신 릴리스다. 저장소의 dev 의존성은 `channels-nats`의 최신 릴리스를 하한으로 둔다(#225).
+  Python 3.12에 머문 1.5 이하 사용자가 쓸 수 있는 것은 0.6.x다(1.5까지의 표가 검증한 0.6.1).
 - **channels-nats 0.3.0에서 와이어 형식이 바뀌었다**(본문 msgpack 고정, 일반 채널의 그룹 구독을 큐 그룹으로).
   0.2.x와 0.3.0 이상의 프로세스를 한 NATS에 섞으면 서로의 메시지를 읽지 못하므로 모든 프로세스를 함께 올린다.
   같은 릴리스에서 `CONFIG`의 `serializer` 키가 없어졌다. 적어 두었다면 지운다(남아 있으면 레이어 생성이 `TypeError`로 실패한다).

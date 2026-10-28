@@ -12,7 +12,7 @@
     {% for i in "12345" %}
       {% with star_num=forloop.counter %}
         <span class="star {% if star_num <= hover_rating %}preview{% elif star_num <= current_rating %}filled{% endif %}"
-              {% if not readonly %} {% on 'mouseenter' 'set_hover' star=star_num %} {% on 'click' 'rate' score=star_num %} {% endif %}>&#9733;</span>
+              {% if not readonly %} {% on 'mouseenter' 'set_hover' star=star_num %} {% on 'click' 'rate' score=star_num %} {% endif %}>★</span>
       {% endwith %}
     {% endfor %}
   </div>

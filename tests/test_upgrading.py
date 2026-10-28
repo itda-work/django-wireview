@@ -218,6 +218,18 @@ UPGRADE_NOTE = {
         "끼워 넣은 템플릿에서 보는 사람을 읽는 클래스를 공유하지 않는다",
         "`manage.py check`를 돌린다",
     ),
+    "`docs/DEPLOYMENT.md` runs uvicorn with `--ws websockets`": (
+        "uvicorn 0.50 이상이면 `--ws websockets`를 적는다",
+        "운영의 uvicorn 명령에",
+    ),
+    "The Redis layer's settings in `docs/DEPLOYMENT.md`": (
+        'redis-py 8 이상이면 Redis 레이어의 `hosts`에 `"socket_timeout": None`을 적는다',
+        "dict로 적는다",
+    ),
+    "Python 3.13 or newer is required": (
+        "Python 3.13 이상이 필요하다",
+        "`FROM python:3.13-slim`",
+    ),
 }
 
 EXAMPLE = "저장소의 예제만 바뀌었다"
@@ -250,6 +262,7 @@ NO_UPGRADE_NOTE = {
     "A session's mail to itself is no longer lost to a full channel": (
         "잃던 메일을 잃지 않을 뿐 할 일이 없다. 상한을 넘는 메일은 전에도 잃던 것이고 이제는 페이지가 다시 join한다"
     ),
+    "Dependencies upgraded to their newest releases": "허용 범위 안의 lock과 개발 도구만 바뀌었다",
     "A logout closes a busy connection on the login that ended": "닫혀야 할 연결이 닫힐 뿐 할 일이 없다",
     "A visitor who is not logged in no longer closes every anonymous connection": (
         "닫히지 말아야 할 연결이 남을 뿐 할 일이 없다"

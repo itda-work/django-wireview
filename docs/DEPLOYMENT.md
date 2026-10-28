@@ -9,8 +9,16 @@ django-wireview 앱을 운영에 올릴 때의 설정이다.
 ```bash
 pip install uvicorn[standard] uvloop
 uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop \
-    --ws-per-message-deflate false
+    --ws websockets --ws-per-message-deflate false
 ```
+
+**`--ws websockets`를 적는 이유.** uvicorn 0.50부터 기본 WebSocket 구현(`--ws auto`)이 `websockets-sansio`다. 그
+구현은 페이지가 먼저 닫기 시작한 연결이 남아 있을 때 종료 신호를 받으면 `InvalidState: connection is closing`을
+던지고, 그 예외가 종료 절차 전체를 끊는다 — 남은 연결은 1012로 닫히지 않고, 앱 태스크(`leaving()`)를
+기다리는 단계도 건너뛴다([롤링 배포](#롤링-배포와-재연결)). 페이지가 오가는 서버에서는 흔한 순간이다(#225).
+`--ws wsproto`도 같다. 0.49까지의 기본값이던 `websockets` 구현에는 이 문제가 없고, wireview의 테스트와 벤치마크가
+도는 것도 그것이다. uvicorn 0.54는 이 구현을 폐기 예정으로 표시해 기동할 때 `UvicornDeprecationWarning`과 websockets의
+`DeprecationWarning`을 남긴다 — 동작에는 영향이 없다. uvicorn이 종료 결함([Kludex/uvicorn#3241](https://github.com/Kludex/uvicorn/discussions/3241))을 고치면 이 옵션을 뺀다.
 
 **permessage-deflate를 끄는 이유.** uvicorn은 WebSocket 압축을 기본으로 협상하고, 그러면 연결마다
 zlib의 deflate·inflate 컨텍스트를 들고 있게 된다 — 실측 연결당 159KB다. uvicorn이 연결당 daphne보다
@@ -33,7 +41,7 @@ make bench ARGS="--connections 2000 --server uvicorn-nodeflate"
 **Docker 예:**
 
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 COPY requirements.txt .
@@ -45,7 +53,7 @@ COPY . .
 # collectstatic도 설정을 import하므로, 설정이 빌드 때 없는 환경 변수(비밀 키 등)를 요구하면 이 줄에만 임시 값을 준다.
 RUN python manage.py collectstatic --noinput
 
-CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--ws-per-message-deflate", "false"]
+CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--ws", "websockets", "--ws-per-message-deflate", "false"]
 ```
 
 ### 대안: Daphne
@@ -108,13 +116,19 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": [{"address": "redis://redis:6379", "socket_timeout": None}],
             "capacity": 1500,
             "expiry": 10,
         },
     },
 }
 ```
+
+**`socket_timeout: None`을 적는 이유.** redis-py 8부터 연결의 읽기 시한(`socket_timeout`)이 기본 5초다. 그런데
+channels_redis 4.3은 메시지를 기다릴 때 Redis에서 5초씩 블로킹하므로(`BZPOPMIN`), 5초 동안 조용한 채널의 읽기가
+`redis.exceptions.TimeoutError`로 끝난다 — 소켓이 몇 초마다 끊기고 페이지가 다시 붙는 일이 되풀이된다
+([django/channels_redis#422](https://github.com/django/channels_redis/issues/422)). redis-py 7 이하에서는 기본값이
+`None`이라 적지 않아도 같다. 튜플(`("redis", 6379)`)로 적은 항목에는 옵션을 붙일 수 없으므로 dict로 적는다.
 
 **Redis 여러 대(샤딩):**
 
@@ -129,9 +143,9 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                ("redis-shard-1", 6379),
-                ("redis-shard-2", 6379),
-                ("redis-shard-3", 6379),
+                {"address": "redis://redis-shard-1:6379", "socket_timeout": None},
+                {"address": "redis://redis-shard-2:6379", "socket_timeout": None},
+                {"address": "redis://redis-shard-3:6379", "socket_timeout": None},
             ],
         },
     },
@@ -146,7 +160,11 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                {"sentinels": [("sentinel-1", 26379), ("sentinel-2", 26379)], "master_name": "wireview"},
+                {
+                    "sentinels": [("sentinel-1", 26379), ("sentinel-2", 26379)],
+                    "master_name": "wireview",
+                    "socket_timeout": None,
+                },
             ],
         },
     },
@@ -185,7 +203,7 @@ Windows에서는 `INSTALLED_APPS`에서 `"daphne"`도 뺀다. `runserver`를 받
 # 코어마다 단일 프로세스 uvicorn 하나, 각자 자기 포트에 (--workers 없이).
 # 운영에서는 NSSM이나 작업 스케줄러로 서비스 등록한다.
 1..4 | ForEach-Object {
-    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_) --ws-per-message-deflate false"
+    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_) --ws websockets --ws-per-message-deflate false"
 }
 ```
 
@@ -812,7 +830,7 @@ wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종�
    않는다(경고 로그). 그래도 구독·작업 정리와, `presence_leave()`를 하지 못한 프로듀서의 presence 퇴장은 한다.
 
    ```bash
-   uvicorn myproject.asgi:application --workers 4 --timeout-graceful-shutdown 20 ...
+   uvicorn myproject.asgi:application --workers 4 --ws websockets --timeout-graceful-shutdown 20 ...
    ```
 
    Kubernetes의 `terminationGracePeriodSeconds`는 `preStop` 대기와 이 값의 합보다 길게 둔다.

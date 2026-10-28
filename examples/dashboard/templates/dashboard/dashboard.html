@@ -10,7 +10,7 @@
       <div>
         <h1>Dashboard</h1>
         <p style="color: #666; margin-top: 4px;">
-          <a href="{% url 'todo:index' %}">&larr; Back to Examples</a>
+          <a href="{% url 'todo:index' %}">← Back to Examples</a>
         </p>
       </div>
       <div style="display: flex; gap: 12px; align-items: center;">
@@ -29,7 +29,7 @@
               {% on 'click' 'change_tab' tab='activity' %}>Activity</button>
     </div>
     <!-- Tab Content -->
-    {% if active_tab == 'overview' %}
+    {% if active_tab == "overview" %}
       <!-- Stat Cards Grid -->
       <div style="display: grid;
                   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -45,7 +45,7 @@
         <h2>Recent Activity</h2>
         {% component 'XActivityFeed' id="activity-feed" %}
       </div>
-    {% elif active_tab == 'activity' %}
+    {% elif active_tab == "activity" %}
       <div class="card">
         <h2>All Activity</h2>
         {% component 'XActivityFeed' id="activity-feed-full" %}

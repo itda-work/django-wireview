@@ -226,6 +226,7 @@ def open_socket(base: str, headers: dict[str, str]):
         open_timeout=10,
         additional_headers=headers,
         ssl=context,
+        legacy=True,  # the checks hold several at once and close them themselves
     )
 
 

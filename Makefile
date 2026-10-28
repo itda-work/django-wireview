@@ -236,7 +236,7 @@ ci-check:
 
 # Unit and integration tests on every supported Python x Django pair (docs/COMPATIBILITY.md).
 # CI only runs when dispatched by hand, so this is how the range gets checked.
-MATRIX_PYTHON ?= 3.12 3.13 3.14
+MATRIX_PYTHON ?= 3.13 3.14
 MATRIX_DJANGO ?= 5.2 6.0 6.1
 test-matrix: collectstatic
 	@set -e; for py in $(MATRIX_PYTHON); do for dj in $(MATRIX_DJANGO); do \
@@ -259,8 +259,8 @@ ci-local:
 # so testproj's INSTALLED_APPS (daphne) did not import there (#136).
 # The docs dependency group as --with arguments: outside the project uv installs no groups, and
 # tests/test_docs_site_build.py needs them (#159). Names only, so the newest release comes.
-DOCS_WITH = $(shell uv run --no-project --python 3.12 python scripts/docs_site/nav.py)
-LATEST_RUN = uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]" $(DOCS_WITH)
+DOCS_WITH = $(shell uv run --no-project --python 3.13 python scripts/docs_site/nav.py)
+LATEST_RUN = uv run --no-project --isolated --python $(or $(PYTHON),3.13) --with-editable ".[dev]" $(DOCS_WITH)
 test-latest:
 	$(LATEST_RUN) python tests/manage.py collectstatic --noinput
 	$(LATEST_RUN) pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
@@ -270,10 +270,10 @@ test-latest:
 # --no-deps` reads the floors from pyproject.toml, so raising one moves this run with it.
 # Only the runtime dependencies go to their floors -- the promise is to users. The dev
 # extras have no lower bounds (lowest-direct on them picked ipython 0.10), so they resolve
-# to the newest release that fits the pinned floors. On Python 3.12, the oldest supported:
+# to the newest release that fits the pinned floors. On Python 3.13, the oldest supported:
 # a floor with no wheel there is a floor nobody can install. The warnings plugin stays on,
 # as in `make test`: with it off, a warning the floors raise at every import went unseen.
-LOWEST_PYTHON = 3.12
+LOWEST_PYTHON = 3.13
 test-lowest:
 	@set -ef; \
 	floors=$$(uv pip compile pyproject.toml --resolution lowest-direct --no-deps --python-version $(LOWEST_PYTHON) \
@@ -381,7 +381,7 @@ ci-build:
 # artifact it is about to publish (#122). Run ci-build first.
 ci-smoke:
 	@set -e; for w in dist/*.whl; do \
-		uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with "$$w" python tests/wheel_smoke.py; \
+		uv run --no-project --isolated --python $(or $(PYTHON),3.13) --with "$$w" python tests/wheel_smoke.py; \
 	done
 
 # =============================================================================

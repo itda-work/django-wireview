@@ -5,7 +5,7 @@ description = "[Experimental] Brings LiveView from Phoenix framework into Django
 # readme and urls: hatch_build.py pins their links to the release tag
 dynamic = ["readme", "urls"]
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
     { name = "Eddy Ernesto del Valle Pino", email = "eddy@edelvalle.me" },
 ]
@@ -24,7 +24,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
@@ -34,10 +33,10 @@ dependencies = [
     "django>=5.2",
     # The floors are what `make test-lowest` installs and passes on (#132). channels-nats
     # 0.2.0 declares channels>=4 but calls require_valid_channel_name, new in channels 4.2.1.
-    # pydantic before 2.7 rejects Component's field serializer at import; 2.9.0 cannot
-    # evaluate its ClassVar annotations, which 2.9.1 fixed.
+    # pydantic before 2.8 has no wheel for Python 3.13 (pydantic-core 2.18); 2.9.0 cannot
+    # evaluate Component's ClassVar annotations, which 2.9.1 fixed.
     "channels>=4.2.1,<5",
-    "pydantic>=2.7,!=2.9.0,<3",
+    "pydantic>=2.8,!=2.9.0,<3",
 ]
 
 # Ends what a test's mount() hears when the test ends (wireview/pytest_plugin.py, #201)
@@ -60,9 +59,9 @@ dev = [
     "ipython",
     "whitenoise",
     "channels-redis",
-    # 0.7.0 requires Python 3.13, and without the cap the lock forks: CI's E2E lane runs on
-    # 3.12 and would verify one version while 3.13+ dev environments ran another (#150).
-    "channels-nats<0.7",
+    # An itda-work library: its newest release is the floor. It requires Python 3.13 (since
+    # 0.7.0), which is why this project does too (#225).
+    "channels-nats>=0.10.1",
     "django-stubs",
     "django-stubs-ext",
     "pyright",
@@ -134,7 +133,7 @@ include = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -159,7 +158,7 @@ max_line_length = 120
 blank_line_after_tag = "load, extends"
 
 [tool.pyright]
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 pythonPlatform = "Linux"
 exclude = [".git", "tests/", "**/__pycache__", "**/migrations"]
 reportPrivateUsage = false
@@ -174,6 +173,8 @@ addopts = "-v --nomigrations --strict-markers"
 # job's limit (testproj/time_limit.py, #148). The slowest test takes about five seconds.
 test_time_limit = 60
 DJANGO_SETTINGS_MODULE = "testproj.settings"
+# pytest-asyncio warns while it is unset; a loop per test is what every async test assumes
+asyncio_default_fixture_loop_scope = "function"
 pythonpath = [".", "tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

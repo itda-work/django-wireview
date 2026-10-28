@@ -215,7 +215,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": [{"address": "redis://redis:6379", "socket_timeout": None}],  # 배포 가이드의 이유
             "capacity": 1500,      # 메모리에 둘 최대 메시지 수
             "expiry": 10,          # 메시지 만료(초)
         },

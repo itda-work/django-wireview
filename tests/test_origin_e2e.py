@@ -3,6 +3,8 @@
 Playwright serves a page as http://evil.test/ and that page opens a WebSocket to
 the test server. The browser sends ``Origin: http://evil.test``, which is not in
 ALLOWED_HOSTS, so the handshake is refused; the server's own page still connects.
+With evil.test allowed the same page connects: the refusal is the server's, not the
+browser's (whose Local Network Access checks once refused it first, #225).
 """
 
 import pytest
@@ -38,3 +40,14 @@ def test_a_page_on_another_site_is_refused_and_the_sites_own_page_is_not(page):
         from_the_site = page.evaluate(OPEN_SOCKET, socket_url)
 
     assert (from_elsewhere, from_the_site) == ("refused", "open")
+
+
+def test_the_same_page_connects_once_its_host_is_allowed(page):
+    with override_settings(ALLOWED_HOSTS=["127.0.0.1", "localhost", "evil.test"]), serve() as base_url:
+        socket_url = base_url.replace("http", "ws", 1) + "/__wireview__"
+
+        page.route("http://evil.test/", lambda route: route.fulfill(content_type="text/html", body="<p>evil</p>"))
+        page.goto("http://evil.test/")
+        from_elsewhere = page.evaluate(OPEN_SOCKET, socket_url)
+
+    assert from_elsewhere == "open"

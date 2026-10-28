@@ -180,7 +180,11 @@ elif _LAYER == "redis":
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")]},
+            # socket_timeout=None: redis-py 8 times a read out after 5 s by default, and channels_redis
+            # blocks 5 s on BZPOPMIN (django/channels_redis#422, #225)
+            "CONFIG": {
+                "hosts": [{"address": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379"), "socket_timeout": None}]
+            },
         },
     }
 elif _LAYER == "memory":

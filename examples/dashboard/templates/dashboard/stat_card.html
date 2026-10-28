@@ -30,9 +30,9 @@
                     font-weight: 600;
                     color: #1a1a2e;
                     margin-bottom: 8px">
-            {% if data.result.name == 'revenue' %}${% endif %}
+            {% if data.result.name == "revenue" %}${% endif %}
             {{ data.result.value|floatformat:0 }}
-            {% if data.result.name == 'conversion' %}
+            {% if data.result.name == "conversion" %}
               %
             {% endif %}
           </p>
@@ -43,7 +43,7 @@
             <span style="color: #999; margin-left: 4px;">vs last period</span>
           </p>
         </div>
-        <button class="btn btn-sm" {% on 'click' 'refresh' %} title="Refresh">&#x21bb;</button>
+        <button class="btn btn-sm" {% on 'click' 'refresh' %} title="Refresh">↻</button>
       </div>
     {% elif data.ok and not data.result %}
       <!-- No data state -->

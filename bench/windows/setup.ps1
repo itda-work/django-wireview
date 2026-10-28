@@ -16,17 +16,17 @@ if (-not (Test-Path $uv)) {
   Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
   if (-not (Test-Path $uv)) { Write-Output 'uv install failed'; exit 10 }
 }
-& $uv python install cpython-3.12-windows-aarch64-none cpython-3.12-windows-x86_64-none
+& $uv python install cpython-3.13-windows-aarch64-none cpython-3.13-windows-x86_64-none
 if ($LASTEXITCODE -ne 0) { Write-Output 'python install failed'; exit 11 }
 if (Test-Path "$root\wireview") { Remove-Item -Recurse -Force "$root\wireview" }
 Expand-Archive -Path "$share\wireview.zip" -DestinationPath "$root\wireview" -Force
 Expand-Archive -Path "$share\nats-server-windows-arm64.zip" -DestinationPath "$root\nats" -Force
 Set-Location "$root\wireview"
 $common = @('-e', '.', 'uvicorn', 'websockets', 'psutil', 'whitenoise', 'channels-nats')
-& $uv venv --python cpython-3.12-windows-aarch64-none .venv
+& $uv venv --python cpython-3.13-windows-aarch64-none .venv
 & $uv pip install --python .venv\Scripts\python.exe @common
 if ($LASTEXITCODE -ne 0) { Write-Output 'arm64 venv failed'; exit 12 }
-& $uv venv --python cpython-3.12-windows-x86_64-none .venv-x64
+& $uv venv --python cpython-3.13-windows-x86_64-none .venv-x64
 & $uv pip install --python .venv-x64\Scripts\python.exe @common daphne
 if ($LASTEXITCODE -ne 0) { Write-Output 'x64 venv failed'; exit 13 }
 foreach ($venv in '.venv', '.venv-x64') {

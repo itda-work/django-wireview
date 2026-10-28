@@ -29,7 +29,7 @@
               {% if book.published_year or book.category %}
                 <div class="book-meta">
                   {% if book.published_year %}{{ book.published_year }}{% endif %}
-                  {% if book.published_year and book.category %}&bull;{% endif %}
+                  {% if book.published_year and book.category %}•{% endif %}
                   {% if book.category %}{{ book.category }}{% endif %}
                 </div>
               {% endif %}
@@ -67,8 +67,8 @@
   {% endif %}
   <div class="keyboard-hint">
     <strong>Keyboard shortcuts:</strong>
-    <kbd>&uarr;</kbd> <kbd>&darr;</kbd> Navigate results &bull;
-    <kbd>Enter</kbd> Select &bull;
+    <kbd>↑</kbd> <kbd>↓</kbd> Navigate results •
+    <kbd>Enter</kbd> Select •
     <kbd>Esc</kbd> Close
   </div>
 </div>

@@ -20,9 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # docs/COMPATIBILITY.md: the Django releases Django supports, on Python 3.12 and up.
+        # docs/COMPATIBILITY.md: the Django releases Django supports, on Python 3.13 and up.
         # `make test-matrix` runs the same grid locally.
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.13", "3.14"]
         django-version: ["5.2", "6.0", "6.1"]
 
     steps:
@@ -59,7 +59,7 @@ jobs:
       # as a service, the release docs/COMPATIBILITY.md names; the binary is static.
       - name: Install nats-server
         run: |
-          docker create --name nats-server nats:2.14-alpine
+          docker create --name nats-server nats:2.15-alpine
           docker cp nats-server:/usr/local/bin/nats-server "$RUNNER_TEMP/nats-server"
           docker rm nats-server
           "$RUNNER_TEMP/nats-server" --version
@@ -92,7 +92,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -110,7 +110,7 @@ jobs:
       # as a service, the release docs/COMPATIBILITY.md names; the binary is static.
       - name: Install nats-server
         run: |
-          docker create --name nats-server nats:2.14-alpine
+          docker create --name nats-server nats:2.15-alpine
           docker cp nats-server:/usr/local/bin/nats-server "$RUNNER_TEMP/nats-server"
           docker rm nats-server
           "$RUNNER_TEMP/nats-server" --version
@@ -143,7 +143,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -161,7 +161,7 @@ jobs:
       # as a service, the release docs/COMPATIBILITY.md names; the binary is static.
       - name: Install nats-server
         run: |
-          docker create --name nats-server nats:2.14-alpine
+          docker create --name nats-server nats:2.15-alpine
           docker cp nats-server:/usr/local/bin/nats-server "$RUNNER_TEMP/nats-server"
           docker rm nats-server
           "$RUNNER_TEMP/nats-server" --version
@@ -192,7 +192,7 @@ jobs:
 
     services:
       nats:
-        image: nats:2.14-alpine
+        image: nats:2.15-alpine
         ports:
           - 4222:4222
       redis:
@@ -209,7 +209,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --all-extras
@@ -242,7 +242,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: make ci-install
@@ -261,7 +261,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: make ci-install
@@ -295,7 +295,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: make ci-install
@@ -366,7 +366,7 @@ jobs:
       - name: Set up Python
         working-directory: .
         run: |
-          uv python install 3.12
+          uv python install 3.13
           uv sync --all-extras
 
       - name: Install npm dependencies
@@ -390,7 +390,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --all-extras

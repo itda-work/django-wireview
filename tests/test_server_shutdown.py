@@ -64,6 +64,10 @@ def _launch(server: str, port: int, log: Path, events: Path, graceful: int) -> s
             str(port),
             "--lifespan",
             "off",
+            # docs/DEPLOYMENT.md's choice: websockets-sansio, the default since 0.50, raises
+            # out of its shutdown on a socket the page is closing (#225)
+            "--ws",
+            "websockets",
             "--timeout-graceful-shutdown",
             str(graceful),
         ]
@@ -96,7 +100,8 @@ def _stop(proc: subprocess.Popen) -> None:
 
 
 def _join(port: int, id: str, seconds: float) -> ClientConnection:
-    socket = connect(f"ws://127.0.0.1:{port}/__wireview__?vsn={PROTOCOL_VERSION}")
+    # The caller holds it past this function and closes it (websockets 17 asks for legacy= to say so)
+    socket = connect(f"ws://127.0.0.1:{port}/__wireview__?vsn={PROTOCOL_VERSION}", legacy=True)
     state = sign_state(EndProbe(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id, seconds=seconds))
     socket.send(json.dumps({"command": "join", "payload": {"name": "EndProbe", "state": state, "children": {}}}))
     while json.loads(socket.recv(timeout=5))["command"] != "joined":

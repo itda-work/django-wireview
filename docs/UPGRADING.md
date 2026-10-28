@@ -72,6 +72,20 @@ dependencies = ["django-wireview>=1.5,<2"]
 
 ### 깨짐
 
+- **깨짐: Python 3.13 이상이 필요하다(#225).** 3.12 지원을 그만둔다. NATS 레이어 `channels-nats`가 0.7.0부터
+  3.13 이상을 요구해, 3.12를 남기면 그 레이어의 새 릴리스를 검증할 수 없었다. Python 3.12에서 `pip install`은 1.5.x에
+  머문다. 옮기는 법: 배포 이미지(`FROM python:3.13-slim`)와 가상 환경을 3.13 이상으로 올린 뒤 1.6을 설치한다. NATS
+  레이어를 쓰면 `channels-nats`를 함께 올린다 — 1.6이 검증한 버전은 [호환성](./COMPATIBILITY.md#채널-레이어)의 표에 있다.
+  0.3.0 이전에서 올린다면 그 표 아래의 와이어 형식 변경을 먼저 읽는다. 함께 pydantic 하한이 2.8이 된다 — 2.7에는
+  Python 3.13용 휠이 없다.
+- **uvicorn 0.50 이상이면 `--ws websockets`를 적는다(#225).** uvicorn 0.50부터 기본 WebSocket 구현이 바뀌었고,
+  새 구현은 페이지가 닫는 중인 연결이 있을 때 종료 신호를 받으면 예외로 종료 절차를 끊는다 — 남은 연결이 1012로
+  닫히지 않고 `leaving()`을 기다리지 않는다. wireview가 바뀐 것은 아니지만 의존성을 올리면 만나는 일이다. 운영의
+  uvicorn 명령에 `--ws websockets`를 더한다([배포](./DEPLOYMENT.md#권장-uvicorn--uvloop)).
+- **redis-py 8 이상이면 Redis 레이어의 `hosts`에 `"socket_timeout": None`을 적는다(#225).** redis-py 8부터 읽기
+  시한이 기본 5초이고, channels_redis 4.3은 메시지를 기다리며 5초씩 블로킹한다. 그래서 조용한 채널의 읽기가
+  `TimeoutError`로 끝나 소켓이 몇 초마다 끊긴다. 항목을 `{"address": "redis://redis:6379", "socket_timeout": None}`처럼
+  dict로 적는다([배포](./DEPLOYMENT.md#운영-redis)). NATS 레이어와 redis-py 7 이하는 해당하지 않는다.
 - **깨짐: 컴포넌트 템플릿은 Django 템플릿 엔진만 그린다(#210).** 컴포넌트·LiveComponent·함수 컴포넌트·스트림·`Broadcast`
   항목의 템플릿을 Jinja2 같은 다른 엔진이 찾으면(`TEMPLATES`에서 그 엔진이 `DjangoTemplates`보다 앞에 있을 때) 첫 렌더가
   어느 클래스·템플릿·엔진인지 적은 `ImproperlyConfigured`로 실패하고, `manage.py check`가 `wireview.W022`로 먼저 알린다.
@@ -848,7 +862,7 @@ m2m 변경은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다(**조용
 ### 1. Django 5.2 이상
 
 Django 5.0과 5.1은 Django의 지원이 끝나 지원 범위에서 빠졌다. 지원 범위는 Django가 보안 지원하는 버전과
-Python 3.12 이상이다([호환성 정책](./COMPATIBILITY.md#지원-범위)).
+그 버전들이 지원하는 Python 중 정해 둔 하한 이상이다([호환성 정책](./COMPATIBILITY.md#지원-범위)).
 
 함께 `channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`이 필요하다. 1.0 rc까지 선언했던 하한 중 pydantic의 옛 버전은
 설치되지 않거나 import에서 실패했고, channels 4.2.1 미만은 channels-nats 레이어에서 실패했다(#132). 둘 중 하나를

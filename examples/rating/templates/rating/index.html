@@ -14,7 +14,7 @@
           <div class="product-rating">
             {% with avg=product.average_rating %}
               {% for i in "12345" %}
-                <span class="star {% if forloop.counter <= avg %}filled{% endif %}">&#9733;</span>
+                <span class="star {% if forloop.counter <= avg %}filled{% endif %}">★</span>
               {% endfor %}
               <span class="rating-count">({{ product.rating_count }})</span>
             {% endwith %}

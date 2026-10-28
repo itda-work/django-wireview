@@ -89,7 +89,7 @@ jobs:
       - name: Set up Python
         working-directory: .
         run: |
-          uv python install 3.12
+          uv python install 3.13
           uv sync --all-extras
 
       - name: Install npm dependencies

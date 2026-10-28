@@ -116,3 +116,17 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
         return (yield)
     finally:
         _exempt_thread = None
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Chromium's Local Network Access checks off: every E2E server is on 127.0.0.1.
+
+    Since the Chromium of Playwright 1.64 a page Playwright fulfils (``route.fulfill``)
+    counts as a public site, and the browser refuses its socket to 127.0.0.1 before
+    the server sees it (``net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS``). The
+    reconnect suite never went live, and tests/test_origin_e2e.py's refusal came from
+    the browser instead of the server's Origin check it is there for (#225).
+    """
+    args = [*browser_type_launch_args.get("args", []), "--disable-features=LocalNetworkAccessChecks"]
+    return {**browser_type_launch_args, "args": args}

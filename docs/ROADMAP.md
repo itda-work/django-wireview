@@ -41,11 +41,11 @@ GAP-027 세션 분리는 1단계(컨슈머에서 `WireviewSession` 분리)가 `v
 
 ```toml
 # 정본은 pyproject.toml
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "django>=5.2",
     "channels>=4.2.1,<5",
-    "pydantic>=2.7,!=2.9.0,<3",
+    "pydantic>=2.8,!=2.9.0,<3",
 ]
 ```
 
