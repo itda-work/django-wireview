@@ -18,7 +18,7 @@ uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop
 기다리는 단계도 건너뛴다([롤링 배포](#롤링-배포와-재연결)). 페이지가 오가는 서버에서는 흔한 순간이다(#225).
 `--ws wsproto`도 같다. 0.49까지의 기본값이던 `websockets` 구현에는 이 문제가 없고, wireview의 테스트와 벤치마크가
 도는 것도 그것이다. uvicorn 0.54는 이 구현을 폐기 예정으로 표시해 기동할 때 `UvicornDeprecationWarning`과 websockets의
-`DeprecationWarning`을 남긴다 — 동작에는 영향이 없다. uvicorn이 종료 결함([Kludex/uvicorn#3241](https://github.com/Kludex/uvicorn/discussions/3241))을 고치면 이 옵션을 뺀다.
+`DeprecationWarning`을 남긴다 — 동작에는 영향이 없다. uvicorn이 종료 결함을 고치면 이 옵션을 뺀다.
 
 **permessage-deflate를 끄는 이유.** uvicorn은 WebSocket 압축을 기본으로 협상하고, 그러면 연결마다
 zlib의 deflate·inflate 컨텍스트를 들고 있게 된다 — 실측 연결당 159KB다. uvicorn이 연결당 daphne보다

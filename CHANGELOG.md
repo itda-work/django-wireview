@@ -100,8 +100,7 @@ The django-reactor era changelog (2.x) is preserved in
   implementation is websockets-sansio, whose shutdown raises `InvalidState: connection is closing` on a socket the
   page is closing; the exception ends the server's shutdown, so the remaining sockets are not closed with 1012 and
   the wait for the apps (`leaving()`) is skipped. The implementation that was the default up to 0.49 does not, and
-  it is what the tests, the E2E servers and the demo run. Reported upstream as
-  [Kludex/uvicorn#3241](https://github.com/Kludex/uvicorn/discussions/3241).
+  it is what the tests, the E2E servers and the demo run.
 - The Redis layer's settings in `docs/DEPLOYMENT.md`, the test project, the benchmarks and the demo set
   `"socket_timeout": None` on each host (#225). redis-py 8 times a read out after 5 seconds by default, and
   channels_redis 4.3 blocks 5 seconds waiting for a message, so a channel quiet for 5 seconds raised
