@@ -69,6 +69,8 @@ dev = [
     "daphne",
     "uvicorn",
     "websockets",
+    # uvicorn's --ws wsproto, so tests/test_uvicorn_patches.py runs the patch on it too (#226)
+    "wsproto",
     "lxml",
     "cssselect",
     "psutil>=7.2.2",

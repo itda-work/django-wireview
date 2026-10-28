@@ -122,9 +122,6 @@ def launch_uvicorn(port: int, log_dir: Path) -> tuple[subprocess.Popen, Path]:
                     str(port),
                     "--log-level",
                     "info",
-                    # As e2e_server.py's thread and docs/DEPLOYMENT.md (#225)
-                    "--ws",
-                    "websockets",
                 ],
                 cwd=TESTS,
                 env={**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)]), "PYTHONUNBUFFERED": "1"},

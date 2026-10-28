@@ -8,6 +8,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
 
+from .core import uvicorn_patches
 from .core.csrf import cookies_of
 from .core.origin import origin_refusal
 from .core.rendered import protocol_version, socket_tab
@@ -105,6 +106,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         return self.scope.get("user") or AnonymousUser()
 
     async def websocket_connect(self, message):
+        # uvicorn's shutdown() raises on a socket the page is closing and ends the
+        # server's graceful stop, leaving() included (#226). Patched here, once, and
+        # not at import: by now the server serving this socket has loaded its
+        # protocol class (wireview/core/uvicorn_patches.py says why and until when).
+        uvicorn_patches.apply()
         # Channels has no default layer: without CHANNEL_LAYERS it leaves
         # channel_layer as None and never sets channel_name, so connect() used to
         # accept the socket and then die on that attribute, which says nothing

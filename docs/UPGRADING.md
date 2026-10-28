@@ -78,10 +78,6 @@ dependencies = ["django-wireview>=1.5,<2"]
   레이어를 쓰면 `channels-nats`를 함께 올린다 — 1.6이 검증한 버전은 [호환성](./COMPATIBILITY.md#채널-레이어)의 표에 있다.
   0.3.0 이전에서 올린다면 그 표 아래의 와이어 형식 변경을 먼저 읽는다. 함께 pydantic 하한이 2.8이 된다 — 2.7에는
   Python 3.13용 휠이 없다.
-- **uvicorn 0.50 이상이면 `--ws websockets`를 적는다(#225).** uvicorn 0.50부터 기본 WebSocket 구현이 바뀌었고,
-  새 구현은 페이지가 닫는 중인 연결이 있을 때 종료 신호를 받으면 예외로 종료 절차를 끊는다 — 남은 연결이 1012로
-  닫히지 않고 `leaving()`을 기다리지 않는다. wireview가 바뀐 것은 아니지만 의존성을 올리면 만나는 일이다. 운영의
-  uvicorn 명령에 `--ws websockets`를 더한다([배포](./DEPLOYMENT.md#권장-uvicorn--uvloop)).
 - **redis-py 8 이상이면 Redis 레이어의 `hosts`에 `"socket_timeout": None`을 적는다(#225).** redis-py 8부터 읽기
   시한이 기본 5초이고, channels_redis 4.3은 메시지를 기다리며 5초씩 블로킹한다. 그래서 조용한 채널의 읽기가
   `TimeoutError`로 끝나 소켓이 몇 초마다 끊긴다. 항목을 `{"address": "redis://redis:6379", "socket_timeout": None}`처럼

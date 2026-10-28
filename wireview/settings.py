@@ -9,7 +9,8 @@ a running project pays an identity check.
 A few settings only mean something at startup, and changing them later does
 nothing: ``AUTO_BROADCAST`` decides which model signals get receivers,
 ``DEBUG_SYNC_TRANSITIONS`` and its thresholds install the detector,
-``AUTO_GENERATE_STUBS`` runs when the app is ready, and ``TELEMETRY`` is the
+``AUTO_GENERATE_STUBS`` runs when the app is ready, ``PATCH_UVICORN_SHUTDOWN`` is
+read at the first connection, and ``TELEMETRY`` is the
 initial state that ``wireview.telemetry.enable()`` changes at runtime.
 
 Assigning a setting on this module (``monkeypatch.setattr``) would pin a value
@@ -61,6 +62,10 @@ DEFAULT: dict[str, t.Any] = {
     # process join its components again (wireview.core.template_reload, #180).
     # None = DEBUG
     "REJOIN_ON_TEMPLATE_CHANGE": None,
+    # Wrap uvicorn's WebSocket shutdown(), which raises on a socket the page is closing and
+    # ends the server's graceful stop (wireview.core.uvicorn_patches, #226). Read at the
+    # first connection
+    "PATCH_UVICORN_SHUTDOWN": True,
     # Attribute each statement a render, handler or task runs to its template line or
     # property, and log it to wireview.queries (wireview.debug.render_queries, #182).
     # None = DEBUG
@@ -166,6 +171,7 @@ if t.TYPE_CHECKING:
     AUTO_GENERATE_STUBS: bool
     TELEMETRY: bool
     REJOIN_ON_TEMPLATE_CHANGE: bool | None
+    PATCH_UVICORN_SHUTDOWN: bool
     DEBUG_RENDER_QUERIES: bool | None
     DEBUG_RENDER_QUERIES_DIR: str | os.PathLike[str] | bool | None
     COLLECT_HOOKS: bool

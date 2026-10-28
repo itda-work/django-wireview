@@ -90,6 +90,7 @@
 | `core/live_session.py` | 페이지 경계(`live_session`)와 인증 세대 |
 | `core/origin.py` | WebSocket Origin 검사 (#96) |
 | `core/transport.py` | `Outbound`·`Broker` 인터페이스와 Channels 구현 |
+| `core/uvicorn_patches.py` | 페이지가 닫는 중인 연결에서 던져 서버의 종료를 끊는 uvicorn `shutdown()`을 첫 연결에서 감싼다. 결함의 모양일 때만 (#226) |
 | `template_engine.py` | 템플릿 변수 출력에 diff 마커 주입 |
 | `consumer.py` | `WireviewConsumer`: Channels WebSocket 어댑터. 소켓을 받고 세션을 시작·종료한다 |
 | `session.py` | `WireviewSession`: 메시지 라우팅, 렌더 전송, 업로드·브로드캐스트 수신. `Outbound`로만 내보낸다 (#60) |
@@ -343,7 +344,8 @@ wireview/
 ├── __init__.py            # 공개 API (_EXPORTS 표로 지연 로딩)
 ├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, patches,
 │                          # watched, state, signing, model_state, session(SessionView), live_session, origin, transport,
-│                          # template_reload, connections, lazy_context, notifications, csrf, page_request
+│                          # template_reload, connections, lazy_context, notifications, csrf, page_request,
+│                          # uvicorn_patches
 ├── features/              # streams, presence, uploads, upload_store, hooks, toasts
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py

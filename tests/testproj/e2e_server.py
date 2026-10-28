@@ -132,10 +132,6 @@ class UvicornThread(threading.Thread):
                 port=self.port,
                 log_level="warning",
                 log_config=None,
-                # What docs/DEPLOYMENT.md tells production to run: websockets-sansio, uvicorn's
-                # default since 0.50, raises out of its shutdown on a socket the page is
-                # closing, and the stop skips the rest of the connections (#225)
-                ws="websockets",
                 timeout_graceful_shutdown=GRACEFUL_SHUTDOWN,
             )
             self.server = Uvicorn(config)

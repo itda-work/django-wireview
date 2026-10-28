@@ -9,16 +9,16 @@ django-wireview 앱을 운영에 올릴 때의 설정이다.
 ```bash
 pip install uvicorn[standard] uvloop
 uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop \
-    --ws websockets --ws-per-message-deflate false
+    --ws-per-message-deflate false
 ```
 
-**`--ws websockets`를 적는 이유.** uvicorn 0.50부터 기본 WebSocket 구현(`--ws auto`)이 `websockets-sansio`다. 그
-구현은 페이지가 먼저 닫기 시작한 연결이 남아 있을 때 종료 신호를 받으면 `InvalidState: connection is closing`을
-던지고, 그 예외가 종료 절차 전체를 끊는다 — 남은 연결은 1012로 닫히지 않고, 앱 태스크(`leaving()`)를
-기다리는 단계도 건너뛴다([롤링 배포](#롤링-배포와-재연결)). 페이지가 오가는 서버에서는 흔한 순간이다(#225).
-`--ws wsproto`도 같다. 0.49까지의 기본값이던 `websockets` 구현에는 이 문제가 없고, wireview의 테스트와 벤치마크가
-도는 것도 그것이다. uvicorn 0.54는 이 구현을 폐기 예정으로 표시해 기동할 때 `UvicornDeprecationWarning`과 websockets의
-`DeprecationWarning`을 남긴다 — 동작에는 영향이 없다. uvicorn이 종료 결함을 고치면 이 옵션을 뺀다.
+**wireview가 uvicorn의 종료 결함을 막는다(#226).** uvicorn 0.50부터 기본 WebSocket 구현(`--ws auto`)은
+`websockets-sansio`다. 이 구현과 `--ws wsproto`의 `shutdown()`은, 페이지가 먼저 닫기 시작한 연결이 남아 있을 때
+종료 신호를 받으면 예외를 던진다. 그 예외가 종료 절차 전체를 끊어, 남은 연결은 1012로 닫히지 않고 앱 태스크
+(`leaving()`)를 기다리는 단계도 건너뛴다([롤링 배포](#롤링-배포와-재연결)). 페이지가 오가는 서버에서는 흔한 순간이다.
+wireview는 첫 WebSocket 연결 때 이 메서드를 감싸, 그 경우의 예외만 받고 연결을 닫는다. 메서드가 결함이 있는
+모양일 때만 적용하므로 uvicorn이 고치면 저절로 빠지고, 프로세스 전체에 걸리므로 같은 서버의 다른 앱 소켓도 함께
+고쳐진다. 그래서 `--ws` 옵션은 기본값 그대로 둔다. 끄려면 `WIREVIEW = {"PATCH_UVICORN_SHUTDOWN": False}`다.
 
 **permessage-deflate를 끄는 이유.** uvicorn은 WebSocket 압축을 기본으로 협상하고, 그러면 연결마다
 zlib의 deflate·inflate 컨텍스트를 들고 있게 된다 — 실측 연결당 159KB다. uvicorn이 연결당 daphne보다
@@ -53,7 +53,7 @@ COPY . .
 # collectstatic도 설정을 import하므로, 설정이 빌드 때 없는 환경 변수(비밀 키 등)를 요구하면 이 줄에만 임시 값을 준다.
 RUN python manage.py collectstatic --noinput
 
-CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--ws", "websockets", "--ws-per-message-deflate", "false"]
+CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--ws-per-message-deflate", "false"]
 ```
 
 ### 대안: Daphne
@@ -203,7 +203,7 @@ Windows에서는 `INSTALLED_APPS`에서 `"daphne"`도 뺀다. `runserver`를 받
 # 코어마다 단일 프로세스 uvicorn 하나, 각자 자기 포트에 (--workers 없이).
 # 운영에서는 NSSM이나 작업 스케줄러로 서비스 등록한다.
 1..4 | ForEach-Object {
-    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_) --ws websockets --ws-per-message-deflate false"
+    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_) --ws-per-message-deflate false"
 }
 ```
 
@@ -830,7 +830,7 @@ wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종�
    않는다(경고 로그). 그래도 구독·작업 정리와, `presence_leave()`를 하지 못한 프로듀서의 presence 퇴장은 한다.
 
    ```bash
-   uvicorn myproject.asgi:application --workers 4 --ws websockets --timeout-graceful-shutdown 20 ...
+   uvicorn myproject.asgi:application --workers 4 --timeout-graceful-shutdown 20 ...
    ```
 
    Kubernetes의 `terminationGracePeriodSeconds`는 `preStop` 대기와 이 값의 합보다 길게 둔다.

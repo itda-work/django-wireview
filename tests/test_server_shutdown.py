@@ -64,10 +64,6 @@ def _launch(server: str, port: int, log: Path, events: Path, graceful: int) -> s
             str(port),
             "--lifespan",
             "off",
-            # docs/DEPLOYMENT.md's choice: websockets-sansio, the default since 0.50, raises
-            # out of its shutdown on a socket the page is closing (#225)
-            "--ws",
-            "websockets",
             "--timeout-graceful-shutdown",
             str(graceful),
         ]

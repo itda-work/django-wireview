@@ -89,6 +89,9 @@ wireview/
 │                          Django의 CsrfViewMiddleware.process_request로 읽어 연결당 한 번 get_token으로 마스킹한다(저장소의 csrf_token, 정적 부분이 안 바뀌게).
 │                          스트림 항목은 HTML 통째로 삽입마다 가므로 매번 새로 마스킹한다(_fresh_csrf_token, BREACH — 운영은 deflate를 끈다).
 │                          공유 렌더(state_slot)·Broadcast 항목에는 넣지 않는다. 컨텍스트에 넣는 곳은 meta._add_csrf_token, 스트림 항목은 wire.csrf
+├── core/uvicorn_patches.py uvicorn 결함 하나를 감싼다(#226): sansio·wsproto의 shutdown()이 페이지가 닫는 중인 연결에서 던져 서버의 종료(1012·leaving() 기다림)를 끊는다.
+│                          첫 연결(consumer.websocket_connect)에서 이미 실린 클래스만, 메서드가 결함의 모양일 때만 감싼다. 끄는 설정은 PATCH_UVICORN_SHUTDOWN.
+│                          tests/test_uvicorn_patches.py의 test_uvicorn_still_has_the_defect가 실패하면 상류가 고친 것이다 — 그때 뺀다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다

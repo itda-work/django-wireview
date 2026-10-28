@@ -96,11 +96,13 @@ The django-reactor era changelog (2.x) is preserved in
   verified on channels-nats 0.10.1 and nats-server 2.15 (was 0.6.1 and 2.14), and the dev extra takes channels-nats'
   newest release as its floor (`channels-nats>=0.10.1`). The pydantic floor goes from 2.7 to 2.8: pydantic-core
   2.18, which 2.7 pins, has no wheel for Python 3.13.
-- `docs/DEPLOYMENT.md` runs uvicorn with `--ws websockets` (#225). Since uvicorn 0.50 its default WebSocket
-  implementation is websockets-sansio, whose shutdown raises `InvalidState: connection is closing` on a socket the
-  page is closing; the exception ends the server's shutdown, so the remaining sockets are not closed with 1012 and
-  the wait for the apps (`leaving()`) is skipped. The implementation that was the default up to 0.49 does not, and
-  it is what the tests, the E2E servers and the demo run.
+- A uvicorn server stopping while a page was closing its socket stopped short: the other sockets were not closed
+  with 1012 and the wait for the apps (`leaving()`) was skipped (#226). uvicorn's `shutdown()` for websockets-sansio
+  (what `--ws auto` picks since uvicorn 0.50) and for wsproto sends its 1012 close without asking whether the page
+  already began closing, and the exception it gets ends `Server.shutdown()`. wireview wraps that method at the first
+  WebSocket connection, catching only that exception and closing the transport, and only while the method is the
+  code with the defect -- a uvicorn that fixes it is left alone. It is process-wide.
+  `WIREVIEW["PATCH_UVICORN_SHUTDOWN"] = False` turns it off.
 - The Redis layer's settings in `docs/DEPLOYMENT.md`, the test project, the benchmarks and the demo set
   `"socket_timeout": None` on each host (#225). redis-py 8 times a read out after 5 seconds by default, and
   channels_redis 4.3 blocks 5 seconds waiting for a message, so a channel quiet for 5 seconds raised
