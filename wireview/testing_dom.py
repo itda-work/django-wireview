@@ -1355,3 +1355,75 @@ def _text_matches(el: Element, text: str | re.Pattern[str]) -> bool:
     if isinstance(text, re.Pattern):
         return text.search(content) is not None
     return " ".join(text.split()) in content
+
+
+# ============================================================================
+# Page checks: settings.TEST_PAGE_CHECKS
+# ============================================================================
+
+
+class _Reaching(_Dispatch):
+    """A dispatch that only asks whether a binding that talks to the server fires, whoever's it is."""
+
+    def fire(self, el: Element, value: dict[str, t.Any], type_: str) -> None:
+        if value.get("h") is not None or "js" in value:
+            self.sent.append(t.cast(ServerEvent, None))
+
+
+def page_problems(page: Page, callable_handler: t.Callable[[str], bool]) -> list[str]:
+    """What is wrong with the structure of ``page``: what ``TEST_PAGE_CHECKS`` reports.
+
+    - two elements with one id (``getElementById`` finds the first, and the
+      client holds one component per id);
+    - a ``wire-auto-recover`` form that recovers nothing after a reconnect: one
+      naming a handler the mounted component does not let a client call, or a
+      bare one whose ``change`` reaches no server binding.
+
+    ``callable_handler`` says whether the mounted component takes a handler name
+    from a client.
+    """
+    problems: list[str] = []
+    by_id: dict[str, list[Element]] = {}
+    for el in page.root.descendants():
+        if (id_ := el.get("id")) is not None and id_ != "":
+            by_id.setdefault(id_, []).append(el)
+    for id_, elements in by_id.items():
+        if len(elements) < 2:
+            continue
+        listed = "".join(f"\n  {el.describe()}" for el in elements[:5])
+        components = [el for el in elements if is_component(el)]
+        if len(components) > 1:
+            names = ", ".join(el.get("data-name") or el.tag for el in components)
+            problems.append(
+                f"{len(components)} components have the id {id_!r} ({names}): the page holds one component per "
+                f"id, so their joins, events and renders are mixed up. Give each {{% component %}} its own "
+                f"id.{listed}"
+            )
+        else:
+            problems.append(
+                f"{len(elements)} elements have the id {id_!r}: the page finds only the first by it (a label's "
+                f"for, a myself target, a stream item's place).{listed}"
+            )
+    for form in page.root.descendants():
+        if form.tag != "form" or not form.has("wire-auto-recover"):
+            continue
+        handler = form.get("wire-auto-recover") or ""
+        owner = form.closest(is_component)
+        if owner is None:
+            problems.append(f"{form.describe()} is in no component's element: nothing recovers it")
+        elif handler and handler != "true":
+            if owner.get("id") == page.component_id and not callable_handler(handler):
+                problems.append(
+                    f"{form.describe()} recovers through {handler!r}, which a client cannot call on "
+                    f"{owner.get('data-name') or 'the component'}: after a reconnect its values reach nothing"
+                )
+        else:
+            probe = _Reaching(page)
+            probe.dispatch(form, "change")
+            if not probe.sent:
+                problems.append(
+                    f"{form.describe()} has a bare wire-auto-recover, which replays the form's change after a "
+                    'reconnect, and no {% on "change" %} binding on the form or above it takes that change: '
+                    'nothing is recovered. Bind its change, or name a handler: wire-auto-recover="restore".'
+                )
+    return problems

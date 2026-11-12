@@ -1,0 +1,12 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span id="once">a</span>
+  {% component 'DomHookLeaf' id="only" %}
+  <form wire-auto-recover {% on "change" "changed" %}>
+    <input name="b">
+  </form>
+  <form wire-auto-recover="restore">
+    <input name="c">
+  </form>
+</div>

@@ -150,6 +150,7 @@ async def test_the_plus_button_is_disabled_at_the_maximum():
 바인딩의 키를 `.esc`로 잘못 적었거나 지웠으면 실패한다. 포커스는 `view.focus()`·`view.blur()`다.
 
 선택자에 맞는 요소가 없거나 여럿이면, 그 요소와 조상에 그 이벤트의 바인딩이 없으면, 요소가 disabled면 실패한다.
+테스트 설정에 `WIREVIEW = {"TEST_PAGE_CHECKS": "raise"}`를 두면 같은 id의 요소 둘 같은 페이지 구조의 실수에서도 실패한다.
 JavaScript는 돌지 않는다. 폼 제출(`submit()`)과 값 규칙, 실패하는 경우의 전체 목록은
 [기능 레퍼런스](../features/testing.md#페이지의-요소로-이벤트-보내기)에 있다.
 

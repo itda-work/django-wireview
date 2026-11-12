@@ -184,6 +184,28 @@ assert "3번 점" in view.render()
   `<button>`(기본 type이 submit)에 `{% on "click" %}`만 걸고 `.prevent`를 잊은 경우도 여기서 잡힌다.
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
 
+### 페이지 검사
+
+설정 `WIREVIEW["TEST_PAGE_CHECKS"]`를 `"warn"`이나 `"raise"`로 두면 `view.render()`가 그린 페이지(스트림 항목 포함)의
+구조적 실수를 알린다. 기본은 `"ignore"` — 지금까지와 같이 아무것도 하지 않는다. 테스트 설정에 한 번 두면 스위트 전체가
+따르고, 한 테스트만 다르게 하려면 `override_settings`를 쓴다.
+
+```python
+# settings_test.py
+WIREVIEW = {"TEST_PAGE_CHECKS": "raise"}
+```
+
+| 실수 | 왜 |
+|------|----|
+| 같은 `id`의 요소 둘 이상 | 페이지는 id로 첫 요소만 찾는다(label의 `for`, `myself`, 스트림 항목의 자리) |
+| 같은 id의 컴포넌트 둘 이상 | 페이지는 id마다 컴포넌트 하나만 지닌다 — join·이벤트·렌더가 섞인다 |
+| 아무것도 복구하지 못하는 `wire-auto-recover` 폼 | 값 없는 것은 재연결 뒤 폼의 `change`를 다시 보내는데 그것을 받는 `{% on "change" %}`가 폼과 그 위에 없다. 핸들러 이름을 단 것은 그 이름이 마운트한 컴포넌트에서 클라이언트가 부를 수 있는 핸들러가 아니다 |
+
+`"warn"`은 실수마다 `wireview TEST_PAGE_CHECKS: `로 시작하는 `UserWarning`이다(`pytest -W "error:wireview TEST_PAGE_CHECKS"`로
+오류로 바꿀 수 있다). `"raise"`는 실수를 모두 나열하는 `AssertionError`다. `render()`를 거치는 DOM 헬퍼(`click()` 등)도
+같은 검사를 받는다. 자리를 `mount()`의 인자가 아니라 설정으로 둔 것은 페이지 구조가 한 테스트가 아니라 프로젝트의
+정책이기 때문이다 — 인자였다면 모든 `mount()`와 픽스처를 고쳐야 한다.
+
 **하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅의 코드(`hook_event()`는 훅이 보낼
 것을 대신 보낼 뿐이다), 로딩 클래스, `wire-disabled-with`는
 없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.

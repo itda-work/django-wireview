@@ -95,6 +95,10 @@ DEFAULT: dict[str, t.Any] = {
     # Components one connection may hold. A join that would hold more closes the socket
     # with 1008. None = no limit
     "CONNECTION_MAX_COMPONENTS": None,
+    # What MountedComponent.render() does with a structural mistake on the page it draws
+    # (a duplicate id, a wire-auto-recover form that recovers nothing): "ignore", "warn"
+    # or "raise" (wireview.testing_dom.page_problems, #252)
+    "TEST_PAGE_CHECKS": "ignore",
 }
 
 #: Keys that existed and are gone, and what to do instead. ``wireview.W014``

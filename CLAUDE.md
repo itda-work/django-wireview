@@ -176,6 +176,7 @@ wireview/
 │                          EventBindings.run·wireview.send·Component.serialize를 따른다 — 클라이언트를 바꾸면 이것과 tests/test_dom_events_e2e.py 도.
 │                          키·포커스(keydown·keyup·focus·blur, 수정 키, Enter의 암묵적 제출)와 <label>의 클릭 이어 주기도 같은 규칙이다.
 │                          hook_event()는 wire-hook 요소의 훅이 pushEvent로 보낼 것을 handle_hook_event에 보내고 응답을 돌려준다
+│                          page_problems는 설정 TEST_PAGE_CHECKS(기본 ignore)가 켜면 MountedComponent.render()가 부르는 페이지 검사다(중복 id, 같은 id의 컴포넌트, 복구하지 못하는 wire-auto-recover)
 │                          스트림 연산을 컨테이너에 넣는 것(apply_stream_ops)은 wireview.js의 _streamContainer·_applyStreamOp와 streams.mjs의 사본이고,
 │                          tests/test_dom_events_e2e.py 가 같은 연산 열을 페이지의 클라이언트에 보내 맞춘다. 기록은 MockWireviewMeta.sent_messages(_SentMessages)가 따로 지닌다
 │                          핸들러는 MountedComponent._handle(call()과 같은 길)로 부른다. JavaScript는 돌지 않는다

@@ -50,6 +50,11 @@ The django-reactor era changelog (2.x) is preserved in
   it, and the call returns the reply the hook's callback or Promise gets -- not the render. A reply JSON cannot carry
   raises `TypeError`, as it fails on the socket. A browser test clicks a probe's hook and compares what
   `handle_hook_event()` heard and the reply the hook got.
+- `WIREVIEW["TEST_PAGE_CHECKS"]` (GAP-056, #252, Phoenix's `test_warnings`): `"warn"` or `"raise"` makes
+  `MountedComponent.render()`, and the DOM helpers that read the page through it, report two elements with one id,
+  two components with one id, and a `wire-auto-recover` form that recovers nothing -- a bare one whose `change`
+  reaches no `{% on "change" %}`, or one naming a handler the component does not let a client call. The default,
+  `"ignore"`, checks nothing, so no suite sees a change it did not ask for.
 - Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
   6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
   (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's

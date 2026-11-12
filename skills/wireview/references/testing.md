@@ -70,6 +70,9 @@ async def test_the_plus_button_increments():
 훅이 `pushEvent`로 보내는 것은 `reply = await view.hook_event("#chart", "point", {"x": 3})` — 요소에 `wire-hook`이
 있어야 하고, 돌려주는 것은 렌더가 아니라 `handle_hook_event`의 응답이다.
 
+테스트 설정에 `WIREVIEW = {"TEST_PAGE_CHECKS": "raise"}`를 두면 `render()`와 DOM 헬퍼가 페이지의 중복 id, 같은 id의
+컴포넌트 둘, 아무것도 복구하지 못하는 `wire-auto-recover` 폼에서 실패한다(기본 `"ignore"`, `"warn"`은 경고).
+
 선택자에 맞는 요소가 없거나 여럿, 바인딩 없음, disabled, 다른 컴포넌트(중첩·LiveComponent)의 바인딩, `.prevent` 없는
 submit은 이유를 말하며 실패한다. JavaScript는 돌지 않는다(`JS()` 체인·훅·debounce의 시간). 부를 때마다 렌더에서
 다시 시작하므로 제출에 필요한 값은 `submit(values=...)`에 모두 준다. 상세는 docs/features/testing.md의

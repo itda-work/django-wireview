@@ -1297,10 +1297,45 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         """
         Render the component to HTML.
 
+        With ``WIREVIEW["TEST_PAGE_CHECKS"]`` at ``"warn"`` or ``"raise"`` the
+        page is checked for structural mistakes first (duplicate ids, a
+        ``wire-auto-recover`` form that recovers nothing).
+
         Returns:
             The rendered HTML string, or None if frozen/redirected
         """
-        return self._wire.render(self._component, self._repo.for_render(self._component))
+        html = self._wire.render(self._component, self._repo.for_render(self._component))
+        if html is not None:
+            self._check_page(html)
+        return html
+
+    def _check_page(self, html: str) -> None:
+        """``TEST_PAGE_CHECKS``: say what is wrong with the page's structure, or nothing (the default)."""
+        import warnings
+
+        from django.core.exceptions import ImproperlyConfigured
+
+        from . import settings as wireview_settings
+        from .core.handlers import is_client_callable
+
+        policy = wireview_settings.TEST_PAGE_CHECKS
+        if policy == "ignore":
+            return
+        if policy not in ("warn", "raise"):
+            raise ImproperlyConfigured(
+                f'WIREVIEW["TEST_PAGE_CHECKS"] is {policy!r}; it takes "ignore", "warn" or "raise"'
+            )
+        page = testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops)
+        problems = testing_dom.page_problems(page, lambda name: is_client_callable(self._component, name))
+        if not problems:
+            return
+        if policy == "raise":
+            raise AssertionError(
+                f"The page {self._component._name} draws has {len(problems)} problem(s) "
+                '(WIREVIEW["TEST_PAGE_CHECKS"] = "raise"):\n- ' + "\n- ".join(problems)
+            )
+        for problem in problems:
+            warnings.warn(f"wireview TEST_PAGE_CHECKS: {problem}", UserWarning, stacklevel=3)
 
     async def render_diff(self) -> dict[str, t.Any] | None:
         """What the next live render sends the client (#117).
