@@ -246,6 +246,13 @@ export function renewsNow({ waiting, readyState }) {
 /**
  * Whether the socket that looks open still answers: the probe a return sends,
  * and what came back since.
+ *
+ * `awaiting` is a signal, not a ledger of answers -- some events carry no ref,
+ * and some messages (`leave`) get no answer at all. It errs both ways: a socket
+ * whose last message was one the server does not answer is not asked until it
+ * next hears something, and a frame unrelated to what was sent (a broadcast)
+ * clears it, so a return during a slow handler that a broadcast interrupted is
+ * asked, and may take the live socket for dead after `PROBE_TIMEOUT_MS`.
  */
 export class Revival {
   constructor() {

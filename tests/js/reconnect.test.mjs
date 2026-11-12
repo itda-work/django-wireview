@@ -2,6 +2,8 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import ReconnectingWebSocket from "reconnecting-websocket";
+
 import {
   Backoff,
   DEFAULTS,
@@ -318,4 +320,71 @@ test("a renew reconnects a socket open or opening, and leaves a waiting one to i
   // Closed, the library about to start its attempt
   assert.equal(renewsNow({ waiting: false, readyState: 3 }), false);
   assert.equal(renewsNow({ waiting: false, readyState: 2 }), false);
+});
+
+// --- a return skips one wait, not the growth of the next (#228 with #230) ------------
+
+/** A socket the server accepts and closes at once -- 1008, a rate limit (#230). */
+class RefusedSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  constructor() {
+    this.readyState = 0;
+    this.listeners = { open: [], close: [], message: [], error: [] };
+    setImmediate(() => {
+      this.readyState = 1;
+      this.listeners.open.forEach((listener) => listener({ type: "open" }));
+      this.readyState = 3;
+      this.listeners.close.forEach((listener) => listener({ type: "close", code: 1008 }));
+    });
+  }
+  addEventListener(type, listener) {
+    this.listeners[type].push(listener);
+  }
+  removeEventListener(type, listener) {
+    this.listeners[type] = this.listeners[type].filter((l) => l !== listener);
+  }
+  close() {
+    this.readyState = 3;
+  }
+}
+
+async function until(condition) {
+  for (let i = 0; i < 1000 && !condition(); i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(condition(), "never happened");
+}
+
+test("skipping a wait leaves the retry count, so a socket closed again at once waits longer", async () => {
+  // The rate limit's brake on a page that keeps sending what closes it is the
+  // growing backoff. The user coming back starts one attempt now; it does not
+  // reset the count the next delay grows from (reconnect() would).
+  const timers = fakeTimers();
+  const backoff = new Backoff(OPTIONS, timers);
+  const delays = () => [...timers.pending.values()].map(({ ms }) => ms);
+  /** @type {any} */
+  let socket = null;
+  socket = new ReconnectingWebSocket(() => backoff.wait("ws://x/", socket?.retryCount ?? 0), [], {
+    WebSocket: RefusedSocket,
+    minReconnectionDelay: 0,
+    maxReconnectionDelay: 0,
+    reconnectionDelayGrowFactor: 1,
+    maxEnqueuedMessages: 0,
+  });
+  try {
+    await until(() => backoff.waiting);
+    assert.deepEqual(delays(), [2000]);
+
+    backoff.skip();
+    await until(() => backoff.waiting);
+    assert.deepEqual(delays(), [4000]);
+
+    backoff.skip();
+    await until(() => backoff.waiting);
+    assert.deepEqual(delays(), [8000]);
+  } finally {
+    socket.close();
+    timers.pending.clear();
+  }
 });
