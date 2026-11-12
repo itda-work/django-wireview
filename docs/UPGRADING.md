@@ -29,8 +29,14 @@
 0.3 이하는 [CHANGELOG](../CHANGELOG.md)의 해당 절을 먼저 읽고 0.4 행을 따른다. 어느 행이든 마지막에
 [버전 범위](#버전-범위)를 고친다.
 
-> **보안.** 1.0 전 버전은 아래 보안 권고 중 하나 이상의 영향을 받는다. 해당하면 링크한 절의 할 일을 한다.
+> **보안.** 1.0 전 버전은 아래 보안 권고 중 하나 이상의 영향을 받고, 1.5.1 이하는 모두 첫 권고의 영향을 받는다.
+> 괄호 안이 영향받는 버전이다. 해당하면 링크한 절의 할 일을 한다.
 >
+> - [GHSA-82mx-9qrx-gqcv](https://github.com/itda-work/django-wireview/security/advisories/GHSA-82mx-9qrx-gqcv)
+>   (1.5.1 이하, 1.6.0 릴리스와 함께 공개): 이동 목적지를 검증하지 않아 `BOOST_PAGES`를 끈 페이지에서
+>   `wireview.visit("javascript:…")`가 스크립트를 실행했고, 서버의 `redirect_to`·`push_to`·`replace_to`·`JS().navigate`도
+>   `javascript:` 같은 스킴을 그대로 보냈다. boost는 다른 출처로 리다이렉트하는 같은 출처 주소를 따라가 그 응답을
+>   읽었다. 요청에서 온 목적지(`?next=`)를 이동에 넘긴다면 [1.5→1.6 절의 보안](#보안)을 읽는다.
 > - [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)
 >   (0.7.0 이하, 1.0.0rc1~1.0.0rc3): `AUTO_BROADCAST`의 플래그(`model`, `model_pk`, `related`, `m2m`) 중 하나라도
 >   켜고 `senders`를 비워 두면, 켠 플래그에 따라 모든 모델의 저장·삭제(`model`·`model_pk`·`related`)나 모든 m2m
@@ -123,7 +129,8 @@ dependencies = ["django-wireview>=1.5,<2"]
 
 ### 보안
 
-- **깨짐: 이동 목적지가 http(s)가 아니면 호출이 `DisallowedRedirect`를 던진다(#262).** `redirect_to`·`push_to`·
+- **깨짐: 이동 목적지가 http(s)가 아니면 호출이 `DisallowedRedirect`를 던진다(#262).** 보안 권고
+  [GHSA-82mx-9qrx-gqcv](https://github.com/itda-work/django-wireview/security/advisories/GHSA-82mx-9qrx-gqcv)의 수정이다. `redirect_to`·`push_to`·
   `replace_to`·`JS().navigate`가 해석한 URL이 http·https 아닌 스킴(`javascript:`·`data:`·`mailto:`…), ASCII 제어문자
   (탭·LF·CR), 백슬래시, 앞뒤 공백을 가지면 호출한 자리에서 `django.core.exceptions.DisallowedRedirect`다. 1.5에서는
   그대로 페이지로 갔다. `mailto:`로 보내던 코드는 `JS().navigate` 대신 링크(`<a href="mailto:…">`)를 그린다. 백슬래시가

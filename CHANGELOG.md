@@ -540,7 +540,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Security
 
-- Navigation destinations are judged by the browser's URL parser (#262, GAP-066). The client took any destination
+- [GHSA-82mx-9qrx-gqcv](https://github.com/itda-work/django-wireview/security/advisories/GHSA-82mx-9qrx-gqcv)
+  (medium): navigation destinations are judged by the browser's URL parser (#262, GAP-066). The client took any destination
   that did not start with `http://` or `https://` for this origin: `//other.example/`, `HTTP://other.example/` and
   ` http://other.example/` were fetched by boost (and stopped on a `SecurityError` from `pushState`), and with
   `BOOST_PAGES` off `wireview.visit("javascript:...")` ran the script. Now every move -- a link, a boosted form,

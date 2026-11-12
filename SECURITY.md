@@ -23,9 +23,11 @@
 
 전체 목록은 <https://github.com/itda-work/django-wireview/security/advisories>에 있고, 각 권고는 고친 릴리스의
 [CHANGELOG](./CHANGELOG.md) `### Security` 절에도 적는다.
+아직 릴리스되지 않은 수정의 권고는 표에 먼저 적고 그 릴리스와 함께 공개한다 — 그때까지 그 링크는 열리지 않는다.
 
 | 권고 | 심각도 | 영향 | 고친 버전 |
 |------|--------|------|-----------|
+| [GHSA-82mx-9qrx-gqcv](https://github.com/itda-work/django-wireview/security/advisories/GHSA-82mx-9qrx-gqcv) 이동 목적지를 검증하지 않아 `javascript:` 주소가 실행되고, boost가 다른 출처의 응답을 읽음(1.6.0 릴리스와 함께 공개) | 중간 | 1.5.1 이하 | 1.6.0 |
 | [GHSA-pv9v-gqcj-f42x](https://github.com/itda-work/django-wireview/security/advisories/GHSA-pv9v-gqcj-f42x) HTTP 렌더에서 함수 컴포넌트 템플릿 안의 `{% component %}`에 페이지의 `live_session` `on_mount` 훅이 돌지 않음 | 중간 | 0.3.0~1.0.0rc4 | 1.0.0 |
 | [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745) `on_upload_complete`를 브라우저가 이벤트로 부를 수 있음 | 중간 | 1.0.0rc4 이하(0.x 포함) | 1.0.0 |
 | [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj) `{% wireview_toasts %}`가 세션 키 원문을 그룹 이름으로 브로커에 보냄 | 중간 | 1.0.0rc3~rc4 | 1.0.0 |

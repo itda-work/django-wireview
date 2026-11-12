@@ -13,9 +13,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 115 |
+| ✅ 지원 | 116 |
 | 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 14 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 16 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 15 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟡·🟠 행은 상태 칸에 GAP 번호와
@@ -58,7 +58,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | 2.5 Streams | 10 | 1 | 0 | 0 |
 | 2.6 File Uploads | 9 | 0 | 2 | 0 |
 | 2.7 Async Operations | 5 | 1 | 0 | 0 |
-| 2.8 Navigation | 7 | 1 | 1 | 0 |
+| 2.8 Navigation | 8 | 1 | 0 | 0 |
 | 2.9 JavaScript Interoperability | 13 | 1 | 5 | 0 |
 | 2.10 Components | 10 | 0 | 3 | 1 |
 | 2.11 Form Handling | 8 | 4 | 0 | 0 |
@@ -170,7 +170,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | handle_async() | ✅ | `handle_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_start_async.py::test_a_failed_operation_reaches_handle_async_as_failed`<br>`tests/test_start_async.py::test_a_handle_async_that_raises_joins_the_component_again` |
 | assign_async의 키·reset, 취소 이유, stream_async | `assign_async(socket, keys, fun, reset:)`, `cancel_async(socket, key, reason)`, `stream_async/4` | coroutine 하나가 새 `AsyncResult`. 다시 부르면 이전 ok 값이 사라지고 이전 작업은 취소되지 않는다. `cancel_async(name)`은 `start_async`의 이름만 | 🟡 GAP-054 (#250) |  |
 
-### 2.8 Navigation 🟠
+### 2.8 Navigation 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -182,7 +182,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | Client-side boost | ✅ | `WIREVIEW["BOOST_PAGES"]`. 폼은 `wire-boost`로 청한다, `wireview.visit()` | ✅ | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_boosted_move_inside_the_boundary_still_morphs`<br>`tests/test_js_commands_e2e.py::test_a_boosted_post_form_lands_where_it_redirected` |
 | phx:before-navigate | ✅ | `wireview:before-navigate` (#154: boost 이동 앞에 `document`로 가는 이벤트, `detail.kind`. 취소할 수 있다 — 단 `redirect_to`는 서버가 컴포넌트를 얼려 알리기만 하고, 뒤로·앞으로 가기는 Navigation API가 있는 브라우저에서만 취소되어 떠난 항목으로 돌아간다. `wireview:navigated`도 `kind`를 단다) | ✅ | `tests/test_before_navigate_e2e.py::test_a_guard_that_asks_the_user`<br>`tests/test_before_navigate_e2e.py::test_a_cancelled_back_returns_to_the_entry_it_left`<br>`tests/test_before_navigate_e2e.py::test_a_cancelled_move_leaves_everything_where_it_was`<br>`tests/test_before_navigate_e2e.py::test_a_redirect_is_told_and_goes`<br>`tests/test_before_navigate_e2e.py::test_without_the_navigation_api_back_is_announced_and_not_cancelable` |
 | 명시적 patch와 이동 유형 | `JS.patch`, `<.link patch>`, 다른 경로로의 patch, 이동 유형 조회 | 서버의 같은 경로 `push_to`·`replace_to`만 patch. `JS().navigate`·링크·`wireview.visit()`은 같은 경로여도 가져온다. `params_changed()`는 이동 유형을 받지 않는다 | 🟡 GAP-062 (#258) |  |
-| 이동 목적지 URL 검증 | 1.2에서 위험 scheme·제어문자 목적지를 거부하도록 고쳤다 | 목적지는 `resolve_url`로 해석할 뿐 scheme·제어문자를 검사하지 않는다(서버·클라이언트 모두). 감사 항목이고 악용은 재현하지 않았다 | 🟠 GAP-066 (#262) |  |
+| 이동 목적지 URL 검증 | 1.2에서 위험 scheme·제어문자 목적지를 거부하도록 고쳤다 | 이동 목적지를 브라우저 URL 파서로 판단한다(#262). 같은 출처만 boost, 다른 출처는 브라우저 이동이고 그 응답은 CORS와 무관하게 그리지 않는다, http(s)가 아니면 어디로도 가지 않는다. 서버는 `redirect_to`·`push_to`·`replace_to`·`JS().navigate`에서 http(s) 밖의 스킴·제어문자·백슬래시·앞뒤 공백을 `DisallowedRedirect`로 거절한다. 호스트 허용 목록은 앱의 몫(`url_has_allowed_host_and_scheme`) | ✅ (GAP-066) | `tests/test_navigation_urls.py::test_the_server_judges_each_vector_as_the_table_says`<br>`tests/test_navigation_urls.py::test_a_refused_destination_raises_at_the_call_and_sends_nothing`<br>`tests/test_navigation_url_policy_e2e.py::test_another_origin_however_spelled_is_a_page_load`<br>`tests/test_navigation_url_policy_e2e.py::test_a_redirect_to_another_origin_that_allows_the_read_is_not_drawn_here`<br>`tests/test_navigation_url_policy_e2e.py::test_a_javascript_url_handed_to_visit_does_not_run` |
 
 ### 2.9 JavaScript Interoperability 🟠
 
@@ -325,7 +325,7 @@ LiveView 1.2.12 대조에서 남은 것(#229):
 
 | ID | 기능 | 설명 | 난이도 | 추적 |
 |----|------|------|:------:|----------|
-| GAP-066 | 이동 목적지 URL 검증 정책 감사 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #262 |
+| ~~GAP-066~~ | ~~이동 목적지 URL 검증 정책 감사~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#262) |
 
 ### 🟠 P1: Important (기능적 차이)
 

@@ -17,8 +17,8 @@ Phase 4: Component      ██████████████████�
 Phase 5: Polish         ████████████████░░░░ 진행 중 (남은 둘은 1.0 범위 밖)
 ```
 
-Phoenix LiveView 1.2 와 다시 대조해 GAP-038~067 을 등록했다(#229). P0 하나(GAP-066 이동 목적지 URL 검증 감사)와
-P1 여럿이 남아 있고, 목록과 우선순위는 `docs/FEATURE-GAP.md` 3절이 정본이다. GAP-009 live_session 과 GAP-022 Telemetry 는
+Phoenix LiveView 1.2 와 다시 대조해 GAP-038~067 을 등록했다(#229). P0 하나(GAP-066 이동 목적지 URL 검증)는
+#262 에서 끝났고 P1 여럿이 남아 있다. 목록과 우선순위는 `docs/FEATURE-GAP.md` 3절이 정본이다. GAP-009 live_session 과 GAP-022 Telemetry 는
 `v0.3.0` 에서 끝났고, **GAP-012 LongPolling 폴백은 만들지 않기로 했다** —
 WebSocket 을 필수 전제로 둔다(`docs/design/longpolling-fallback.md` §5).
 GAP-027 세션 분리는 1단계(컨슈머에서 `WireviewSession` 분리)가 `v1.0.0rc3` 에서, 3단계(업로드 분산 접근)가
