@@ -8,7 +8,7 @@
 
 맞습니다. `{% on %}`으로 묶은 이벤트는 모두 WebSocket으로 서버에 가고, 서버가 다시 렌더한 diff가 와야 화면이 바뀝니다. 사용자가 느끼는 시간은 서버 처리 시간에 네트워크 왕복(RTT)을 더한 것입니다.
 
-서버 쪽은 작습니다. 값 7개인 컴포넌트의 이벤트 하나가 핸들러와 diff를 합쳐 0.28ms, 항목 50개 목록이 1.1ms이고, 값 하나가 바뀐 응답은 239B입니다(Apple Silicon macOS, DB 조회 제외, [측정값](PERFORMANCE.md#측정값)). 그러니 체감을 정하는 것은 대개 RTT와 핸들러가 하는 DB 조회입니다.
+서버 쪽은 작습니다. 작은 컴포넌트와 항목 50개 목록에서 이벤트 하나의 핸들러와 diff에 드는 시간, 값 하나가 바뀐 응답의 크기는 [측정값](PERFORMANCE.md#측정값)의 "wireview 단독 측정"에 원본 결과 파일과 함께 있습니다(Apple Silicon macOS, DB 조회 제외). 그러니 체감을 정하는 것은 대개 RTT와 핸들러가 하는 DB 조회입니다.
 
 왕복을 없앨 수는 없고, 기다리는 동안을 가리는 장치가 있습니다([Optimistic UI](features/optimistic-ui.md)).
 
@@ -38,7 +38,7 @@ RTT가 큰 망(먼 리전, 모바일 망)의 사용자가 주 대상이고 클�
 확인도 Python 안에서 끝납니다.
 
 - **`mount()` 테스트.** 브라우저와 WebSocket 없이 컴포넌트를 마운트하고, 핸들러를 부르고, 렌더된 HTML을 봅니다([테스트](features/testing.md)).
-- **`manage.py check`.** 조용히 실패하는 실수 17가지(async가 아닌 핸들러, 이름 충돌, 로드되지 않는 JS, 다중 프로세스의 InMemory 레이어 등)를 `wireview.W*` 경고로 알립니다([체크 목록](features/checks.md)).
+- **`manage.py check`.** 조용히 실패하는 실수 22가지(async가 아닌 핸들러, 이름 충돌, 로드되지 않는 JS, 다중 프로세스의 InMemory 레이어 등)를 `wireview.W*` 경고로 알립니다([체크 목록](features/checks.md)).
 - **타입 스텁과 편집기 지원.** 컴포넌트마다 `.pyi`를 만들고, VS Code 확장이 템플릿 태그를 진단합니다([편집기 지원](features/editor-support.md)).
 
 어려운 점도 있습니다. 핸들러와 라이프사이클 메서드는 이벤트 루프 위에서 도는 async 함수라, 동기 ORM을 그대로 부르면 Django가 막습니다. `await Model.objects.aget(...)` 같은 async API를 쓰거나 `sync_to_async`로 감쌉니다. 처음에는 이 규칙이 가장 자주 걸립니다. 순서대로 따라 할 [튜토리얼](tutorials/README.md)이 15편 있습니다.

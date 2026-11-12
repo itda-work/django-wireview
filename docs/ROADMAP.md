@@ -310,7 +310,7 @@ def button(text: str, variant: str = "primary"):
 
 - ✅ 기능 레퍼런스 ([features/](./features/README.md))
 - ✅ 튜토리얼 15편 ([tutorials/](./tutorials/README.md))
-- ✅ 예제 앱 11개 (`examples/`)
+- ✅ 예제 앱 14개 (`examples/`)
 
 ### 5.3 TypeScript 클라이언트 재작성
 

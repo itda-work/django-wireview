@@ -60,7 +60,7 @@ def test_the_root_tables_rows_are_the_indexs():
     assert _root_table() == _index()
 
 
-@pytest.mark.parametrize("document", ["README.md", "examples/README.md", "CLAUDE.md"])
+@pytest.mark.parametrize("document", ["README.md", "examples/README.md", "CLAUDE.md", "docs/ROADMAP.md"])
 def test_the_count_of_examples_is_the_number_of_directories(document):
     counts = COUNT.findall((ROOT / document).read_text(encoding="utf-8"))
 
