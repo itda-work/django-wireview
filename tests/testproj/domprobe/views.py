@@ -7,3 +7,7 @@ def index(request):
 
 def streams(request):
     return render(request, "domprobe/streams_page.html")
+
+
+def table(request):
+    return render(request, "domprobe/table_page.html")

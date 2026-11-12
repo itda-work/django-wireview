@@ -24,7 +24,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from testproj.domprobe.live import HEARD, DomBubble, DomChat, DomForm, DomHooked, DomKeys, DomNest, DomTrap
+from testproj.domprobe.live import HEARD, DomBubble, DomChat, DomForm, DomHooked, DomKeys, DomNest, DomTable, DomTrap
 from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, SCENARIOS, heard
 
 from wireview import JS, Component, mount
@@ -477,6 +477,17 @@ async def test_a_click_on_a_button_in_a_label_stays_the_buttons():
     # On the label itself, the click goes on to its first field: the button
     await view.click("[data-testid=holds-button]")
     assert [name for _, name, _ in HEARD] == ["pressed"]
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.asyncio
+async def test_a_streamed_table_row_is_a_row():
+    view = await mount(DomTable)
+    await view.click("#person-2 button")
+    page = await _page(view)
+    assert [tr.get("id") for tr in Selector("[data-testid=people] > tr").select(page.root)] == ["person-1"]
+    assert [(name, kwargs) for _, name, kwargs in HEARD] == [("remove", {"id": 2})]
 
 
 class DomStreamed(Component):

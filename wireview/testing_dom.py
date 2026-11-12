@@ -109,21 +109,13 @@ class Element:
         return f"Element({self.describe()})"
 
 
-#: What a browser's parser ignores in a body outside a ``<table>``: a stream item
-#: ``<tr>`` parses to its cells' contents, not to a row
-TABLE_PARTS = frozenset({"tr", "td", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup"})
-
-
 class _TreeBuilder(HTMLParser):
-    def __init__(self, in_body: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.root = Element("#document", [], None)
         self._open: list[Element] = [self.root]
-        self._in_body = in_body
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if self._in_body and tag in TABLE_PARTS and not any(e.tag == "table" for e in self._open):
-            return
         if tag in SELF_CLOSING_SIBLINGS and self._open[-1].tag == tag:
             self._open.pop()
         parent = self._open[-1]
@@ -161,8 +153,8 @@ def parse(html: str) -> Element:
 
 
 def parse_item(html: str) -> Element | None:
-    """``_parseHtml`` in wireview.js: the first element of ``html`` parsed as a document's body, or ``None``."""
-    builder = _TreeBuilder(in_body=True)
+    """``_parseHtml`` in wireview.js: the first element of ``html`` parsed in a ``<template>``, or ``None``."""
+    builder = _TreeBuilder()
     builder.feed(html)
     builder.close()
     first = next((c for c in builder.root.children if isinstance(c, Element)), None)
@@ -296,8 +288,14 @@ def apply_stream_op(container: Element, op: t.Mapping[str, t.Any]) -> None:
 
 
 def apply_stream_ops(root: Element, ops: t.Iterable[t.Mapping[str, t.Any]]) -> None:
-    """Every stream operation sent so far, in order, on the containers of ``root``. One whose container
-    is not on the page is dropped, as the client drops it once its wait for the container ends."""
+    """Every stream operation sent so far, in order, on the containers of ``root``.
+
+    One whose container is not on the page is dropped, as the client drops it
+    once its wait for the container ends. That wait (``TargetQueue``) holds the
+    same component's later operations for a frame, while another component's
+    go on: of several messages that arrive in one frame the client may apply
+    them in another order. The helpers keep the order sent.
+    """
     for op in ops:
         container = stream_container(root, op.get("stream", ""), op.get("id"))
         if container is not None:

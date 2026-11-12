@@ -44,8 +44,6 @@ import boost from "./wireview-boost";
 
 // Connection
 
-const parser = new DOMParser();
-
 /**
  * Parses a URL search string into a params object.
  * @param {string} search - Query string (with or without leading "?")
@@ -1090,13 +1088,21 @@ class ServerConnection {
   }
 
   /**
-   * Parse HTML string to DOM element.
+   * A stream item's HTML as an element: its first one.
+   *
+   * Parsed in a `<template>`, which takes any element in its place. A
+   * document's body did not: a `<tr>` (or `<td>`, `<tbody>`...) outside a table
+   * is a parse error there and the tag is dropped, so a table row's item became
+   * nothing, or the first element in its cells, and a `<tbody wire-stream>`
+   * stayed empty.
    * @param {string} html - HTML string
    * @returns {Element|null}
    * @private
    */
   _parseHtml(html) {
-    return parser.parseFromString(html, "text/html").body.firstElementChild;
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    return template.content.firstElementChild;
   }
 
   /**

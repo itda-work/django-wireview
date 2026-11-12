@@ -109,8 +109,7 @@ async def test_remove_button_deletes_the_row(item):
 보낸 스트림 연산(삽입·삭제·`limit`·`reset`·`update_only`)이 보낸 순서대로 클라이언트와 같은 규칙으로 들어가 있다 —
 `click("#messages-12 button.delete")`가 그대로 된다. `clear_messages()`는 그 기록을 지우지 않는다(메시지를 비워도 화면의
 항목은 남는다). 연산은 지금 렌더의 컨테이너에 다시 적용하므로, 렌더 사이에 컨테이너가 사라졌다 다시 생겨 브라우저가
-항목을 잃은 경우는 따라 하지 않는다. 클라이언트처럼 항목 HTML의 첫 요소만 들어가고, 표의 행(`<tr>`)으로 시작하는 항목은
-브라우저의 파서가 행을 버리듯 셀의 내용만 남는다.
+항목을 잃은 경우는 따라 하지 않는다. 클라이언트처럼 항목 HTML의 첫 요소만 들어간다.
 
 **값.** `change`·`input`의 `value`와 `submit`의 `values`는 사용자가 칸에 남긴 것이다.
 

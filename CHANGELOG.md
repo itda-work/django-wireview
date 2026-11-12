@@ -274,6 +274,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A stream item that is a table row reaches the page (#252). The client parsed an item as a document body, where a
+  `<tr>` (or `<td>`, `<thead>`, `<option>` …) outside its table is dropped: `<tbody wire-stream>` got no row, or
+  the first element of a cell in its place. Items are now parsed in a `<template>`, which keeps any element where
+  it stands. The DOM test helpers of `wireview.testing` put such an item on their page as the client does.
 - A component whose `get_subscriptions()` raises costs itself alone (#233), as any other code of a component that
   raises does (`docs/features/errors.md`): it is joined again and the connection and the components beside it carry
   on. It used to close the socket after the message, and every component of the page joined again. A render asks

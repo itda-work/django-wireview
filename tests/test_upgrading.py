@@ -257,6 +257,7 @@ NO_UPGRADE_NOTE = {
     "`MountedComponent.hook_event(selector, event, payload, hook=)`": "테스트 헬퍼가 늘 뿐 바뀌는 것이 없다",
     '`WIREVIEW["TEST_PAGE_CHECKS"]`': "기본으로 꺼져 있다",
     "`examples/todo`: unchecking": "예제만 고쳤다",
+    "A stream item that is a table row": "클라이언트가 버리던 항목이 그려질 뿐 고칠 것이 없다",
     "Inbound limits per connection": "기본으로 꺼져 있다",
     "`wireview.W024` names an inbound limit": "경고만 더해진다",
     "A binary WebSocket frame, or a text frame that is not JSON": "no client of ours sends one",

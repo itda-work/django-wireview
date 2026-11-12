@@ -49,13 +49,14 @@ def test_a_browser_hears_what_the_helpers_send(page, server, scenario):
 
 
 # What stream items can be: a plain one, one with an id inside it (an insert of
-# that id finds it), leading space, a table row (a body's parser drops the row
-# and keeps its cells' contents), none at all, two elements (the first goes)
+# that id finds it), leading space, a table row and a cell (kept whole, also
+# in a list's container), none at all, two elements (the first goes)
 ITEM_HTML = [
     '<li class="a">plain</li>',
     '<li><span id="s-inner">holds s-inner</span></li>',
     "  <li>leading space</li>",
     "<tr><td><b>cell</b></td></tr>",
+    "<td>a cell</td>",
     "",
     "only text",
     "<p>first</p><p>second</p>",
@@ -63,7 +64,15 @@ ITEM_HTML = [
 ITEM_IDS = ["s-1", "s-2", "s-3", "s-4", "s-inner", "seed-host"]
 # (owner, stream): the host's own rows, the guest's own rows, the guest's log
 # (the host has none: it takes the first inside it), no owner, no such container
-TARGETS = [("host", "rows"), ("guest", "rows"), ("host", "log"), ("guest", "log"), (None, "rows"), ("guest", "nope")]
+TARGETS = [
+    ("host", "rows"),
+    ("guest", "rows"),
+    ("host", "log"),
+    ("guest", "log"),
+    ("guest", "cells"),
+    (None, "rows"),
+    ("guest", "nope"),
+]
 
 
 def _random_ops(rng: random.Random, count: int) -> list[dict]:
@@ -110,9 +119,15 @@ JOINED = """async () => {
   return true;
 }"""
 
-SEND = """(messages) => {
+# One message a frame. A stream op whose container is not on the page holds its component's later ops
+# for a frame (TargetQueue) while another component's apply at once; the helpers drop it at once, so a
+# batch of messages in one frame may land in another order than theirs
+SEND = """async (messages) => {
   const socket = window.__link.sockets.at(-1);
-  for (const data of messages) socket.dispatchEvent(new MessageEvent("message", { data }));
+  for (const data of messages) {
+    socket.dispatchEvent(new MessageEvent("message", { data }));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  }
 }"""
 
 
@@ -142,3 +157,16 @@ def test_a_hooks_push_is_what_hook_event_sends(page, server):
     expect(page.locator("html")).to_have_attribute("data-dom-reply", re.compile("point"))
     assert json.loads(page.locator("html").get_attribute("data-dom-reply") or "") == HOOK_REPLY
     assert heard(DomHooked, HOOK_HEARD, HEARD) == HOOK_HEARD
+
+
+def test_a_table_row_streamed_into_a_tbody_is_a_row(page, server):
+    """A ``<tr>`` item goes into its ``<tbody wire-stream>`` as a row, and its button is the helpers' to press too."""
+    open_live(page, f"{server}/domprobe/table/")
+    rows = page.locator("[data-testid=people] > tr")
+    expect(rows).to_have_count(2)
+    assert [rows.nth(i).get_attribute("id") for i in range(2)] == ["person-1", "person-2"]
+    expect(rows.nth(1)).to_contain_text("Grace")
+    HEARD.clear()
+    page.locator("#person-1 button").click()
+    expect(rows).to_have_count(1)
+    assert [(name, kwargs) for _, name, kwargs in HEARD] == [("remove", {"id": 1})]

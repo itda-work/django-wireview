@@ -203,6 +203,28 @@ class DomStreamGuest(Component):
         template_name = "domprobe/stream_guest.html"
 
 
+class DomTable(_Recording, Component):
+    """Table rows streamed into a ``<tbody wire-stream>``: the client parsed each one as a body's content,
+    where a ``<tr>`` outside a table is dropped, and the table stayed empty."""
+
+    class Meta:
+        template_name = "domprobe/table.html"
+
+    heard: str = ""
+
+    async def joined(self) -> None:
+        await self.stream(
+            "people",
+            [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Grace"}],
+            template="domprobe/table_item.html",
+            dom_id=lambda row: f"person-{row['id']}",
+        )
+
+    async def remove(self, id: int) -> None:
+        self._heard("remove", {"id": id})
+        await self.stream_delete("people", f"person-{id}")
+
+
 class DomTrap(_Recording, Component):
     """The mistake the helpers catch and ``call()`` does not: a button that is not wired to ``remove``.
 

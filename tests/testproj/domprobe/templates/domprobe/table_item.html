@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<tr id="{{ dom_id }}">
+  <td>{{ item.name }}</td>
+  <td>
+    <button type="button" {% on "click" "remove" id=item.id %}>remove</button>
+  </td>
+</tr>
