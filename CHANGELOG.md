@@ -233,6 +233,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `manage.py wireview_lsp` died with `tokenize.TokenError` when a source file had been saved since its module was
+  loaded and its lines no longer tokenized where the loaded tag, filter or component had been (#265). That entry is
+  now described without a location (`file_path` "", `line_number` 0), as one with no source file was.
 - A binary WebSocket frame, or a text frame that is not JSON, raised out of the consumer and ended the connection with
   a traceback (#230). A binary frame now closes it with 1003; a frame that is not JSON is logged and dropped, like an
   unknown command (#94).

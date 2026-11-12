@@ -20,6 +20,7 @@ import inspect
 import json
 import re
 import sys
+import tokenize
 import typing as t
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
@@ -211,7 +212,7 @@ def extract_component_metadata(
     try:
         file_path = inspect.getfile(cls)
         source_lines, line_number = inspect.getsourcelines(cls)
-    except (TypeError, OSError):
+    except NO_SOURCE:
         file_path = ""
         line_number = 0
 
@@ -364,12 +365,17 @@ def extract_properties(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
     return properties
 
 
+#: What ``inspect`` raises for an object whose source it cannot read: none (a builtin), no file, or a file that no
+#: longer says what was loaded from it -- saved since the import, its lines tokenize as something else (#265).
+NO_SOURCE = (TypeError, OSError, tokenize.TokenError)
+
+
 def source_location(obj: t.Any) -> tuple[str, int]:
     """The file and the line an object was defined at, or ``("", 0)``."""
     try:
         target = inspect.unwrap(obj)
         return inspect.getsourcefile(target) or "", inspect.getsourcelines(target)[1]
-    except (TypeError, OSError):
+    except NO_SOURCE:
         return "", 0
 
 
@@ -625,7 +631,7 @@ def block_structure(name: str, compile_func: t.Any) -> tuple[str | None, list[st
         return end_name, []
     try:
         source = inspect.getsource(compile_func)
-    except (TypeError, OSError):
+    except NO_SOURCE:
         return None, []
     names: list[str] = []
     for arguments in _PARSE_UNTIL.findall(source):

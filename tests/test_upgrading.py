@@ -250,6 +250,7 @@ NO_UPGRADE_NOTE = {
     "`wireview.W024` names an inbound limit": "경고만 더해진다",
     "A binary WebSocket frame, or a text frame that is not JSON": "no client of ours sends one",
     "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
+    "`manage.py wireview_lsp` died with `tokenize.TokenError`": "죽던 명령이 끝까지 갈 뿐 할 일이 없다",
     "Python 3.15, with Django 6.1": "지원 범위가 넓어질 뿐 할 일이 없다",
     "`wireview.W025`: a model `AUTO_BROADCAST` broadcasts": "경고가 하나 늘 뿐 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",

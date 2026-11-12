@@ -697,6 +697,78 @@ class TestTemplateTagsAndFilters:
         assert tags["card"]["end"] == "closecard"
 
 
+EDITED_SOURCE = """\
+from django import template
+
+from wireview import Component
+
+register = template.Library()
+
+
+@register.tag
+def panel(parser, token):
+    nodelist = parser.parse(("endpanel",))
+    parser.delete_first_token()
+    return nodelist
+
+
+@register.filter
+def shout(value):
+    return value
+
+
+class EditedProbe(Component, public=False):
+    pass
+"""
+
+
+@pytest.mark.unit
+class TestASourceFileSavedSinceTheImport:
+    """A file saved after its module was loaded no longer says where the loaded code is (#265).
+
+    ``inspect`` reads the lines from the file as it is now. When they no longer tokenize --
+    here an unterminated string where a tag's ``def`` was -- it raises ``tokenize.TokenError``,
+    which nothing caught: the whole command died while a development server edited files. The
+    entry it cannot place is described without a location, as one with no source file is.
+    """
+
+    @pytest.fixture
+    def edited(self, tmp_path, monkeypatch):
+        import importlib.util
+        import sys
+
+        path = tmp_path / "edited_probe_lib.py"
+        path.write_text(EDITED_SOURCE, encoding="utf-8")
+        spec = importlib.util.spec_from_file_location("edited_probe_lib", path)
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, "edited_probe_lib", module)
+        spec.loader.exec_module(module)
+        path.write_text("x = 'saved halfway\n" * EDITED_SOURCE.count("\n"), encoding="utf-8")
+        return module
+
+    def test_the_file_no_longer_tokenizes(self, edited):
+        import inspect
+        import tokenize
+
+        with pytest.raises(tokenize.TokenError):
+            inspect.getsourcelines(edited.shout)
+
+    def test_a_tag_and_a_filter_are_listed_without_a_location(self, edited):
+        library = extract_library(edited.register)
+
+        assert {k: library["tags"]["panel"][k] for k in ("file_path", "line_number", "end")} == {
+            "file_path": "",
+            "line_number": 0,
+            "end": None,  # its parse() names cannot be read either
+        }
+        assert (library["filters"]["shout"]["file_path"], library["filters"]["shout"]["line_number"]) == ("", 0)
+
+    def test_a_component_is_listed_without_a_location(self, edited):
+        described = extract_component_metadata(edited.EditedProbe)
+
+        assert (described["file_path"], described["line_number"]) == ("", 0)
+
+
 # Format 2.0 (#162): what the framework defines is described once, at the top.
 # The same entries on every component were 97% of the output.
 
