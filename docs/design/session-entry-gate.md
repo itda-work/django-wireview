@@ -1,8 +1,8 @@
 # 세션 진입점의 의무를 한 관문으로 — 접근 검토 (#232)
 
-> 2026-11-12. **검토 메모 — 결정 아님.** 기준은 `main`의 7037b96이다. 이 메모를 쓰는 동안 다른 작업이
+> 2026-11-12. **검토 메모.** 권고(후보 B)를 받아들였고 정해진 것은 §5-4 "결정"에 있다. 구현은 #233. 기준은 `main`의 7037b96이다. 이 메모를 쓰는 동안 다른 작업이
 > `wireview/session.py`의 일부를 고치고 있다(#230 인바운드 상한, #231 상태 복원 실패). 줄 번호는 7037b96의 것이고,
-> 그 두 작업이 들어오면 어긋난다. 원자료(이력 표, 재현 테스트)는 커밋하지 않고 작업 사본의 `build/agent/`에 두었다.
+> 그 두 작업이 들어오면 어긋난다. 이력 분류표는 부록 A, 빠진 칸의 재현은 #233이 `tests/test_session_entry_contract.py`로 넣는다.
 
 ## 0. 묻는 것과 답
 
@@ -77,7 +77,7 @@
 ### 1-3. 칸마다
 
 `✓`는 적용됨, `–`는 해당 없음, **빠짐**은 실패하는 테스트로 보인 것, *의심*은 깨지는 입력을 적었으나 테스트로 만들지 않은 것이다.
-테스트는 `build/agent/test_gate_gaps.py`(5개 중 대조군 1개 통과, 4개 실패).
+재현 테스트(대조군 1개 통과, 빠짐 4개 실패)는 #233이 `tests/test_session_entry_contract.py`로 넣는다.
 
 | 진입점 | 예외 회복 | 인스턴스 | 렌더·뒤처리 | `has_joined` |
 |---|---|---|---|---|
@@ -106,7 +106,7 @@
    그 컴포넌트만 다시 join한다. 확신: **높음**(테스트 둘이 실패, 대조군 통과).
 2. **`get_subscriptions()`가 던지면** — `after_mutation_chores`(`:2403`) → `update_to_which_channels_im_subscribed_to`(`:2412`)가
    모든 reachable 컴포넌트에 묻는데 어느 진입점에서도 `try` 밖이다. 핸들러가 바꾼 필드로 `get_subscriptions()`가 던지면
-   그 컴포넌트가 아니라 연결이 끝난다. 확신: **높음**(테스트 실패). 다만 이것이 제품이 질 보장인지는 §5-3의 질문이다 —
+   그 컴포넌트가 아니라 연결이 끝난다. 확신: **높음**(테스트 실패). 다만 이것이 제품이 질 보장인지는 §5-4의 질문이다 —
    예제 열 곳 넘게 이 메서드를 덮어쓰지만 모두 순수한 집합 계산이다.
 3. **낡은 인스턴스의 `crashed` 메일** (`component_crashed` `:1872`). `handle_async`가 던져 메일 `crashed`가 채널에 들어간 뒤,
    그보다 먼저 처리된 같은 id의 join(boost 이동의 새 DOM)이 새 인스턴스를 만든다. 메일은 새 인스턴스를 은퇴시키고 `error`를
@@ -123,7 +123,7 @@
 
 ## 2. 이력
 
-`git log v1.0.0..HEAD -- wireview/session.py` 52개 중 fix 34개(되돌린 412c41b 포함). 표 전체는 `build/agent/history.md`.
+`git log v1.0.0..HEAD -- wireview/session.py` 52개 중 fix 34개(되돌린 412c41b 포함). 표 전체는 부록 A.
 
 | 범주 | 수 | 대표 |
 |---|---|---|
@@ -158,7 +158,7 @@ b203a3c(join 경로만 LiveComponent에 params를 알리지 않음). 합쳐 5/34
 - **`crashed` 메일은 없앨 수 있는가.** 작업은 세션 밖에서 돌고 회복은 세션이 해야 하므로 메일은 필요하다. 없앨 수 있는 것은
   "id만 싣는다"는 모양이다 — 인스턴스를 싣는 메일 셋과 같은 규칙으로 맞추면 의무가 아니라 형식이 된다.
 - **`has_joined`를 서버가 질 것인가.** 지금은 클라이언트의 `isLive`가 진다. 서버 검사를 더하면 두 번 지고, 빼면 지금처럼
-  클라이언트를 믿는다. §5-3의 질문이다.
+  클라이언트를 믿는다. §5-4의 질문이다.
 
 ### A. 아무것도 바꾸지 않는다 (「함정」 문서 유지)
 
@@ -245,7 +245,7 @@ def test_every_entry_point_has_a_row():
   `"type": "..."` 리터럴을 `test_session_commands.py`처럼 AST로 모으면 손 목록도 없앨 수 있다.
 - 의무마다 하나의 탐침 컴포넌트와 하나의 단언:
   - `recovers` — 템플릿 property가 던지게 한 뒤 부른다. 예외가 올라오지 않고, `error`가 그 id로 한 번, 다른 컴포넌트는 그대로.
-  - `chores` — 핸들러가 `get_subscriptions()`를 바꾼다. 부른 뒤 `outbound.topics`가 새 집합이다(던지는 경우는 §5-3의 답에 따라).
+  - `chores` — 핸들러가 `get_subscriptions()`를 바꾼다. 부른 뒤 `outbound.topics`가 새 집합이다(던지는 경우는 §5-4의 답에 따라).
   - `reachable` — `test_live_session_contract.py`의 `TestARefusedIdAnswersNothing`을 그대로 옮긴다(거절된 id에는 답만).
   - `instance` — 같은 id로 새 인스턴스를 세운 뒤 옛 번호로 부른다. 새 인스턴스는 그대로.
   - 그리고 그 경로마다 **대조군** — 같은 진입점이 정상 컴포넌트에는 무언가를 한다(`OBSERVABLE`과 같은 이유: 아무것도 안 하는 것과
@@ -288,7 +288,65 @@ def test_every_entry_point_has_a_row():
    전자면 `after_mutation_chores`가 컴포넌트마다 회복해야 해 뒤처리가 진입점의 `try` 밖에서도 회복을 진다.
 2. **`has_joined`를 서버도 질 것인가.** 이벤트·훅·업로드는 지금 클라이언트만 막는다. 낡은 번들이나 손으로 보낸 프레임에 대한
    방어로 서버가 막으면, 막힌 이벤트에 무엇으로 답하는가(`gone`? 빈 render?).
-3. **컴포넌트를 이름으로 부르는 모든 메일이 인스턴스 번호를 실을 것인가.** 내부 메일이라 `PROTOCOL_VERSION`과 무관하지만,
-   배포 중 옛 프로세스가 보낸 메일(번호 없음)을 어떻게 다룰지 — 받아들일지 버릴지 — 정해야 한다.
-4. **업로드 브로커 메시지의 렌더 실패**를 다른 진입점처럼 "그 컴포넌트를 다시 join"으로 다룰 것인가. 진행 중인 업로드는
+3. **업로드 브로커 메시지의 렌더 실패**를 다른 진입점처럼 "그 컴포넌트를 다시 join"으로 다룰 것인가. 진행 중인 업로드는
    다시 join하면 끝난다(`_release_uploads`) — 진행률 표시 하나가 던졌다고 업로드를 끝내는 것이 맞는가, 아니면 렌더만 건너뛰고 로그를 남길 것인가.
+
+초판에는 넷째 질문이 있었다 — 컴포넌트를 부르는 모든 메일이 인스턴스 번호를 싣는다면 배포 중 옛 프로세스가 보낸 번호 없는 메일을
+어떻게 다루는가. 코드가 답한다: **그런 메일은 생기지 않는다.** 메일은 `WireviewMeta.send` → `_do_send`가 컴포넌트의
+`wire.channel_name`으로만 보낸다(`core/meta.py:748`·`:764`). 그 이름은 그 연결의 세션 채널이고, 그 연결의 저장소가 든 인스턴스만
+갖는다 — 서명 상태에 실리지 않고(`wire`는 `exclude_fields`에 늘 든다) 다른 프로세스의 코드가 알 길이 없다. 같은 프로세스 안이면
+`transport.Mailbox`로, 아니면 레이어로 가지만(`core/transport.py:451`) 받는 쪽은 언제나 보낸 쪽과 같은 프로세스·같은 코드다.
+배포로 프로세스가 바뀌면 그 연결이 끝나고, 다시 연결한 페이지는 새 채널 이름을 받는다. 그래서 받는 쪽은 번호가 없는 메일을
+받아들일 이유가 없다 — 번호를 필수 인자로 둔다. (`utils.send_to`·`asend_to`는 이름이 비슷하지만 그룹으로 발행하는 알림이고 메일이 아니다.)
+
+#### 결정 (2026-11-12)
+
+- **업로드 렌더 실패(질문 3)** — 새 정책이 아니다. `docs/features/errors.md`의 표가 렌더 예외를 이미 "그 컴포넌트를 다시 join"으로
+  약속하고(13행), 다시 join이 끝나지 않은 업로드를 끝낸다고 적는다(104행). 업로드 경로만 그 계약을 지키지 않았다 → `_crashed`.
+  #233이 고친다.
+- **`has_joined` 서버 검사(질문 2)** — 바꾸지 않는다. 클라이언트의 `isLive`가 진다.
+- **`get_subscriptions()`(질문 1)** — 저장소 소유자의 결정을 기다린다. 그때까지 #233의 계약 테스트에 `xfail(strict=True)`로 남긴다.
+- **후보 B의 셋째 단계**(이미 맞는 진입점을 도우미로 옮기기, §5-2의 3)는 하지 않는다.
+
+## 부록 A. fix 커밋 분류 (`v1.0.0..HEAD -- wireview/session.py`)
+
+범주: A 빠뜨린 의무(다른 진입점에 이미 있던 것), B 순서·경합, C 새 기능의 결함, D 기타. `?`는 확신이 낮은 분류다.
+"새 의무 생성"의 `*`는 진입점·렌더 경로마다 손으로 거는 종류다. 412c41b는 97be5c7이 되돌렸지만 셌다.
+애매한 13개(b203a3c, cc56d0f, 22598bf, 2253383, 7b9c8b9, 572e051, 9968cc7, 216fbb7, aaad0ca, 562232c, ae1c59f, 1dbd65d, 85188b5)는 `session.py` diff까지 읽었다.
+
+| sha | 제목(요약) | 이슈 | 범주 | 의무/근거(한 줄) | 새 의무 생성 |
+|---|---|---|---|---|---|
+| 85188b5 | hook pushEvent 콜백을 그 렌더 뒤에 | #223 | B | hook_reply가 render보다 먼저 나갔다(순서) | – |
+| 2253383 | 답하는 중에 떠난 페이지 = 연결 끝 | #216 | C | 끊긴 소켓 송신 거절을 구분하는 장치가 없었다. join·_crashed·이벤트·업로드 콜백 4곳에 `except ConnectionGone: raise`를 손으로 추가 | *ConnectionGone 통과 |
+| 354d05a | 중간에 끊긴 presence leave 발행 | #211 | B | 발행 전에 left로 표시, 취소가 발행을 끊었다. stop() 자기 대기 | – |
+| 2623a7f | 앱이 어떻게 끝나든 세션을 한 번 끝낸다 | #211 | D | Channels는 disconnect 메시지일 때만 disconnect()를 부른다(서버의 취소·앱 예외) | consumer finally에서 stop, stop 단일 실행, LEAVING_SECONDS |
+| 9968cc7 | 되찾은 메일을 차례 안에서만, 순서대로 | #211 | B | 타이머가 차례 밖에서 메일을 꺼내 뒤 메일이 앞질렀다. 부차: 한 차례의 메일마다 aclose_old_connections·handling_message를 돌지 않음(A 성격) | *메일 차례(_turn), MAIL_LIMIT·MAIL_BYTES |
+| 216fbb7 | 마지막 leaving()이 퇴장 못 한 presence 정리 | #212 | C | leaving()이 던지거나 presence_leave를 안 부르면 meta가 남음 | leaving 뒤 presence.left |
+| 412c41b | kept part의 번호·presence 이름 이동 | #212 | C | id 없는 프로듀서 번호 매기기의 결함. 97be5c7이 되돌림 | (철회됨) |
+| aaad0ca | 바쁜 연결의 로그아웃도 패치 채널로 | #211 | D | 가득 찬 채널이 session_invalidated를 말없이 버림(레이어 유실) | auth 토픽을 PatchHub로도 듣기 |
+| 05abd74 | 자기에게 보낸 메일 사본, 유실 시 넘김 | #211 | D | 레이어가 가득 차면 세션 메일을 버림 | Mailbox(메일 사본) |
+| 562232c | {% querystring %}을 페이지 쿼리로 | #210 | C | 컴포넌트 템플릿 컨텍스트에 request가 없었다 | *모든 렌더 경로(컴포넌트·LC·함수·스트림 항목·Broadcast 항목)가 page_request.render, tell_query |
+| 124feb6 | 오래된 페이지와 쿠키 미도달 구분 | #209 | C | #209 후속(로그 등급·문구) | – |
+| 0c6af54 | 미-join 대기를 개수로만 제한, 도착 순 | #207 | C | 82db7fc의 시간 시한이 숨은 탭을 은퇴시킴(정책 오류) | (join_overdue 제거) |
+| abc551a | 쿠키가 소켓에 안 닿음 경고, renew 예산 | #209 | C | #209 후속 | RenewBudget |
+| 7e3484c | renew한 소켓의 첫 join 바퀴만 면제 | #209 | C | renewed 표시를 소켓 단위로 둔 설계 오류 | renewed join 표시 |
+| 82db7fc | 미-join 대기 제한, 메일 유실 시 넘김 | #207 | C | unheard에 끝이 없었고, deliver_unheard 메일 유실 시 영영 대기 | WireviewMeta.send 결과 확인, join_overdue(뒤에 제거) |
+| fd563e1 | 다른 신분으로 그린 페이지는 새 소켓 | #209 | C | boost 이동이 핸드셰이크 신분을 유지(설계에 없던 문제) | *wire.identity(상태 봉투 i), renew |
+| 7b9c8b9 | 중첩 컴포넌트가 join 전 들은 것을 join 뒤에 | #207 | B | 그린 쪽의 패스가 만든 인스턴스가 joined() 전에 알림을 받고 join이 덮어씀 | *unheard 보류·deliver_unheard, params 경로의 has_joined 확인 |
+| cc56d0f | render 트리가 던지면 은퇴를 되돌림 | #204 | C | #204 은퇴 기능의 결함, tombstone의 send_to_parent 누락 | tree undo(begin_tree/tree_failed) |
+| ae1c59f | 컴포넌트 템플릿에 유효한 csrf_token | #206 | C | 컴포넌트 컨텍스트가 RequestContext가 아님 | *렌더 경로마다 csrf 토큰(_add_csrf_token, 스트림은 매번 새로) |
+| 9334610 | 은퇴한 중첩 컴포넌트를 leave까지 묘비로 | #204 | C | #204 후속 | Tombstone |
+| 31d65f8 | 다른 패스의 kept part, 렌더 끝 은퇴, gone 답 | #204 | C | #204 리뷰 후속 | 모르는 id 이벤트에 gone 답 |
+| 01efd5d | 더는 그리지 않는 {% component %} 은퇴 | #204 | C | id 없는 중첩 컴포넌트가 연결 수명 내내 남음(누수) | end_pass/take_lifecycle 은퇴 |
+| 1dbd65d | 세션이 프로듀서 presence 채널을 듣는다 | #202 | C | PresenceMixin 래퍼가 앱 메서드를 가림 | presence 채널 구독(presence_channels) |
+| 429265d | 프로듀서가 sync에 답, 탭·토픽별 meta | #202 | C | presence 설계 결함 3개 | – |
+| 22598bf | 패치 채널 재시도, 쓰기 전 다시 묻기, 한도 | #185 | C | 3결함: PatchHub 실패 캐시(C), 큐 프레임 쓰기 전 repo.reachable 누락(A 성격 — 문서엔 있던 의무), QUEUE_LIMIT 계산(C) | – |
+| f2a1775 | reset 송신이 던져도 hold 유지 | #178 | B | redis가 넣고 나서 던지는 경우(이미 채널에 있음) | – |
+| fa132fd | reset이 쓰일 때 자기 hold를 놓는다 | #178 | B | 시한으로는 늦음과 유실을 못 가름 → 순서 어긋남 | stream_op 메일의 hold 토큰 |
+| 53ac2ee | release를 보낸 메시지만 시한을 미룸 | #178 | B | T1 시한, T2 토픽 구독 경합, T3 stop 순서, T4 mount 패리티 | – |
+| d308c50 | 처리 중엔 시한 대기, 누수 막기 | #178 | B | S1 핸들러 뒤 release, S2 stop 후 closed, S3 mount 패리티, S4/S5 누수 | handling_message(어댑터→세션) |
+| 12f7b17 | hold를 토큰으로, release 떠날 때 시한 | #178 | B | R1~R3 순서. 부차: R6 떠난 인스턴스가 hold(reachable 확인, A 성격), R5 mount 패리티 | 토큰 단위 hold, after_flush |
+| 572e051 | joined()뿐 아니라 모든 stream reset에서 hold | #178 | A? | join 경로에만 있던 hold가 핸들러·params_changed·notification·update()에 없었다. 고친 방식은 진입점별이 아니라 stream() 안으로 중앙화(patch_gate) | *patch_gate(모든 reset) |
+| d96431a | sticky 안에 그린 것에도 navigation params | #170 | C | 서버가 carried를 판단할 수 없음 → 클라이언트가 알림 | navigated의 carried |
+| cae1c12 | 페이지가 화면에 올라온 뒤 params | #170 | B | morph 전에 params_changed를 보냄(타이밍) | command_navigated |
+| b203a3c | join 첫 렌더 전 params, LC는 joined() 직후 | #170 | B | params가 렌더 뒤·루트에만. 부차: 패치 경로는 LC에 params를 알렸으나 join 경로는 안 함(A? 성격) | – |
