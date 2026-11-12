@@ -1000,7 +1000,17 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
     # The page's elements (GAP-056)
 
-    async def click(self, selector: str, /, *, text: str | re.Pattern[str] | None = None) -> str | None:
+    async def click(
+        self,
+        selector: str,
+        /,
+        *,
+        text: str | re.Pattern[str] | None = None,
+        ctrl: bool = False,
+        alt: bool = False,
+        shift: bool = False,
+        meta: bool = False,
+    ) -> str | None:
         """Click the element ``selector`` picks in the render, as a user does, and send what the page would.
 
         The click bubbles from the element through its ancestors, and every
@@ -1016,10 +1026,106 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         handler fires, when the binding is another component's, or when a
         ``JS()`` chain would push an event (no JavaScript runs here).
 
+        ``ctrl``, ``alt``, ``shift`` and ``meta`` hold those keys down during
+        the click, for the ``.ctrl``-style modifiers.
+
         Example:
             html = await view.click("button.remove", text="Delete")
+            await view.click("li.item", ctrl=True)
         """
-        return await self._act(lambda page: page.click(page.find(selector, text)))
+        held = testing_dom.modifier_keys(ctrl=ctrl, alt=alt, shift=shift, meta=meta)
+        return await self._act(lambda page: page.click(page.find(selector, text), held))
+
+    async def keydown(
+        self,
+        selector: str,
+        key: str,
+        /,
+        *,
+        text: str | re.Pattern[str] | None = None,
+        ctrl: bool = False,
+        alt: bool = False,
+        shift: bool = False,
+        meta: bool = False,
+        composing: bool = False,
+    ) -> str | None:
+        """Press ``key`` on the element ``selector`` picks: dispatch ``keydown``, and send what the page would.
+
+        ``key`` is the browser's ``event.key``: ``"Enter"``, ``"Escape"``, ``" "``,
+        ``"a"``, ``"ArrowUp"``. The modifier keys hold for ``.ctrl``-style
+        modifiers, and ``composing=True`` is a key an IME is composing with,
+        which no key condition (``.enter``, ``.key_code``) lets through. As in a
+        browser, Enter in a form's text field then submits the form (a click on
+        its first submit button, or a submit when it has none and one text
+        field). Nothing is typed: give a field its value with :meth:`input` or
+        :meth:`change`. See :meth:`click` for what is sent and when it fails.
+
+        Example:
+            await view.keydown("input[name=draft]", "Enter")
+        """
+        return await self._key("keydown", selector, key, text, ctrl, alt, shift, meta, composing)
+
+    async def keyup(
+        self,
+        selector: str,
+        key: str,
+        /,
+        *,
+        text: str | re.Pattern[str] | None = None,
+        ctrl: bool = False,
+        alt: bool = False,
+        shift: bool = False,
+        meta: bool = False,
+        composing: bool = False,
+    ) -> str | None:
+        """As :meth:`keydown`, dispatching ``keyup``, which submits nothing.
+
+        Example:
+            await view.keyup("input[name=draft]", "Enter")   # {% on "keyup.enter" "send" %}
+        """
+        return await self._key("keyup", selector, key, text, ctrl, alt, shift, meta, composing)
+
+    async def _key(
+        self,
+        type_: str,
+        selector: str,
+        key: str,
+        text: str | re.Pattern[str] | None,
+        ctrl: bool,
+        alt: bool,
+        shift: bool,
+        meta: bool,
+        composing: bool,
+    ) -> str | None:
+        if not isinstance(key, str) or not key:
+            raise TypeError(f"{type_}() takes the key as the browser names it (event.key), like 'Enter' or 'a'")
+        event = testing_dom.key_event(key, ctrl=ctrl, alt=alt, shift=shift, meta=meta, composing=composing)
+        return await self._act(lambda page: page.key(page.find(selector, text), type_, event))
+
+    async def focus(self, selector: str, /, *, text: str | re.Pattern[str] | None = None) -> str | None:
+        """Give the element ``selector`` picks focus: dispatch ``focus`` (its own bindings) then ``focusin`` (bubbles).
+
+        The element must be one a user can focus: a field, a button, a link
+        with an href, or one with ``tabindex`` or ``contenteditable``. The
+        helpers keep no focus between calls, so the element that had it gets no
+        ``blur``. See :meth:`click` for what is sent and when it fails.
+
+        Example:
+            await view.focus("input[name=title]")
+        """
+        return await self._act(lambda page: page.focus(page.find(selector, text), "focus"))
+
+    async def blur(self, selector: str, /, *, text: str | re.Pattern[str] | None = None) -> str | None:
+        """Take focus from the element ``selector`` picks: ``blur`` (its own bindings) then ``focusout`` (bubbles).
+
+        Leaving a field the user typed in sends ``change`` first in a browser:
+        call :meth:`change` before this one for that.
+
+        Example:
+            await view.change("input[name=title]", "New")
+            await view.blur("input[name=title]")
+        """
+        return await self._act(lambda page: page.focus(page.find(selector, text), "blur"))
 
     async def change(
         self, selector: str, /, value: t.Any = testing_dom._UNSET, *, text: str | re.Pattern[str] | None = None

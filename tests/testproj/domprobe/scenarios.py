@@ -13,7 +13,7 @@ import dataclasses
 import re
 import typing as t
 
-from .live import DomBubble, DomForm, DomLeaf, DomLive, DomNest
+from .live import DomBubble, DomForm, DomKeys, DomLeaf, DomLive, DomNest
 
 # The fields DomForm's form holds as the page draws it, as its handlers get them
 FORM = {
@@ -43,8 +43,8 @@ class Scenario:
 
     @property
     def done(self) -> re.Pattern[str]:
-        """What the page's ``heard`` shows once the last expected handler ran."""
-        return re.compile(rf"\b{re.escape(self.expected[-1][0])}$")
+        """What the page's ``heard`` shows once the last expected handler ran (others may run after it)."""
+        return re.compile(rf"\b{re.escape(self.expected[-1][0])}\b")
 
 
 def by(page: t.Any, testid: str) -> t.Any:
@@ -192,6 +192,91 @@ SCENARIOS = [
         lambda v: v.click("[data-testid=live-button]"),
         _click("live-button"),
         [("bump", {"lively": "v1"})],
+    ),
+]
+
+
+# DomKeys' fields outside its forms: every named one in the component, its forms' included
+KEYS = {"draft": "d0", "subject": "s0", "q": "q0", "q2": "r0", "go": "1", "q3": "x0"}
+
+SCENARIOS += [
+    # A modifier key held during the click
+    Scenario(
+        "shift-click",
+        DomBubble,
+        "heard-bubble",
+        lambda v: v.click("[data-testid=shift]", shift=True),
+        lambda page: by(page, "shift").click(modifiers=["Shift"]),
+        [("inner", {**BUBBLE, "n": 5}), WRAPPED],
+    ),
+    # .enter on keyup; a browser's press is keydown then keyup
+    Scenario(
+        "keyup-enter",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.keyup("[data-testid=draft]", "Enter"),
+        lambda page: by(page, "draft").press("Enter"),
+        [("sent", KEYS)],
+    ),
+    Scenario(
+        "keydown-escape",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.keydown("[data-testid=draft]", "Escape"),
+        lambda page: by(page, "draft").press("Escape"),
+        [("cancelled", KEYS)],
+    ),
+    Scenario(
+        "ctrl-enter",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.keydown("[data-testid=draft]", "Enter", ctrl=True),
+        lambda page: by(page, "draft").press("Control+Enter"),
+        [("ctrl_sent", KEYS)],
+    ),
+    # .key_code.65 on an ancestor: the key "a" bubbles up with keyCode 65
+    Scenario(
+        "key-code",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.keydown("[data-testid=draft]", "a"),
+        lambda page: by(page, "draft").press("a"),
+        [("letter", KEYS)],
+    ),
+    # Enter in a form's only text field submits it
+    Scenario(
+        "implicit-submit",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.keydown("[data-testid=q]", "Enter"),
+        lambda page: by(page, "q").press("Enter"),
+        [("searched", {"q": "q0"})],
+    ),
+    # ...and in a form with a submit button, clicks that button
+    Scenario(
+        "default-button",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.keydown("[data-testid=q2]", "Enter"),
+        lambda page: by(page, "q2").press("Enter"),
+        [("submitted", {"q2": "r0", "go": "1"})],
+    ),
+    # focus runs the field's own binding and not its ancestor's; focusin bubbles
+    Scenario(
+        "focus",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.focus("[data-testid=subject]"),
+        lambda page: by(page, "subject").focus(),
+        [("focused", {**KEYS, "where": "field"}), ("entered", KEYS)],
+    ),
+    Scenario(
+        "blur",
+        DomKeys,
+        "heard-keys",
+        lambda v: v.blur("[data-testid=subject]"),
+        lambda page: (by(page, "subject").focus(), by(page, "subject").blur()),
+        [("blurred", KEYS), ("left", KEYS)],
     ),
 ]
 

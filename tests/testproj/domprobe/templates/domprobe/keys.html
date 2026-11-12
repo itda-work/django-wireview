@@ -1,0 +1,32 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-keys">{{ heard }}</output>
+  <div {% on "keydown.key_code.65" "letter" %}
+       {% on "focus" "focused" where="outer" %}
+       {% on "focusin" "entered" %}
+       {% on "focusout" "left" %}>
+    <input name="draft"
+           value="d0"
+           data-testid="draft"
+           {% on "keyup.enter" "sent" %}
+           {% on "keydown.esc" "cancelled" %}
+           {% on "keydown.ctrl.enter" "ctrl_sent" %}>
+    <input name="subject"
+           value="s0"
+           data-testid="subject"
+           {% on "focus" "focused" where="field" %}
+           {% on "blur" "blurred" %}>
+  </div>
+  <form data-testid="search" {% on "submit.prevent" "searched" %}>
+    <input name="q" value="q0" data-testid="q">
+  </form>
+  <form data-testid="send" {% on "submit.prevent" "submitted" %}>
+    <input name="q2" value="r0" data-testid="q2">
+    <button name="go" value="1" data-testid="go">go</button>
+  </form>
+  <form data-testid="held" {% on "submit.prevent" "submitted" %}>
+    <input name="q3" value="x0" data-testid="q3">
+    <button disabled>held</button>
+  </form>
+</div>

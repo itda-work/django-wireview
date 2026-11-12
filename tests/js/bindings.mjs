@@ -3,9 +3,11 @@
  * (events.mjs) on the cases the test helpers (wireview/testing_dom.py) get,
  * and prints what fired.
  *
- * stdin:  JSON array of cases `{chain, type, event}`. `chain` is the elements
- *         an event passes from its target up, each the list of its attribute
- *         names; `event` holds the fields runSteps reads (key, ctrlKey, ...).
+ * stdin:  JSON array of cases `{chain, type, event, bubbles}`. `chain` is the
+ *         elements an event passes from its target up, each the list of its
+ *         attribute names; `event` holds the fields runSteps reads (key,
+ *         ctrlKey, ...); `bubbles` is false for an event like focus, whose
+ *         target's bindings alone run (the root's capture listener).
  * stdout: JSON array of `{fired, prevented}`: the bindings that fired as
  *         `[element index, attribute]` in the order they fire, and whether the
  *         event's default was prevented while it was dispatched.
@@ -25,16 +27,16 @@ let input = "";
 for await (const chunk of process.stdin) input += chunk;
 
 /**
- * @param {{chain: string[][], type: string, event: Object}} kase
+ * @param {{chain: string[][], type: string, event: Object, bubbles?: boolean}} kase
  */
-function dispatch({ chain, type, event }) {
+function dispatch({ chain, type, event, bubbles = true }) {
   /** @type {Array<[number, string]>} */
   const fired = [];
   let prevented = false;
   let late = false;
   /** @type {Array<{delay: number, seq: number, rest: () => void}>} */
   const timers = [];
-  for (let index = 0; index < chain.length; index++) {
+  for (let index = 0; index < (bubbles ? chain.length : 1); index++) {
     let stopped = false;
     for (const attribute of bindingsFor(chain[index], type)) {
       const binding = parseBinding(attribute);

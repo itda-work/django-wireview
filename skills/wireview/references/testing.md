@@ -59,7 +59,13 @@ async def test_the_plus_button_increments():
 
     await view.submit("form", values={"amount": "5"})  # <form {% on "submit.prevent" "set_to" %}>
     assert view.component.amount == 5
+
+    await view.keyup("input[name=draft]", "Enter")     # <input {% on "keyup.enter" "send" %}>
+    await view.focus("input[name=title]")              # focus(그 요소만) 뒤 focusin
 ```
+
+키는 브라우저의 `event.key` 이름(`"Enter"`, `"Escape"`, `"a"`)이고 `ctrl=True` 등은 수정 키, `composing=True`는 IME
+조합 중인 키다(키 조건이 지나가지 않는다). 폼의 텍스트 칸에서 Enter `keydown`은 브라우저처럼 폼을 제출한다.
 
 선택자에 맞는 요소가 없거나 여럿, 바인딩 없음, disabled, 다른 컴포넌트(중첩·LiveComponent)의 바인딩, `.prevent` 없는
 submit은 이유를 말하며 실패한다. JavaScript는 돌지 않는다(`JS()` 체인·훅·debounce의 시간). 부를 때마다 렌더에서

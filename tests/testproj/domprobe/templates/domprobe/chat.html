@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <input name="draft"
+         value="hi"
+         data-testid="draft"
+         {% on "keyup.enter" "send" %}>
+</div>

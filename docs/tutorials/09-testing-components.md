@@ -72,7 +72,7 @@ DB를 읽거나 쓰는 컴포넌트는 `joined()`에서 이미 DB에 닿으므�
 |-------------|------|
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.call(handler, **kwargs)` | 이벤트 핸들러 호출 |
-| `view.click(selector)` · `change` · `input` · `submit` | 페이지의 요소로 이벤트 보내기 (아래 참조) |
+| `view.click(selector)` · `change` · `input` · `submit` · `keydown` · `keyup` · `focus` · `blur` | 페이지의 요소로 이벤트 보내기 (아래 참조) |
 | `view.sent_messages` | 전송된 메시지 목록 |
 | `view.redirected_to` | 리다이렉트 URL |
 | `view.is_frozen` | freeze 상태 |
@@ -144,6 +144,9 @@ async def test_the_plus_button_is_disabled_at_the_maximum():
     with pytest.raises(AssertionError, match="disabled"):
         await view.click("button", text="+1")
 ```
+
+키보드도 같다. 채팅 입력창의 `{% on "keyup.enter" "send" %}`는 `view.keyup("input[name=draft]", "Enter")`로 누른다 —
+바인딩의 키를 `.esc`로 잘못 적었거나 지웠으면 실패한다. 포커스는 `view.focus()`·`view.blur()`다.
 
 선택자에 맞는 요소가 없거나 여럿이면, 그 요소와 조상에 그 이벤트의 바인딩이 없으면, 요소가 disabled면 실패한다.
 JavaScript는 돌지 않는다. 폼 제출(`submit()`)과 값 규칙, 실패하는 경우의 전체 목록은

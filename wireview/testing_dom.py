@@ -645,6 +645,45 @@ class ServerEvent:
     element: Element
 
 
+#: The events the helpers dispatch that do not bubble
+NON_BUBBLING = frozenset({"focus", "blur"})
+
+#: ``KeyboardEvent.keyCode`` of the keys that have one apart from their character
+KEY_CODES = {
+    "Backspace": 8, "Tab": 9, "Enter": 13, "Shift": 16, "Control": 17, "Alt": 18, "Pause": 19, "CapsLock": 20,
+    "Escape": 27, " ": 32, "PageUp": 33, "PageDown": 34, "End": 35, "Home": 36, "ArrowLeft": 37, "ArrowUp": 38,
+    "ArrowRight": 39, "ArrowDown": 40, "Insert": 45, "Delete": 46, "Meta": 91,
+    **{f"F{n}": 111 + n for n in range(1, 13)},
+}  # fmt: skip
+
+
+def key_event(
+    key: str, *, ctrl: bool = False, alt: bool = False, shift: bool = False, meta: bool = False, composing: bool = False
+) -> dict[str, t.Any]:
+    """The fields of a ``KeyboardEvent`` ``runSteps`` reads, as a browser fills them for ``key``.
+
+    ``keyCode`` is the legacy code: a letter's is its capital's, a digit's its
+    own, a named key's from :data:`KEY_CODES`, 0 for the rest -- and 229 while
+    an IME composes, as Chromium gives it.
+    """
+    if composing:
+        code = 229
+    elif len(key) == 1 and key.isascii() and key.isalnum():
+        code = ord(key.upper())
+    else:
+        code = KEY_CODES.get(key, 0)
+    return {
+        "key": key,
+        "keyCode": code,
+        "isComposing": composing,
+        **modifier_keys(ctrl=ctrl, alt=alt, shift=shift, meta=meta),
+    }
+
+
+def modifier_keys(*, ctrl: bool, alt: bool, shift: bool, meta: bool) -> dict[str, bool]:
+    return {"ctrlKey": ctrl, "altKey": alt, "shiftKey": shift, "metaKey": meta}
+
+
 class DomError(AssertionError):
     """The test asked for what a user cannot do on this page, or what reaches no handler."""
 
@@ -719,10 +758,15 @@ class _Dispatch:
         self.timers: list[tuple[float, int, t.Callable[[], None]]] = []
 
     def dispatch(self, target: Element, type_: str, event: t.Mapping[str, t.Any] | None = None) -> bool:
-        """Dispatch ``type_`` at ``target``, bubbling (``EventBindings.bubble``). Whether its default was prevented."""
+        """Dispatch ``type_`` at ``target``, bubbling (``EventBindings.bubble``). Whether its default was prevented.
+
+        An event that does not bubble (``focus``, ``blur``) runs its target's
+        bindings alone: the client's capture listener on the root.
+        """
         state = _EventState()
         self.dispatched.append((type_, target))
-        for el in [target, *(a for a in target.ancestors() if a.tag != "#document")]:
+        path = [target] if type_ in NON_BUBBLING else [target, *(a for a in target.ancestors() if a.tag != "#document")]
+        for el in path:
             state.stopped = False
             for attribute in bindings_for(el.attrs, type_):
                 binding = parse_binding(attribute)
@@ -855,9 +899,14 @@ class Page:
 
     # -- actions ------------------------------------------------------------
 
-    def click(self, el: Element) -> list[ServerEvent]:
+    def click(self, el: Element, event: t.Mapping[str, t.Any] | None = None) -> list[ServerEvent]:
         self._refuse_disabled(el, "click")
         action = _Dispatch(self)
+        self._click(action, el, event or {})
+        return self._finish(action, el, "click")
+
+    def _click(self, action: _Dispatch, el: Element, event: t.Mapping[str, t.Any]) -> None:
+        """A click and what a browser does after it: tick a checkbox or radio, submit a form."""
         toggled = None
         if el.tag == "input" and input_type(el) in ("checkbox", "radio"):
             # The click toggles it before its listeners run, and is undone if one prevents it
@@ -866,7 +915,7 @@ class Page:
                 self.fields.set_checked(el, not toggled[1], self.root)
             else:
                 self.fields.set_checked(el, True, self.root)
-        prevented = action.dispatch(el, "click")
+        prevented = action.dispatch(el, "click", event)
         if toggled is not None:
             box, before = toggled
             if prevented:
@@ -878,7 +927,46 @@ class Page:
             form = form_of(el, self.root)
             assert form is not None
             self._submit(action, form)
-        return self._finish(action, el, "click")
+
+    def key(self, el: Element, type_: str, event: t.Mapping[str, t.Any]) -> list[ServerEvent]:
+        """``keydown`` or ``keyup`` at ``el``, and Enter's implicit submission of a form after a keydown."""
+        self._refuse_disabled(el, type_)
+        action = _Dispatch(self)
+        prevented = action.dispatch(el, type_, event)
+        if type_ == "keydown" and event.get("key") == "Enter" and not event.get("isComposing") and not prevented:
+            self._submit_implicitly(action, el)
+        return self._finish(action, el, type_)
+
+    def _submit_implicitly(self, action: _Dispatch, el: Element) -> None:
+        """Enter in a form's text field: a click on the form's default button, or a submit when it has none
+        and this is its only text field (HTML's implicit submission)."""
+        if el.tag != "input" or input_type(el) not in _IMPLICIT_SUBMISSION_TYPES:
+            return
+        form = form_of(el, self.root)
+        if form is None:
+            return
+        owned = [d for d in self.root.descendants() if form_of(d, self.root) is form]
+        default = next((d for d in owned if is_submitter(d, self.root)), None)
+        if default is not None:
+            if disabled_by(default) is None:
+                self._click(action, default, {})
+            return
+        typed = [d for d in owned if d.tag == "input" and input_type(d) in _IMPLICIT_SUBMISSION_TYPES]
+        if len(typed) == 1:
+            self._submit(action, form)
+
+    def focus(self, el: Element, type_: str) -> list[ServerEvent]:
+        """``focus`` then ``focusin``, or ``blur`` then ``focusout``."""
+        self._refuse_disabled(el, type_)
+        if not is_focusable(el):
+            raise DomError(
+                f"Cannot {type_} {el.describe()}: it cannot take focus. A field, a button, a link with an href, "
+                "or an element with tabindex or contenteditable can."
+            )
+        action = _Dispatch(self)
+        action.dispatch(el, type_)
+        action.dispatch(el, "focusin" if type_ == "focus" else "focusout")
+        return self._finish(action, el, type_)
 
     def change(self, el: Element, value: t.Any, type_: str) -> list[ServerEvent]:
         self._refuse_disabled(el, type_)
@@ -1022,6 +1110,26 @@ class Page:
                 f"{len(named)} fields are called {name!r} in {form.describe()}: give a list of {len(named)} "
                 "values, one for each in the order of the page"
             )
+
+
+#: The fields whose Enter submits their form (HTML's "fields that block implicit submission")
+_IMPLICIT_SUBMISSION_TYPES = frozenset(
+    {"text", "search", "url", "tel", "email", "password", "date", "month", "week", "time", "datetime-local", "number"}
+)
+
+
+def is_focusable(el: Element) -> bool:
+    """Whether a user can give ``el`` focus (a click or Tab): what ``focus()`` and ``blur()`` act on."""
+    if el.tag in ("input", "select", "textarea", "button"):
+        return not (el.tag == "input" and input_type(el) == "hidden")
+    if el.tag in ("a", "area") and el.has("href"):
+        return True
+    if el.tag in ("iframe", "summary"):
+        return True
+    if el.has("tabindex"):
+        return True
+    editable = el.get("contenteditable")
+    return editable is not None and editable.lower() in ("", "true", "plaintext-only")
 
 
 _TYPED_KINDS = frozenset(

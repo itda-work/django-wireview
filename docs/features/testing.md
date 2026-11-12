@@ -44,7 +44,7 @@ async def test_increment():
 | 무엇 | 설명 |
 |------|------|
 | `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로. 템플릿의 바인딩은 보지 않는다 — 그것까지 보려면 아래 행 |
-| `await view.click(selector, *, text=None)` 외 `change`·`input`·`submit` | 렌더의 요소를 골라 그 이벤트를 보낸다. 요소의 `wire-on-*` 바인딩대로 핸들러가 불린다 — 아래 "페이지의 요소로 이벤트 보내기" |
+| `await view.click(selector, *, text=None)` 외 `change`·`input`·`submit`·`keydown`·`keyup`·`focus`·`blur` | 렌더의 요소를 골라 그 이벤트를 보낸다. 요소의 `wire-on-*` 바인딩대로 핸들러가 불린다 — 아래 "페이지의 요소로 이벤트 보내기" |
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
 | `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. **약속하는 것은 `None`인지 아닌지뿐이고**, diff의 모양은 와이어 프로토콜이라 공개가 아니다. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 단 컴포넌트가 알림을 받으면 그 렌더도 기준선을 옮긴다 — 페이지가 이미 받은 것이므로 알림이 그린 것은 `sent_messages`의 `render`에 있고, 그 뒤의 `render_diff()`는 알림 뒤의 변화만 본다(바뀐 것이 없으면 `None`, 아래 "알림 받기"). `render_diff()`로 기준선을 잡은 뒤 `call()`한 이벤트가 있으면, 다음 알림이 그 이벤트의 렌더를 먼저 해 `render`로 남긴다(세션이 이벤트마다 렌더하듯. `skip_render()`했으면 남기지 않는다). 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다. `Meta.shared_render`를 선언한 컴포넌트는 `DEBUG`와 상관없이 검사한다 — 렌더가 `user`·`session`·`request` 등을 읽으면 `SharedRenderError`다(`VERIFY_SHARED_RENDER = False`로 끈다, [shared-render](./shared-render.md#틀린-선언-잡기)) |
@@ -85,12 +85,16 @@ async def test_remove_button_deletes_the_row(item):
 
 | 헬퍼 | 하는 일 |
 |------|---------|
-| `await view.click(selector, *, text=None)` | 클릭. checkbox·radio는 클릭 동안 체크가 바뀌고, 막히지 않으면 `input`·`change`가 뒤따른다. 폼의 제출 버튼이면 click 바인딩 뒤 그 폼에 `submit`이 간다 |
+| `await view.click(selector, *, text=None, ctrl=False, alt=False, shift=False, meta=False)` | 클릭. checkbox·radio는 클릭 동안 체크가 바뀌고, 막히지 않으면 `input`·`change`가 뒤따른다. 폼의 제출 버튼이면 click 바인딩 뒤 그 폼에 `submit`이 간다. `ctrl=True` 등은 그 키를 누른 채 클릭한다(`.ctrl` 같은 수정자) |
 | `await view.change(selector, value, *, text=None)` | 칸에 `value`를 넣고 `change`. 텍스트 칸을 떠날 때·select·checkbox가 보내는 것 |
 | `await view.input(selector, value, *, text=None)` | 같은 값 규칙으로 `input`. 키를 누를 때마다 보내는 것 |
 | `await view.submit(selector="form", *, values=None, submitter=None, text=None)` | 폼 제출. `values`는 이름 → 사용자가 넣은 값, `submitter`는 누른 제출 버튼의 선택자 |
+| `await view.keydown(selector, key, *, text=None, ctrl=False, alt=False, shift=False, meta=False, composing=False)` | 키를 누른다. `key`는 브라우저의 `event.key`(`"Enter"`, `"Escape"`, `" "`, `"a"`, `"ArrowUp"`). 폼의 텍스트 칸에서 Enter는 브라우저처럼 폼을 제출한다(아래) |
+| `await view.keyup(selector, key, ...)` | 같은 인자로 키를 뗀다. `{% on "keyup.enter" "send" %}` 같은 채팅 입력창 |
+| `await view.focus(selector, *, text=None)` | 포커스를 준다: `focus`(그 요소의 바인딩만) 뒤 `focusin`(조상으로 올라간다) |
+| `await view.blur(selector, *, text=None)` | 포커스를 뺀다: `blur` 뒤 `focusout` |
 
-넷 다 이벤트를 보낸 뒤의 `view.render()`를 돌려준다(Phoenix의 `render_click`처럼). 핸들러는 `call()`과 같은 길로
+모두 이벤트를 보낸 뒤의 `view.render()`를 돌려준다(Phoenix의 `render_click`처럼). 핸들러는 `call()`과 같은 길로
 돈다 — `handle_event` 훅, 클라이언트가 부를 수 있는 메서드인지의 검사, `validate_call`, 그 뒤의 `sent_messages`와
 내비게이션 단언까지.
 
@@ -123,15 +127,26 @@ async def test_remove_button_deletes_the_row(item):
   중첩 컴포넌트의 것은 빠진다. checkbox·radio는 체크된 것만(값이 없으면 `"on"`), select multiple은 목록,
   **disabled 칸과 이름 있는 버튼은 모두** 실린다(누른 버튼만이 아니다 — 클라이언트가 지금 그렇게 보낸다,
   GAP-048, [기능 갭](../FEATURE-GAP.md)). 핸들러는 같은 이름의 마지막 값을 받는다.
-- 수정자: `.prevent`·`.stop`은 그대로 따른다. `.ctrl`·`.enter`처럼 조건인 수정자는 헬퍼의 이벤트(눌린 키 없음)에서
-  성립하지 않으므로 그 바인딩은 건너뛰고 조상으로 계속 간다 — 브라우저의 평범한 클릭과 같다. `.debounce`는 시간이
+- 수정자: `.prevent`·`.stop`은 그대로 따른다. `.ctrl`·`.enter`·`.key_code.65`처럼 조건인 수정자는 헬퍼가 보낸
+  이벤트(누른 키, `ctrl=` 같은 수정 키)로 판단한다. 성립하지 않으면 그 바인딩은 건너뛰고 조상으로 계속 간다 — 브라우저의
+  평범한 클릭이 `.ctrl` 바인딩을 지나치는 것과 같다. `keyCode`는 브라우저가 채우는 값이다(글자는 대문자의 코드, Enter 13,
+  Escape 27, 모르는 키는 0). `composing=True`는 IME가 조합 중인 키라 키 조건(`.enter`·`.key_code`)이 지나가지 않는다 —
+  한글을 조합하며 누른 Enter는 보내지 않는다. `.debounce`는 시간이
   지난 것으로 보고 보낸다(브라우저처럼 같은 이벤트의 다른 바인딩 뒤에), `.throttle`은 매번 창이 지난 것으로 본다.
   여러 번의 입력이 하나로 합쳐지는 것은 시간의 일이라 브라우저 E2E로 본다.
+- `focus`·`blur`는 올라가지 않는다: 그 요소의 바인딩만 돈다. 조상에서 받으려면 `focusin`·`focusout`에 건다.
+  헬퍼는 포커스를 기억하지 않으므로 `focus(b)`가 앞의 칸에 `blur`를 보내지 않는다. 입력한 칸을 떠나는 것은 브라우저에서
+  `change` 뒤 `blur`다 — `change()` 다음 `blur()`로 한다.
+- 키의 기본 동작은 하나만 따른다: 폼의 텍스트 칸에서 막히지 않은 Enter `keydown`은 폼의 첫 제출 버튼을 누른다(그 버튼이
+  disabled면 아무것도 하지 않는다). 제출 버튼이 없으면 텍스트 칸이 하나뿐인 폼만 제출한다(HTML의 암묵적 제출).
+  글자를 치면 칸에 들어가는 것, 버튼에서 Enter·Space가 클릭이 되는 것은 하지 않는다 — 값은 `input()`·`change()`로, 클릭은
+  `click()`으로.
 
 **실패가 계약이다.** 다음은 아무 일도 하지 않고 통과하는 대신 이유를 말하며 `AssertionError`로 실패한다.
 
 - 선택자에 맞는 요소가 없다, 여럿이다. 스트림 항목에만 있으면 그렇다고 말한다.
 - 이벤트가 만난 바인딩 중 서버 핸들러를 부르는 것이 없다. 수정자 조건 때문에 건너뛴 바인딩은 함께 나열한다.
+- 포커스를 받을 수 없는 요소에 `focus`·`blur`를 했다(칸·버튼·`href` 있는 링크·`tabindex`·`contenteditable` 밖).
 - 요소가 disabled다(자신, 감싼 `<button disabled>`, `<fieldset disabled>` — 그 첫 `<legend>` 안은 아니다). readonly·
   `type=hidden` 칸에 값을 넣으려 했다. 칸이 아닌 요소에 값을 주었다. 값의 타입이 칸과 맞지 않다.
 - 바인딩이 다른 컴포넌트(중첩 `{% component %}`, LiveComponent)의 것이다. `mount()`는 마운트한 컴포넌트의 핸들러만
@@ -141,9 +156,8 @@ async def test_remove_button_deletes_the_row(item):
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
 
 **하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅, 로딩 클래스, `wire-disabled-with`는
-없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. `<label>`을 눌러 칸을 누르는 것, 키보드(`keyup.enter` 같은
-key 이벤트)·focus·blur, 스트림 항목(렌더에 없다), 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계,
-GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
+없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. `<label>`을 눌러 칸을 누르는 것, 스트림 항목(렌더에 없다),
+중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
 
 ## 내비게이션 단언
 

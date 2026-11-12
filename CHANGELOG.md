@@ -26,6 +26,14 @@ The django-reactor era changelog (2.x) is preserved in
   hold for these events. They return what `render()` returns afterwards. `tests/js/bindings.mjs` runs the client's
   `events.mjs` on the inputs the helpers get, and `tests/test_dom_events_e2e.py` does each action of the probe in a
   browser and compares what the handlers heard.
+- `MountedComponent.keydown()`, `keyup()`, `focus()` and `blur()`, and `click(..., ctrl=, alt=, shift=, meta=)`
+  (GAP-056, #252): a key is the browser's `event.key` (`"Enter"`, `"a"`), with the modifier keys held and
+  `composing=True` for a key an IME is composing with, and the `.enter`, `.ctrl` and `.key_code` conditions read it
+  as `events.mjs` does -- a chat input whose `{% on "keyup.enter" "send" %}` was deleted or bound to another key
+  fails `keyup(..., "Enter")` where `call("send")` passed. Enter in a form's text field submits the form as a
+  browser does (a click on its first submit button, or a submit when it has none and one text field). `focus` and
+  `blur` run the element's own bindings and then dispatch `focusin` and `focusout`, which bubble, as the client's
+  capture listener does. The random comparison with `events.mjs` and the browser scenarios take key and focus events.
 - Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
   6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
   (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's

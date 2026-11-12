@@ -120,6 +120,57 @@ class DomNest(_Recording, Component):
         self._heard("wrapped", kwargs)
 
 
+class DomKeys(_Recording, Component):
+    """Key and focus events: key conditions, a key code, Enter's implicit submission, focus that does not bubble."""
+
+    class Meta:
+        template_name = "domprobe/keys.html"
+
+    heard: str = ""
+
+    async def sent(self, **kwargs: t.Any) -> None:
+        self._heard("sent", kwargs)
+
+    async def cancelled(self, **kwargs: t.Any) -> None:
+        self._heard("cancelled", kwargs)
+
+    async def ctrl_sent(self, **kwargs: t.Any) -> None:
+        self._heard("ctrl_sent", kwargs)
+
+    async def letter(self, **kwargs: t.Any) -> None:
+        self._heard("letter", kwargs)
+
+    async def focused(self, **kwargs: t.Any) -> None:
+        self._heard("focused", kwargs)
+
+    async def blurred(self, **kwargs: t.Any) -> None:
+        self._heard("blurred", kwargs)
+
+    async def entered(self, **kwargs: t.Any) -> None:
+        self._heard("entered", kwargs)
+
+    async def left(self, **kwargs: t.Any) -> None:
+        self._heard("left", kwargs)
+
+    async def searched(self, **kwargs: t.Any) -> None:
+        self._heard("searched", kwargs)
+
+    async def submitted(self, **kwargs: t.Any) -> None:
+        self._heard("submitted", kwargs)
+
+
+class DomChat(_Recording, Component):
+    """A chat input that sends on Enter: ``chat_unbound.html`` is the same input with the binding deleted."""
+
+    class Meta:
+        template_name = "domprobe/chat.html"
+
+    heard: str = ""
+
+    async def send(self, draft: str) -> None:
+        self._heard("send", {"draft": draft})
+
+
 class DomTrap(_Recording, Component):
     """The mistake the helpers catch and ``call()`` does not: a button that is not wired to ``remove``.
 

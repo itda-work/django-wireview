@@ -24,12 +24,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from testproj.domprobe.live import HEARD, DomBubble, DomForm, DomNest, DomTrap
+from testproj.domprobe.live import HEARD, DomBubble, DomChat, DomForm, DomKeys, DomNest, DomTrap
 from testproj.domprobe.scenarios import SCENARIOS, heard
 
 from wireview import JS, Component, mount
 from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
-from wireview.testing_dom import Element, Selector, _Dispatch, parse
+from wireview.testing_dom import NON_BUBBLING, Element, Selector, _Dispatch, key_event, parse
 
 DRIVER = Path(__file__).parent / "js" / "bindings.mjs"
 
@@ -45,25 +45,35 @@ def _clear_heard():
 # The client's rules, on the same inputs
 # ============================================================================
 
-EVENT_TYPES = ["click", "change", "input", "submit", "keyup"]
+EVENT_TYPES = ["click", "change", "input", "submit", "keyup", "keydown", "focus", "blur", "focusin", "focusout"]
 TOKENS = [*MODIFIERS, "Enter", "ESC", "away", ""]
 
 
-def _binding_name(rng: random.Random) -> str:
-    """A binding attribute, valid or not: the client reads whatever a page carries."""
-    tokens = [rng.choice(EVENT_TYPES)]
+def _binding_name(rng: random.Random, type_: str) -> str:
+    """A binding attribute, valid or not: the client reads whatever a page carries. Half are for ``type_``."""
+    tokens = [type_ if rng.random() < 0.5 else rng.choice(EVENT_TYPES)]
     for _ in range(rng.choice([0, 1, 1, 2, 3, 4])):
         token = rng.choice(TOKENS)
         tokens.append(token)
         if token in MODIFIER_ARGUMENTS and rng.random() < 0.9:
-            tokens.append(rng.choice(["0", "30", "300", "enter", "a", "13", "x1"]))
+            tokens.append(rng.choice(["0", "30", "300", "enter", "a", "13", "65", "x1"]))
     return "wire-on-" + ".".join(tokens)
 
 
 def _event(rng: random.Random) -> dict:
-    if rng.random() < 0.5:
-        # What the helpers dispatch: no keys held
+    if rng.random() < 0.3:
+        # What the helpers dispatch for an event without keys
         return {}
+    if rng.random() < 0.5:
+        # What keydown() and keyup() dispatch
+        return key_event(
+            rng.choice(["Enter", "a", "Z", "7", "Escape", " ", "ArrowUp", "Tab", "Delete", "Backspace", "한"]),
+            ctrl=rng.random() < 0.3,
+            alt=rng.random() < 0.2,
+            shift=rng.random() < 0.2,
+            meta=rng.random() < 0.2,
+            composing=rng.random() < 0.15,
+        )
     return {
         "key": rng.choice(["Enter", "a", "Escape", " ", "ArrowUp"]),
         "keyCode": rng.choice([13, 65, 27]),
@@ -76,12 +86,14 @@ def _event(rng: random.Random) -> dict:
 
 
 def _case(rng: random.Random) -> dict:
+    type_ = rng.choice(EVENT_TYPES)
     chain = [
-        [_binding_name(rng) for _ in range(rng.choice([0, 0, 1, 1, 2, 3]))] for _ in range(rng.choice([1, 2, 3, 4]))
+        [_binding_name(rng, type_) for _ in range(rng.choice([0, 0, 1, 1, 2, 3]))]
+        for _ in range(rng.choice([1, 2, 3, 4]))
     ]
     # An element carries an attribute once
     chain = [list(dict.fromkeys(names)) for names in chain]
-    return {"chain": chain, "type": rng.choice(EVENT_TYPES), "event": _event(rng)}
+    return {"chain": chain, "type": type_, "event": _event(rng), "bubbles": type_ not in NON_BUBBLING}
 
 
 class _Recorder:
@@ -211,6 +223,23 @@ async def test_a_miswired_button_calls_what_it_is_wired_to():
     assert [name for _, name, _ in HEARD] == ["remove", "archive"]
 
 
+class DomChatUnbound(DomChat):
+    class Meta:
+        template_name = "domprobe/chat_unbound.html"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_deleted_key_binding_fails_the_key_and_not_the_call():
+    view = await mount(DomChat)
+    await view.keyup("[data-testid=draft]", "Enter")
+    unbound = await mount(DomChatUnbound)
+    await unbound.call("send", draft="hi")
+    with pytest.raises(AssertionError, match=r"The keyup on <input .*reaches no handler: it dispatched keyup"):
+        await unbound.keyup("[data-testid=draft]", "Enter")
+    assert [name for _, name, _ in HEARD] == ["send", "send"]
+
+
 # ============================================================================
 # What fails, and says why
 # ============================================================================
@@ -228,7 +257,7 @@ async def _fails(view, action, match: str) -> None:
     ("component", "action", "match"),
     [
         (DomBubble, lambda v: v.click("[data-testid=nope]"), r"No element matches '\[data-testid=nope\]'"),
-        (DomBubble, lambda v: v.click("button"), r"5 elements match 'button'.*\n  <button"),
+        (DomBubble, lambda v: v.click("button"), r"6 elements match 'button'.*\n  <button"),
         (DomBubble, lambda v: v.click("button", text="nothing"), r"No element matches 'button' with text 'nothing'"),
         # Nothing on the way up from the output binds a click
         (DomBubble, lambda v: v.click("output"), r"reaches no handler"),
@@ -246,6 +275,20 @@ async def _fails(view, action, match: str) -> None:
         (DomForm, lambda v: v.submit("form", values={"plan": "gold"}), r"No radio button 'plan'.*'gold'"),
         (DomForm, lambda v: v.submit("form", submitter="[data-testid=title]"), r"is not a submit button"),
         (DomForm, lambda v: v.submit("[data-testid=title]"), r"is not a form"),
+        # A key the binding does not take, and one an IME is composing with
+        (DomChat, lambda v: v.keyup("[data-testid=draft]", "Escape"), r"its key 'enter' modifier does not hold"),
+        (
+            DomChat,
+            lambda v: v.keyup("[data-testid=draft]", "Enter", composing=True),
+            r"its key 'enter' modifier does not hold",
+        ),
+        (DomChat, lambda v: v.keydown("[data-testid=draft]", "Enter"), r"reaches no handler: it dispatched keydown"),
+        # A modifier key not held
+        (DomKeys, lambda v: v.keydown("[data-testid=q2]", "a", shift=True), r"reaches no handler"),
+        # What cannot take focus
+        (DomKeys, lambda v: v.focus("output"), r"Cannot focus <output.*cannot take focus"),
+        (DomKeys, lambda v: v.blur("[data-testid=search]"), r"Cannot blur <form"),
+        (DomForm, lambda v: v.focus("input[name=locked]"), r"Cannot focus .*: it is disabled"),
         # The binding belongs to a nested component, which mount() does not run
         (DomNest, lambda v: v.click("[data-testid=leaf-button]"), r"calls 'leaf' on DomLeaf 'leaf'.*Mount DomLeaf"),
         (DomNest, lambda v: v.click("[data-testid=live-button]"), r"calls 'bump' on DomLive 'live'"),
@@ -315,6 +358,34 @@ class DomStreamed(Component):
 async def test_a_stream_item_is_named_as_one():
     view = await mount(DomStreamed)
     await _fails(view, lambda v: v.click("[data-testid=row-remove]"), r"matches a stream item")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_enter_in_a_form_whose_default_button_is_disabled_submits_nothing():
+    view = await mount(DomKeys)
+    await _fails(
+        view, lambda v: v.keydown("[data-testid=q3]", "Enter"), r"reaches no handler: it dispatched keydown, and"
+    )
+
+
+@pytest.mark.integration
+def test_a_key_event_carries_the_fields_a_browser_fills():
+    assert key_event("Enter") == {
+        "key": "Enter",
+        "keyCode": 13,
+        "isComposing": False,
+        "ctrlKey": False,
+        "altKey": False,
+        "shiftKey": False,
+        "metaKey": False,
+    }
+    assert key_event("a")["keyCode"] == 65
+    assert key_event("Z", shift=True)["keyCode"] == 90
+    assert key_event("7")["keyCode"] == 55
+    assert key_event("Escape")["keyCode"] == 27
+    assert key_event("한")["keyCode"] == 0
+    assert key_event("Enter", composing=True)["keyCode"] == 229
 
 
 @pytest.mark.integration
