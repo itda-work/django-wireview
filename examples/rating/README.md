@@ -11,6 +11,7 @@
 - hover는 컴포넌트 상태에만, 점수는 DB에 (`aupdate_or_create`)
 - 키보드 이벤트와 `{% on 'mouseenter' %}`
 - 세션 키는 페이지가 넘겨준다 — 소켓은 Django 세션을 들고 있지 않다
+- 주소의 `?rating=`은 1~5일 때만 쓴다(`Field(ge=1, le=5)`). 아니면 저장된 평점을 보인다
 
 ## 돌려보기
 

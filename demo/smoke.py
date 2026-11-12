@@ -121,6 +121,12 @@ def check_live_examples(browser: Browser, base: str, out: Path, errors: list[str
         print(f"live: {href} {name} joined")
     assert any(urlsplit(url).path == "/__wireview__" for url in sockets), sockets
     print(f"websocket: {sockets[0]}")
+    # The query is the visitor's to type: a value no example knows still opens a live page (#267)
+    for href, name in (("/todo/todo?showing=bogus", "XTodoList"), ("/dashboard/?tab=bogus&range=-1", "XDashboard")):
+        response = page.goto(href)
+        assert response is not None and response.ok, f"{href}: {response and response.status}"
+        page.wait_for_selector(f'[data-name="{name}"]{LIVE}')
+        print(f"live: {href} {name} joined")
     # The seeded lists: their first item's page goes live
     for index, prefix, name in (
         ("/poll/", "/poll/", "XPoll"),

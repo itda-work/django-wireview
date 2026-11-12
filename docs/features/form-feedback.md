@@ -109,8 +109,7 @@ class XRegistrationForm(Component):
     class Meta:
         template_name = "registration/form.html"
 
-    email: str = ""
-    password: str = ""
+    email: str = ""  # 서명 상태에 실려 브라우저에 그대로 보인다. 비밀번호는 담지 않는다
     errors: dict[str, str] = {}
 
     @staticmethod
@@ -131,7 +130,7 @@ class XRegistrationForm(Component):
     async def validate_field(self, field: str, email: str = "", password: str = ""):
         """Validate one field as the user types."""
         # 폼 안의 필드 값은 name대로 인자에 실려 온다. field는 {% on %}이 넘긴 값이다
-        self.email, self.password = email, password
+        self.email = email
         values = {"email": email, "password": password}
         errors = {name: error for name, error in self.errors.items() if name != field}
         if error := self._field_error(field, values[field]):
@@ -140,7 +139,7 @@ class XRegistrationForm(Component):
 
     async def save(self, email: str = "", password: str = ""):
         """Handle the form submission."""
-        self.email, self.password = email, password
+        self.email = email
         values = {"email": email, "password": password}
         self.errors = {name: error for name, value in values.items() if (error := self._field_error(name, value))}
 
@@ -251,11 +250,13 @@ class XContactPage(Component):
     class Meta:
         template_name = "contact/page.html"
 
-    form_data: dict = {}
+    values: dict[str, str] = {}
     errors: dict[str, list[str]] = {}
 
     async def save(self, **data):
         form = ContactForm(data)
+        # 쓴 값을 상태에 둔다. 폼이 아는 필드만 — 이벤트가 실어 온 다른 키는 버린다
+        self.values = {name: str(data.get(name, "")) for name in form.fields}
 
         if form.is_valid():
             # 폼 처리...
@@ -268,20 +269,20 @@ class XContactPage(Component):
             }
 ```
 
-템플릿은 필드마다 오류를 `wire-feedback-for` 아래 둔다. `this.errors`의 키가 필드 이름이다.
+템플릿은 입력마다 `value`를 상태에서 그리고, 필드마다 오류를 `wire-feedback-for` 아래 둔다. `this.errors`의 키가 필드 이름이다.
 
 ```html
 {% load wireview %}
 
 <form {% on "submit.prevent" "save" %}>
-  <input name="email">
+  <input name="email" value="{{ this.values.email }}">
   {% if this.errors.email %}
     <ul wire-feedback-for="email" class="errorlist wire-no-feedback">
       {% for error in this.errors.email %}<li>{{ error }}</li>{% endfor %}
     </ul>
   {% endif %}
 
-  <input name="name">
+  <input name="name" value="{{ this.values.name }}">
   {% if this.errors.name %}
     <ul wire-feedback-for="name" class="errorlist wire-no-feedback">
       {% for error in this.errors.name %}<li>{{ error }}</li>{% endfor %}
@@ -293,6 +294,22 @@ class XContactPage(Component):
 ```
 
 이 형태는 `tests/testproj/formprobe/`가 브라우저에서 그대로 돌린다.
+
+### 쓴 값을 상태에 두는 이유
+
+**제출에 답하는 렌더는 입력의 값을 서버의 값으로 바꾼다.** 사용자가 고친 칸은 보통 렌더가 와도 그 값을 지키지만
+(다른 칸의 이벤트, 브로드캐스트), 제출·change·Enter처럼 값을 확정하는 동작에 대한 답은 예외다 — 그 답이 곧 결과이기
+때문이다(Enter 뒤 비워지는 할 일 입력). 판단은 `wireview/static/wireview/values.mjs`의 `keepsUserValue`에 있다. 그래서
+`value=`를 그리지 않는 입력은 오류와 함께 돌아온 렌더에서 **비어 버린다** — 필수 칸을 비우고 다른 칸에 긴 글을 쓴 뒤
+제출하면 그 글이 사라진다. 쓴 값을 상태(`values`)에 두고 `value="{{ this.values.name }}"`로 그리면 답의 값이 곧 쓴 값이다.
+재연결 뒤의 다시 join도 서명 상태에서 그리므로 값이 남는다.
+
+- **폼이 아는 필드만 담는다.** `**data`는 이벤트가 실어 온 모든 이름이다. `data`를 통째로 상태에 두거나
+  `setattr(self, k, v)`로 펼치면, 클라이언트가 보낸 아무 키나 상태가 된다.
+- **비밀번호처럼 보이면 안 되는 값은 담지 않는다.** 서명 상태는 암호화가 아니다 — 브라우저에서 그대로 읽힌다
+  ([HTML Diff](./html-diff.md)). 그런 칸은 제출에 실패하면 다시 입력받는다.
+
+회귀 테스트는 `tests/test_forms_e2e.py`의 `test_what_was_typed_stays_when_the_form_refuses_it`과 재연결 판이다.
 
 ## 권장 사항
 

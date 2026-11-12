@@ -66,3 +66,30 @@ async def test_an_option_of_another_poll_is_not_counted():
     await other.arefresh_from_db()
     assert other.votes == 0
     assert view.component.voted_option_id is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_address_s_choice_is_restored():
+    poll = await Poll.objects.acreate(question="점심?")
+    option = await Option.objects.acreate(poll=poll, text="국밥")
+    view = await mount(XPoll, poll=poll, params={"voted": str(option.pk)})
+    assert view.component.voted_option_id == option.pk
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("value", ["other", "abc", "-1", "0", "", "9" * 40, "x" * 5000, "999999"])
+async def test_a_choice_the_address_names_that_is_not_this_poll_s_leaves_the_vote_open(value):
+    """The query is the user's to type: only an option of this poll marks it voted."""
+    poll = await Poll.objects.acreate(question="점심?")
+    option = await Option.objects.acreate(poll=poll, text="국밥")
+    other = await Option.objects.acreate(poll=await Poll.objects.acreate(question="저녁?"), text="짜장")
+    view = await mount(XPoll, poll=poll, params={"voted": str(other.pk) if value == "other" else value})
+
+    assert view.component.voted_option_id is None
+    await view.call("vote", option_id=option.pk)
+    await option.arefresh_from_db()
+    assert option.votes == 1

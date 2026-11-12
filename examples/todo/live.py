@@ -22,6 +22,18 @@ class Showing(StrEnum):
     COMPLETED = "completed"
     ACTIVE = "active"
 
+    @classmethod
+    def from_query(cls, value: str | None) -> "Showing":
+        """The filter the address names, or ALL for a missing or unknown one.
+
+        The query is whatever the user typed: ``?showing=bogus`` must show
+        the list, not fail the page as Showing("bogus") would.
+        """
+        try:
+            return cls(value)
+        except ValueError:
+            return cls.ALL
+
 
 class XTodoList(Component):
     """

@@ -85,3 +85,24 @@ async def test_each_bar_of_the_distribution_is_its_share_of_the_ratings():
 
     # Five stars first: 3 of 4, then none at four, 1 of 4 at three, none at two and one
     assert bars == ["75%", "0%", "25%", "0%", "0%"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_address_s_score_shows_when_it_is_one_to_five():
+    product = await Product.objects.acreate(name="키보드")
+    view = await mount(XStarRating, product=product, session_key="s5", params={"rating": "4"})
+    assert view.component.current_rating == 4
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("value", ["7", "-1", "0", "abc", "", "9" * 40, "x" * 5000])
+async def test_a_score_the_address_names_outside_one_to_five_is_the_saved_one(value):
+    """The query is the user's to type: a score no one can give does not cover the saved one."""
+    product = await Product.objects.acreate(name="키보드")
+    await Rating.objects.acreate(product=product, session_key="s6", score=2)
+    view = await mount(XStarRating, product=product, session_key="s6", params={"rating": value})
+    assert view.component.current_rating == 2

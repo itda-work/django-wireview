@@ -19,10 +19,23 @@ from .models import Activity, Stat
 @pytest.mark.asyncio
 @pytest.mark.django_db
 async def test_the_dashboard_starts_from_url_parameters():
-    view = await mount(XDashboard, params={"tab": "sales", "range": "30d"})
+    view = await mount(XDashboard, params={"tab": "activity", "range": "30d"})
 
-    assert view.component.active_tab == "sales"
+    assert view.component.active_tab == "activity"
     assert view.component.date_range == "30d"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", ["sales", "", "Activity", "-1", "0", "9" * 40, "x" * 5000])
+async def test_a_tab_or_range_the_dashboard_does_not_have_is_the_default(value):
+    """The query is the user's to type: an unknown key is its default, and the other key stands."""
+    view = await mount(XDashboard, params={"tab": value, "range": "90d"})
+    assert (view.component.active_tab, view.component.date_range) == ("overview", "90d")
+
+    view = await mount(XDashboard, params={"tab": "activity", "range": value})
+    assert (view.component.active_tab, view.component.date_range) == ("activity", "7d")
 
 
 @pytest.mark.unit
@@ -45,10 +58,10 @@ async def test_the_page_draws_its_cards_before_any_of_them_has_loaded():
 async def test_changing_a_tab_writes_it_back_to_the_url():
     view = await mount(XDashboard)
 
-    await view.call("change_tab", tab="revenue")
+    await view.call("change_tab", tab="activity")
 
-    assert view.component.active_tab == "revenue"
-    assert view.wire.params["tab"] == "revenue"
+    assert view.component.active_tab == "activity"
+    assert view.wire.params["tab"] == "activity"
 
 
 @pytest.mark.unit

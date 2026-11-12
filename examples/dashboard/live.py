@@ -10,10 +10,12 @@ This module demonstrates wireview's advanced patterns:
 """
 
 import asyncio
+import typing as t
 from datetime import datetime
 from uuid import UUID
 
 from django.db.models import Q
+from pydantic import TypeAdapter, ValidationError
 
 from wireview import AsyncResult, Component, ModelAction
 
@@ -21,6 +23,22 @@ from .models import Activity, Stat
 
 #: How many activities the feed opens on, and how many each "Load More" adds
 PAGE_SIZE = 10
+
+#: The dashboard's tabs and date ranges: the only values the address may name
+Tab = t.Literal["overview", "activity"]
+DateRange = t.Literal["7d", "30d", "90d"]
+
+
+def _from_query(value: str | None, kind: t.Any, default: t.Any) -> t.Any:
+    """``value`` read as ``kind``, or ``default`` when it is missing or is not one.
+
+    The query is whatever the user typed: ``?tab=bogus`` opens the default tab.
+    Assigning it as it came would leave the page on a tab that draws nothing.
+    """
+    try:
+        return TypeAdapter(kind).validate_python(value)
+    except ValidationError:
+        return default
 
 
 def _activities_before(before: tuple[datetime, UUID] | None):
@@ -52,20 +70,21 @@ class XDashboard(Component):
     class Meta:
         template_name = "dashboard/dashboard.html"
 
-    active_tab: str = "overview"
-    date_range: str = "7d"
+    active_tab: Tab = "overview"
+    date_range: DateRange = "7d"
 
     async def joined(self):
         """
         Initialize dashboard state from URL parameters.
 
         wire.params provides access to URL query parameters,
-        enabling bookmarkable state.
+        enabling bookmarkable state. A value that is not a tab or a range
+        is the default: each key on its own.
         """
-        self.active_tab = self.wire.params.get("tab", "overview")
-        self.date_range = self.wire.params.get("range", "7d")
+        self.active_tab = _from_query(self.wire.params.get("tab"), Tab, "overview")
+        self.date_range = _from_query(self.wire.params.get("range"), DateRange, "7d")
 
-    async def change_tab(self, tab: str):
+    async def change_tab(self, tab: Tab):
         """
         Switch dashboard tabs.
 
@@ -74,7 +93,7 @@ class XDashboard(Component):
         self.active_tab = tab
         self.wire.params["tab"] = tab
 
-    async def change_date_range(self, range: str):
+    async def change_date_range(self, range: DateRange):
         """Update date range filter."""
         self.date_range = range
         self.wire.params["range"] = range

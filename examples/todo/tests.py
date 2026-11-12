@@ -19,6 +19,20 @@ class TestNormalRendering(TestCase):
         self.assertContains(response, "First task")
         self.assertContains(response, "Second task")
 
+    def test_a_filter_the_address_names_is_the_list_s_filter(self):
+        response = self.c.get("/todo?showing=active")
+        assert response.status_code == 200
+        assert response.context["showing"] == "active"
+
+    def test_a_filter_the_list_does_not_have_shows_everything(self):
+        """The query is the user's to type: what is not a filter is the default, never a failed page."""
+        for query in ("bogus", "", "ALL", "1", "x" * 5000, "active&showing=bogus"):
+            with self.subTest(query=query[:20]):
+                response = self.c.get(f"/todo?showing={query}")
+                assert response.status_code == 200
+                assert response.context["showing"] == "all"
+                self.assertContains(response, "First task")
+
 
 @pytest.fixture(scope="function")
 def wireview_server():

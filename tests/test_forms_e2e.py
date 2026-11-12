@@ -11,7 +11,7 @@ import re
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_browser import OFFLINE_SHIM, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -45,6 +45,37 @@ def test_a_valid_django_form_saves(probe):
     by(probe, "name").fill("Ann")
     by(probe, "submit").click()
     expect_text(by(probe, "saved"), "a@example.com")
+
+
+# A text of many lines' worth, longer than the name field takes
+LONG = "긴 글을 쓴다 " * 40
+
+
+def test_what_was_typed_stays_when_the_form_refuses_it(probe):
+    """The render answering a submit writes the server's value into each input
+    (static/wireview/values.mjs): the form keeps what was typed only if the state does (#267)."""
+    by(probe, "name").fill(LONG)
+    by(probe, "submit").click()  # email left empty: required
+
+    expect(by(probe, "email-errors")).to_be_visible()
+    expect(by(probe, "name-errors")).to_be_visible()
+    expect(by(probe, "name")).to_have_value(LONG)
+    expect(by(probe, "email")).to_have_value("")
+
+
+def test_what_was_typed_stays_through_a_reconnect(page, server):
+    page.add_init_script(OFFLINE_SHIM)
+    open_live(page, f"{server}/formprobe/")
+    by(page, "name").fill(LONG)
+    by(page, "submit").click()
+    expect(by(page, "name-errors")).to_be_visible()
+
+    page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
+    expect(page.locator("[data-name=FormProbe]")).to_have_class(re.compile("wireview-disconnected"))
+    page.evaluate("() => { window.__link.offline = false; }")
+    wait_live(page, "[data-name=FormProbe][data-is-live='true']:not(.wireview-disconnected)")
+
+    expect(by(page, "name")).to_have_value(LONG)
 
 
 def test_feedback_waits_for_the_field_to_be_touched(probe):

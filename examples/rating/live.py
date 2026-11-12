@@ -9,9 +9,28 @@ This module demonstrates wireview's interactive UI patterns:
 - Model subscriptions for real-time updates
 """
 
+import typing as t
+
+from pydantic import Field, TypeAdapter, ValidationError
+
 from wireview import Component, ModelAction
 
 from .models import Product, Rating
+
+#: A score a visitor can give: what ``?rating=`` may say
+Score = t.Annotated[int, Field(ge=1, le=5)]
+
+
+def _score_from_query(value: str | None) -> int | None:
+    """The score the address names, or None for a missing one or one that is not 1 to 5.
+
+    The query is whatever the user typed. ``?rating=7`` or ``?rating=-1`` would
+    otherwise show a rating no one can give, over the one the visitor saved.
+    """
+    try:
+        return TypeAdapter(Score).validate_python(value)
+    except ValidationError:
+        return None
 
 
 class XStarRating(Component):
@@ -50,11 +69,8 @@ class XStarRating(Component):
         Load existing rating from URL params or database.
         """
         # Try to restore from URL params first
-        if rating_param := self.wire.params.get("rating"):
-            try:
-                self.current_rating = int(rating_param)
-            except ValueError:
-                pass
+        if (score := _score_from_query(self.wire.params.get("rating"))) is not None:
+            self.current_rating = score
 
         # Or load from database
         if not self.current_rating:

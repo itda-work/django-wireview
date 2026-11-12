@@ -72,9 +72,24 @@ WIREVIEW = {
 `rating/live.py`:
 
 ```python
+import typing as t
+
+from pydantic import Field, TypeAdapter, ValidationError
+
 from wireview import Component, ModelAction
 
 from .models import Product, Rating
+
+# 줄 수 있는 평점: ?rating=이 말할 수 있는 값
+Score = t.Annotated[int, Field(ge=1, le=5)]
+
+
+def _score_from_query(value: str | None) -> int | None:
+    """주소의 평점. 없거나 1~5가 아니면 None"""
+    try:
+        return TypeAdapter(Score).validate_python(value)
+    except ValidationError:
+        return None
 
 
 class XStarRating(Component):
@@ -96,9 +111,9 @@ class XStarRating(Component):
 
     async def joined(self):
         """마운트 시 기존 평점 로드"""
-        # URL에서 복원
-        if rating_param := self.wire.params.get("rating"):
-            self.current_rating = int(rating_param)
+        # URL에서 복원. 1~5가 아닌 값은 없는 것과 같다
+        if (score := _score_from_query(self.wire.params.get("rating"))) is not None:
+            self.current_rating = score
             return
 
         # DB에서 로드
@@ -236,11 +251,15 @@ class XStarRating(Component):
 self.wire.params["rating"] = str(score)
 
 # 로드
-if rating_param := self.wire.params.get("rating"):
-    self.current_rating = int(rating_param)
+if (score := _score_from_query(self.wire.params.get("rating"))) is not None:
+    self.current_rating = score
 ```
 
 URL이 `?rating=4`로 업데이트되어 새로고침해도 상태 유지됩니다.
+
+쿼리는 사용자가 손으로 바꿀 수 있다. `int(rating_param)`으로 읽으면 `?rating=abc`에서 `ValueError`가 나 컴포넌트가
+join하지 못하고, `?rating=7`·`?rating=-1`은 아무도 줄 수 없는 평점을 저장된 평점 위에 그린다. 그래서 필드 제약을 단
+Pydantic 타입(`Score`)으로 읽고, 맞지 않는 값은 없는 것으로 보아 DB의 평점으로 돌아간다.
 
 ## 7. 통계 컴포넌트
 

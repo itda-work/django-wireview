@@ -78,9 +78,24 @@ WIREVIEW = {
 `poll/live.py`:
 
 ```python
+import typing as t
+
+from pydantic import Field, TypeAdapter, ValidationError
+
 from wireview import Component, ModelAction
 
 from .models import Option, Poll
+
+# ?voted=가 말할 수 있는 옵션 id: 양수이고 DB 컬럼에 들어가는 크기
+OptionId = t.Annotated[int, Field(gt=0, lt=2**63)]
+
+
+def _option_id_from_query(value: str | None) -> int | None:
+    """주소의 옵션 id. 없거나 id가 아니면 None"""
+    try:
+        return TypeAdapter(OptionId).validate_python(value)
+    except ValidationError:
+        return None
 
 
 class XPoll(Component):
@@ -95,8 +110,10 @@ class XPoll(Component):
 
     async def joined(self):
         """마운트 시 URL에서 투표 상태 복원"""
-        if voted_id := self.wire.params.get("voted"):
-            self.voted_option_id = int(voted_id)
+        # 쿼리는 사용자가 친 값이다. 이 투표의 옵션일 때만 투표한 것으로 본다
+        voted_id = _option_id_from_query(self.wire.params.get("voted"))
+        if voted_id is not None and await self.poll.options.filter(id=voted_id).aexists():
+            self.voted_option_id = voted_id
 
     async def mutation(self, channel: str, action: ModelAction, instance: Option):
         """Option 변경 시 리렌더링"""
@@ -123,6 +140,10 @@ class XPoll(Component):
 
 `self.wire.params`에 넣은 값은 핸들러가 끝나면 브라우저 URL의 쿼리 문자열이 된다(`?voted=3`).
 새로고침하면 `joined()`가 그 값을 다시 읽는다.
+
+주소의 쿼리도 사용자가 손으로 바꿀 수 있는 값이다. `int(voted_id)`로 읽으면 `?voted=abc`에서 `ValueError`가 나
+컴포넌트가 join하지 못하고, `?voted=-1`이나 다른 투표의 옵션 id는 투표하지 않은 사람을 투표한 것으로 만들어 투표를
+막는다. 그래서 Pydantic 타입(`OptionId`)으로 읽고, 이 투표의 옵션인지 확인한 것만 쓴다. 맞지 않는 값은 없는 것과 같다.
 
 핸들러 인자는 클라이언트가 보낸 값이라 위조할 수 있다. `Option.objects.aget(id=option_id)`로만 찾으면 다른
 투표의 옵션에도 표가 들어간다 — 조회에 `poll_id=self.poll.id`를 함께 건다.

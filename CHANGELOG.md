@@ -233,6 +233,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The examples read the address's query as the user may type it (#267). `/todo?showing=bogus` (any value that is not
+  a filter, an empty one included) failed the page with a `ValidationError`; it now shows the list with the default
+  filter (`Showing.from_query()`). The dashboard took any `?tab=`/`?range=` into its state and drew no tab; rating
+  showed `?rating=7` or `-1` over the visitor's saved score; poll took any `?voted=` integer, another poll's option
+  included, as a vote and refused the visitor's. Each reads the value with a Pydantic type now (`Literal`,
+  `Field(ge=1, le=5)`) and an unknown one is that key's default. Tutorials 10 and 11, which read it with a bare
+  `int()` that failed the join on `?voted=abc`, show the same code. `demo/smoke.py` opens two pages with such a
+  query.
+- The Django form example of `docs/features/form-feedback.md` lost what was typed when the form refused it (#267):
+  the render that answers a submit writes the server's value into each input, and the example drew none. It keeps
+  the form's own fields in a `values` field and draws `value=` from it, as `tests/testproj/formprobe/` does; the
+  first example no longer keeps the password in state, which the browser can read.
 - `manage.py wireview_lsp` died with `tokenize.TokenError` when a source file had been saved since its module was
   loaded and its lines no longer tokenized where the loaded tag, filter or component had been (#265). That entry is
   now described without a location (`file_path` "", `line_number` 0), as one with no source file was.

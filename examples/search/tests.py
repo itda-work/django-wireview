@@ -238,3 +238,11 @@ class TestQueryInTheAddress:
             expect(page.locator("input[name=q]")).to_have_value("파이썬")
         finally:
             context.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", ["", "-1", "0", "9" * 40, "x" * 5000, "a&q=bb", "%00"])
+def test_any_query_the_address_holds_is_a_search(client, db, value):
+    """The query is the user's to type and q is any text: the page answers, searching for it or not."""
+    response = client.get(f"/search/?q={value}")
+    assert response.status_code == 200

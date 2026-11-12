@@ -9,9 +9,24 @@ This module demonstrates wireview's basic patterns:
 - CSS loading states (.wireview-loading)
 """
 
+import typing as t
+
+from pydantic import Field, TypeAdapter, ValidationError
+
 from wireview import Component, ModelAction
 
 from .models import Option, Poll
+
+#: An option's primary key as ``?voted=`` may say it: positive, and one a database column holds
+OptionId = t.Annotated[int, Field(gt=0, lt=2**63)]
+
+
+def _option_id_from_query(value: str | None) -> int | None:
+    """The option id the address names, or None for a missing one or one that is not an id."""
+    try:
+        return TypeAdapter(OptionId).validate_python(value)
+    except ValidationError:
+        return None
 
 
 class XPoll(Component):
@@ -38,11 +53,11 @@ class XPoll(Component):
 
         Restore voted state from URL params if available.
         """
-        if voted_id := self.wire.params.get("voted"):
-            try:
-                self.voted_option_id = int(voted_id)
-            except ValueError:
-                pass
+        # The query is whatever the user typed: only an option of this poll counts.
+        # Any other id would mark the poll voted and refuse the vote.
+        voted_id = _option_id_from_query(self.wire.params.get("voted"))
+        if voted_id is not None and await self.poll.options.filter(id=voted_id).aexists():
+            self.voted_option_id = voted_id
 
     async def mutation(
         self,

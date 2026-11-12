@@ -12,6 +12,7 @@
 - 중첩 컴포넌트: 목록·항목·카운터가 각자의 컴포넌트
 - `skip_render()` / `force_render()`로 렌더 횟수 제어
 - `{% on 'keypress.enter' %}`, `{% class %}`, `{% cond %}`
+- 필터는 주소의 `?showing=`에서 읽는다. 모르는 값은 `Showing.from_query()`가 기본 필터(all)로 읽는다 — 쿼리는 사용자가 손으로 바꾸는 값이다
 - Enter에 즉시 반응: 로딩 클래스만으로 그리는 스피너와 "Adding…" 임시 행 (아래)
 
 ## 먼 곳에서도 Enter가 바로 반응하게

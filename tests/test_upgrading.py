@@ -252,6 +252,10 @@ NO_UPGRADE_NOTE = {
     "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
     "`manage.py wireview_lsp` died with `tokenize.TokenError`": "죽던 명령이 끝까지 갈 뿐 할 일이 없다",
     "Python 3.15, with Django 6.1": "지원 범위가 넓어질 뿐 할 일이 없다",
+    "The examples read the address's query as the user may type it": "예제·튜토리얼만 바뀌고 라이브러리는 그대로다",
+    "The Django form example of `docs/features/form-feedback.md` lost": (
+        "문서의 예만 바뀌었다 — 그 예를 옮겨 쓴 앱은 같은 고침을 한다"
+    ),
     "`wireview.W025`: a model `AUTO_BROADCAST` broadcasts": "경고가 하나 늘 뿐 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",
     "`{% wireview_header %}` reads the CSP nonce where each middleware publishes it": "빠지던 nonce가 붙을 뿐이다",
