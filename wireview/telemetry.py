@@ -97,6 +97,10 @@ JOIN_REJECTED_REASONS = frozenset(
         "expired",
         # The signature does not verify, or it was signed for another class
         "invalid",
+        # Signed by an older version of the class, which the deployed one does not
+        # accept: a missing required field, a value that does not validate, a
+        # model field that names another model (#231)
+        "stale",
         # The live_session boundary refused it (other boundary, logout, the predicate)
         "live_session",
         # Its page was rendered for another login or CSRF secret than the socket's

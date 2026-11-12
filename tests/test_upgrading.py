@@ -109,6 +109,14 @@ def test_every_row_reads_every_section_from_its_own_up():
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
+    "A page joining with a state an older version of the component signed": (
+        "필드를 바꾸는 배포 뒤의 열린 페이지는 이어지거나 한 번 새로고침한다",
+        "사유 `stale`이 하나 늘어난다",
+    ),
+    "A join reads a signed state as the class answering to the name now would have signed it": (
+        "옛 상태에 실린 `exclude_fields`·temporary assign 값은 join에서 버린다",
+        "기본값에서 시작한다",
+    ),
     "A connection whose app ended without a disconnect is ended all the same": (
         "연결이 끝날 때의 `leaving()`은 모두 합쳐 5초 안에 끝나야 한다",
         "프레임워크가 대신 떠난다",

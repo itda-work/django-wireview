@@ -49,7 +49,7 @@ from .core.rendered import (
     payload_component_refs,
 )
 from .core.session import SessionView
-from .core.state import StateMismatch, StatePayload, unsign_envelope
+from .core.state import StaleState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import (
     MAIL_DUE,
     PATCH_TOPIC_MAX,
@@ -86,6 +86,11 @@ def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
     if isinstance(error, SignatureExpired):
         log.info("JOIN %s rejected: the signed state expired", name)
         return {"id": None, "reason": "expired"}
+    if isinstance(error, StaleState):
+        # A deploy changed the class since the page was drawn (#231): ordinary
+        # after a release, but worth seeing when it is not one
+        log.info("JOIN %s: the page's state is from an older version of the class; the page reloads: %s", name, error)
+        return {"id": error.component_id or None, "reason": "stale"}
     if isinstance(error, StateMismatch):
         log.warning(
             "JOIN %s rejected: state signed for %s presented as %s (component %s)",
@@ -755,6 +760,16 @@ class WireviewSession:
         except ConnectionGone:
             # The page left while its join was answered: it failed nothing (#216)
             raise
+        except StaleState as e:
+            # Raised building the instance from the state, before any of the
+            # application's code (mount hooks, joined()) ran: the class deployed
+            # under the name does not validate what the old one signed (#231).
+            # The page is drawn again by the new code, as for a state that does
+            # not verify; an exception from the application's code is below.
+            reload = _reload_payload(name, e)
+            self._join_rejected(reload["reason"], name, str(e))
+            await self.send_command("reload", _with_ref(reload, answer))
+            return
         except Exception:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).

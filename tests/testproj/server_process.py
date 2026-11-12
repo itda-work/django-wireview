@@ -96,7 +96,7 @@ def held_port() -> t.Iterator[int]:
         thread.join()
 
 
-def launch_uvicorn(port: int, log_dir: Path) -> tuple[subprocess.Popen, Path]:
+def launch_uvicorn(port: int, log_dir: Path, env: dict[str, str] | None = None) -> tuple[subprocess.Popen, Path]:
     """One uvicorn process serving the test project, on this interpreter and the configured layer.
 
     Its output goes to a file rather than to the void: when a request comes back
@@ -105,6 +105,8 @@ def launch_uvicorn(port: int, log_dir: Path) -> tuple[subprocess.Popen, Path]:
     port, answered (:func:`wait_until_serving`); unbuffered, so what the
     application prints lands in order with it. Appended, so a server started
     again on the same port (a restart) keeps the first one's log above its own.
+    ``env`` adds to the environment it inherits: a restart that deploys other
+    code (``reconnectprobe``'s ``RECONNECTPROBE_FIELDS``, #231).
     """
     log = log_dir / f"worker-{port}.log"
     with log.open("ab") as out:
@@ -124,7 +126,12 @@ def launch_uvicorn(port: int, log_dir: Path) -> tuple[subprocess.Popen, Path]:
                     "info",
                 ],
                 cwd=TESTS,
-                env={**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)]), "PYTHONUNBUFFERED": "1"},
+                env={
+                    **os.environ,
+                    **(env or {}),
+                    "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)]),
+                    "PYTHONUNBUFFERED": "1",
+                },
                 stdout=out,
                 stderr=subprocess.STDOUT,
             )

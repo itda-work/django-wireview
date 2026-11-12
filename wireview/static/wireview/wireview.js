@@ -617,8 +617,8 @@ class ServerConnection {
         break;
       }
       case "reload":
-        // The server refused a signed state (expired, pre-envelope, or invalid)
-        // and mounted nothing. Reloading re-renders the page with fresh tokens.
+        // The server refused a signed state (expired, pre-envelope, invalid, or
+        // one the deployed class does not accept, #231) and mounted nothing. Reloading re-renders the page with fresh tokens.
         // A join the page has since replaced is answered on its own (#146).
         if (!this.joins.about(payload.id, payload.ref)) break;
         this._reloadPage(payload.reason);
@@ -780,7 +780,7 @@ class ServerConnection {
   /**
    * Reload the page after the server refused a signed state.
    * Guarded so a page whose fresh state is refused again cannot loop.
-   * @param {string} reason - Why the server refused it ("expired", "invalid", "live_session")
+   * @param {string} reason - Why the server refused it ("expired", "invalid", "stale", "live_session", "identity")
    * @private
    */
   _reloadPage(reason) {

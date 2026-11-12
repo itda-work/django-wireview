@@ -304,10 +304,25 @@ def test_a_disabled_span_measures_nothing():
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _reload_reasons(tree: ast.AST) -> set[str]:
+    """The ``reason`` values ``_reload_payload`` returns: a root state's reload reasons."""
+    found = set()
+    for function in ast.walk(tree):
+        if isinstance(function, ast.FunctionDef) and function.name == "_reload_payload":
+            for node in ast.walk(function):
+                if isinstance(node, ast.Dict):
+                    for key, value in zip(node.keys, node.values):
+                        if isinstance(key, ast.Constant) and key.value == "reason" and isinstance(value, ast.Constant):
+                            found.add(value.value)
+    return found
+
+
 def _reasons_in_code() -> set[str]:
     reasons = set()
     for path in (ROOT / "wireview" / "session.py", ROOT / "wireview" / "consumer.py"):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        computed = _reload_reasons(tree)
+        for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
@@ -315,9 +330,18 @@ def _reasons_in_code() -> set[str]:
                 and node.args
             ):
                 first = node.args[0]
-                # A computed reason is the root state's reload reason: expired or invalid
-                reasons |= {first.value} if isinstance(first, ast.Constant) else {"expired", "invalid"}
+                # A computed reason is the root state's reload reason (_reload_payload)
+                reasons |= {first.value} if isinstance(first, ast.Constant) else computed
     return reasons
+
+
+@pytest.mark.unit
+def test_the_reload_reasons_are_read():
+    assert _reload_reasons(ast.parse((ROOT / "wireview" / "session.py").read_text(encoding="utf-8"))) == {
+        "expired",
+        "invalid",
+        "stale",
+    }
 
 
 @pytest.mark.unit

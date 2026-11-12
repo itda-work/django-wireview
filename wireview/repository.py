@@ -13,12 +13,13 @@ from channels.db import database_sync_to_async as db
 from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.http import QueryDict
+from pydantic import ValidationError
 
 from . import telemetry
 from .core import csrf, handlers
 from .core.component import Component, MessagePayload
 from .core.session import SessionView
-from .core.state import StateMismatch, state_of
+from .core.state import StaleState, StateMismatch, state_of
 from .debug import render_queries
 from .features.presence import presence_channels
 from .live_component import LiveComponent
@@ -325,10 +326,23 @@ class ComponentRepository:
                 return component
             elif drawer is not None:
                 if child := self._take_restored(component_id, drawer.id, name):
-                    state = child[1] | state
+                    restored = child[1] | state
+                    component = self._build_restored(Component, name, restored, state, id_given=id_given)
+                    self._drawn(component_id, drawer.id)
+                    return self.register_component(component)
                 self._drawn(component_id, drawer.id)
 
-        component = Component._build(
+        component = self._build_from(Component, name, state, id_given=id_given)
+        if drawer is not None and not state.get("id"):
+            # Drawn without an id, under the one it was just given: the drawer's
+            # next pass draws another, and retires this one (``end_pass``, #204)
+            self._drawn(component.id, drawer.id)
+        return self.register_component(component)
+
+    def _build_from(
+        self, base: type[Component], name: str, state: MessagePayload, id_given: bool | None = None
+    ) -> Component:
+        return base._build(
             name,
             state,
             params=self.params,
@@ -341,11 +355,32 @@ class ComponentRepository:
             live_session=self.live_session,
             id_given=id_given,
         )
-        if drawer is not None and not state.get("id"):
-            # Drawn without an id, under the one it was just given: the drawer's
-            # next pass draws another, and retires this one (``end_pass``, #204)
-            self._drawn(component.id, drawer.id)
-        return self.register_component(component)
+
+    def _build_restored(
+        self,
+        base: type[Component],
+        name: str,
+        restored: MessagePayload,
+        drawn: MessagePayload,
+        id_given: bool | None = None,
+    ) -> Component:
+        """Build a nested component from the state its root's join carried, or from what its drawer passed.
+
+        The carried state was signed by the class as it was then; a deploy may
+        have changed it so that it no longer validates (#231). Then it is dropped
+        as a child entry that does not verify is, and the component starts from
+        the drawer's props. A failure with those alone is the drawer's, and goes on.
+        """
+        try:
+            return self._build_from(base, name, restored, id_given=id_given)
+        except ValidationError as e:
+            log.warning(
+                "Dropping the restored state of %s (%s): the class does not accept it any more: %s",
+                drawn.get("id") or "<no id>",
+                name,
+                e,
+            )
+            return self._build_from(base, name, drawn, id_given=id_given)
 
     def _drawn(self, component_id: str, drawer_id: str) -> None:
         """Record that a pass of ``drawer_id`` drew ``component_id``, an instance it built or one already here.
@@ -422,26 +457,17 @@ class ComponentRepository:
 
         # A reconnect carries the child's signed state in the parent's join. The
         # parent's props win, everything else is the child's own and comes back.
+        restored_state = None
         if (restored := self._take_restored(component_id, parent_id)) is not None:
             restored_name, restored_state = restored
-            if self._same_live_class(restored_name, component_class):
-                state = restored_state | state
+            if not self._same_live_class(restored_name, component_class):
+                restored_state = None
 
-        live_component = cast(
-            LiveComponent,
-            component_class._build(
-                name,
-                state,
-                params=self.params,
-                user=self.user,
-                channel_name=self.channel_name,
-                channel_layer=self.channel_layer,
-                connection_id=self.connection_id,
-                tab_id=self.tab_id,
-                session=self.session,
-                live_session=self.live_session,
-            ),
-        )
+        if restored_state is not None:
+            built = self._build_restored(component_class, name, restored_state | state, state)
+        else:
+            built = self._build_from(component_class, name, state)
+        live_component = cast(LiveComponent, built)
 
         # Set parent reference
         live_component._parent_id = parent_id
@@ -852,10 +878,20 @@ class ComponentRepository:
         """
         # Kept for this join alone, whatever it turns out to be
         kept = self._slots_to_rejoin.pop(state.get("id") or "", None)
-        component = await db(self.build)(
-            name,
-            state,
-        )
+        try:
+            component = await db(self.build)(
+                name,
+                state,
+            )
+        except ValidationError as e:
+            # Nothing of the application's has run yet: the state is the old
+            # class's, and the one deployed under the name does not validate it.
+            # Not a join failure but a page to draw again (#231).
+            raise StaleState(
+                f"{name} does not accept the state the page holds any more: {e}",
+                component_id=state.get("id") or "",
+                name=name,
+            ) from e
         self._carry(component.id, children or {})
         if kept is not None and component.wire.slots is None and type(component) is kept[0]:
             component.wire.slots, component.wire.slots_from = kept[1], kept[2]

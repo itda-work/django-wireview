@@ -101,6 +101,9 @@ wireview/
 ├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용).
 │                          봉투의 i는 그 상태를 낸 요청·연결의 신분(로그인 + CSRF 시크릿 지문, live_session.identity_fingerprint).
 │                          저장소가 등록하는 컴포넌트에 wire.identity를 달아 sign_state가 읽는다. join이 연결의 것과 다르면 renew(#209)
+│                          봉투의 m은 모델 필드마다 가리키는 모델. join은 상태를 지금 클래스로 읽는다(fit): 서명하지 않을 키는 버리고, m이 다르면
+│                          StaleState. 검증 실패(pydantic ValidationError)는 repository.join이 StaleState로 바꾼다 — 앱 코드 전의 실패는
+│                          reload(stale), 앱 코드(on_mount·joined())의 예외는 _join_failed. 자식의 것은 그 상태만 버린다(#231, tests/test_deploy_field_changes.py)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳.

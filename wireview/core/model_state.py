@@ -23,7 +23,7 @@ from collections.abc import Set as AbstractSet
 from django.apps import apps
 from django.db import models
 
-__all__ = ("dump", "has_models", "has_queryset_marker", "load", "mentions_models")
+__all__ = ("dump", "has_models", "has_queryset_marker", "load", "mentions_models", "model_labels")
 
 _UNIONS = (t.Union, types.UnionType)
 
@@ -85,6 +85,26 @@ def mentions_models(annotation: t.Any) -> bool:
     if _is_model(annotation):
         return True
     return any(mentions_models(arg) for arg in t.get_args(annotation) if arg is not Ellipsis)
+
+
+def model_labels(annotation: t.Any) -> str:
+    """The models ``annotation`` names, as sorted ``app_label.model_name`` labels joined by commas.
+
+    What a stored pk is a row of. The signed state carries it beside each such
+    field (``core/state.py``, #231): a pk alone reads as a row of whatever model the
+    field names when it is loaded, and a deploy may have changed that.
+    """
+    found: set[str] = set()
+
+    def walk(node: t.Any) -> None:
+        if _is_model(node):
+            found.add(node._meta.label_lower)
+        for arg in t.get_args(node):
+            if arg is not Ellipsis:
+                walk(arg)
+
+    walk(annotation)
+    return ",".join(sorted(found))
 
 
 def load(annotation: t.Any, value: t.Any) -> t.Any:

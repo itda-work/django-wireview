@@ -34,6 +34,21 @@ is what keeps the feature opt-in.
   components for the old identity. Absent from a token an older server issued,
   and from one issued where no request or connection is known; neither is checked.
 
+- ``m`` (for each field whose annotation names a model, the models it names)
+  because such a field is stored as a bare pk, and a pk reads as a row of
+  whatever model the field names when it is loaded. A deploy that points the
+  field at another model would join the page as that model's row under the
+  same number (#231). ``{}`` for a class with no such field; absent from a
+  token an older server issued, which is not checked.
+
+The state is the class's at the time it was signed. A join reads it with the
+class that answers to the name now, which a deploy may have changed
+(``fit``, #231): what that class would not have signed -- a field it now
+excludes or resets as a temporary assign -- is dropped, a field it no longer
+has is ignored, and a state it does not validate, or whose model fields name
+other models now, is ``StaleState``: the page reloads, and the new code draws
+it with a state of its own.
+
 ``sign_object`` keeps the value base64 (no quotes, so it does not inflate when
 HTML-escaped into an attribute) and zlib-compresses it when that is smaller.
 
@@ -66,6 +81,8 @@ __all__ = [
     "SignatureExpired",
     "StateMismatch",
     "StatePayload",
+    "StaleState",
+    "fit",
     "sign_state",
     "signable_json",
     "unsign_envelope",
@@ -94,6 +111,23 @@ class StateMismatch(BadSignature):
         self.component_id = component_id
         self.signed_name = signed_name
         self.asked_name = asked_name
+
+
+class StaleState(BadSignature):
+    """The state was signed by a version of the class that the one deployed now does not accept (#231).
+
+    Its signature is good, and the class is the same by name; its fields are
+    not: one the class requires is missing, a value does not validate, or a
+    model field names another model than the pk it stores was a row of. Raised
+    before any of the application's code runs on the state, so the page can be
+    drawn again by the new code. A ``BadSignature`` so a join's child entry is
+    dropped as one that does not verify is.
+    """
+
+    def __init__(self, message: str, *, component_id: str = "", name: str = "") -> None:
+        super().__init__(message)
+        self.component_id = component_id
+        self.name = name
 
 
 @dataclass(frozen=True)
@@ -138,7 +172,14 @@ def _signer() -> TimestampSigner:
     return get_signer(STATE_SALT)
 
 
-def _envelope_json(name: str, state_json: str, live_session: str, auth: str | None, identity: str | None = None) -> str:
+def _envelope_json(
+    name: str,
+    state_json: str,
+    live_session: str,
+    auth: str | None,
+    identity: str | None = None,
+    models: dict[str, str] | None = None,
+) -> str:
     """Wrap an already-serialized state in the v2 envelope, as JSON text.
 
     Built by hand so ``state_json`` passes through untouched: Pydantic stays
@@ -153,7 +194,33 @@ def _envelope_json(name: str, state_json: str, live_session: str, auth: str | No
         boundary = f',"s":{json.dumps(live_session)},"a":{json.dumps(auth or "")}'
     if identity is not None:
         boundary += f',"i":{json.dumps(identity)}'
+    if models is not None:
+        # Written when empty as well: a token with no ``m`` is an older server's,
+        # which is not checked, and one with ``{}`` held no model field (#231)
+        boundary += f',"m":{json.dumps(models, sort_keys=True, separators=(",", ":"))}'
     return f'{{"v":{ENVELOPE_VERSION},"n":{json.dumps(name)}{boundary},"d":{state_json}}}'
+
+
+#: ``model_fields_of`` per class: annotations are fixed once a class is built
+_MODEL_FIELDS: dict[type, dict[str, str]] = {}
+
+
+def model_fields_of(cls: "type[Component]") -> dict[str, str]:
+    """The signed fields of ``cls`` whose annotation names a model, and the models it names (``m``)."""
+    try:
+        return _MODEL_FIELDS[cls]
+    except KeyError:
+        pass
+    from .model_state import mentions_models, model_labels
+
+    unsigned = cls._meta.exclude_fields | cls._meta.temporary_assigns
+    found = {
+        field: model_labels(info.annotation)
+        for field, info in cls.model_fields.items()
+        if field not in unsigned and mentions_models(info.annotation)
+    }
+    _MODEL_FIELDS[cls] = found
+    return found
 
 
 def issuing_context(component: "Component") -> tuple[str, str | None]:
@@ -231,7 +298,14 @@ def sign_state(component: "Component") -> str:
             return cached_token
 
     live_session, auth = issuing_context(component)
-    envelope_json = _envelope_json(type(component)._fqn, state_json, live_session, auth, issuing_identity(component))
+    envelope_json = _envelope_json(
+        type(component)._fqn,
+        state_json,
+        live_session,
+        auth,
+        issuing_identity(component),
+        model_fields_of(type(component)),
+    )
     token = _signer().sign_object(envelope_json, serializer=_JSONStringSerializer, compress=True)
     wire._state_token = (state_json, token, now)
     return token
@@ -253,6 +327,8 @@ def unsign_envelope(value: str, name: str) -> StatePayload:
     Raises:
         SignatureExpired: the token is older than ``STATE_MAX_AGE``.
         StateMismatch: the envelope was issued for another class.
+        StaleState: a model field of the class names other models than when it
+            was signed (``fit``).
         BadSignature: anything else (tampered, truncated, malformed).
     """
     envelope = _signer().unsign_object(value, serializer=_JSONStringSerializer, max_age=settings.STATE_MAX_AGE)
@@ -266,10 +342,14 @@ def unsign_envelope(value: str, name: str) -> StatePayload:
     live_session = envelope.get("s", "")
     auth = envelope.get("a")
     identity = envelope.get("i")
+    models = envelope.get("m")
     if not isinstance(live_session, str) or not all(v is None or isinstance(v, str) for v in (auth, identity)):
         raise BadSignature("Malformed state envelope")
+    if models is not None and not isinstance(models, dict):
+        raise BadSignature("Malformed state envelope")
 
-    _check_class(signed_name, name, state)
+    component_class = _check_class(signed_name, name, state)
+    state = fit(component_class, state, models)
     return StatePayload(state=state, live_session=live_session, auth=auth, identity=identity)
 
 
@@ -278,8 +358,48 @@ def unsign_state(value: str, name: str) -> dict[str, t.Any]:
     return unsign_envelope(value, name).state
 
 
-def _check_class(signed_name: str, asked_name: str, state: dict[str, t.Any]) -> None:
-    """Fail unless both names resolve to the same component class."""
+def fit(
+    component_class: "type[Component]", state: dict[str, t.Any], models: dict[str, t.Any] | None
+) -> dict[str, t.Any]:
+    """``state`` as ``component_class`` reads it now, which may not be the class that signed it (#231).
+
+    A deploy changes a class under its name while pages it drew stay open, and
+    they join with what the old class signed:
+
+    - a key the class would not sign now (``Meta.exclude_fields``,
+      ``Meta.temporary_assigns``) is dropped: the join starts it as every join
+      of the class does, rather than from a value the old one carried.
+    - a model field (``models``, the envelope's ``m``) whose models differ from
+      what the class names now is ``StaleState``, and so is a value under a field
+      that names models now but did not then: the pk it holds is another
+      model's row, or no row at all. A token with no ``m`` (an older server) is
+      not checked.
+
+    What remains is validated when the component is built from it; a state the
+    class does not validate is ``StaleState`` there (``ComponentRepository.join``).
+    """
+    unsigned = component_class._meta.exclude_fields | component_class._meta.temporary_assigns
+    if unsigned & state.keys():
+        state = {key: value for key, value in state.items() if key not in unsigned}
+    if models is None:
+        return state
+    for field, labels in model_fields_of(component_class).items():
+        if state.get(field) is None:
+            continue
+        signed = models.get(field)
+        if signed != labels:
+            component_id = state.get("id") if isinstance(state.get("id"), str) else ""
+            raise StaleState(
+                f"{component_class._fqn}.{field} names {labels}, "
+                f"but the state was signed when it named {signed or 'no model'}",
+                component_id=component_id or "",
+                name=component_class._fqn,
+            )
+    return state
+
+
+def _check_class(signed_name: str, asked_name: str, state: dict[str, t.Any]) -> "type[Component]":
+    """The class both names resolve to; fail unless it is the same one."""
     from .component import Component
 
     component_id = state.get("id", "") if isinstance(state.get("id"), str) else ""
@@ -300,3 +420,4 @@ def _check_class(signed_name: str, asked_name: str, state: dict[str, t.Any]) -> 
             signed_name=signed_class._fqn,
             asked_name=asked_class._fqn,
         )
+    return asked_class

@@ -249,3 +249,58 @@ def test_another_worker_with_the_same_settings_takes_the_page_back(page, workers
     expect_text(by(page, "count"), "1")
     assert link.same_page
     bump_to(page, 2)
+
+
+# --- a restart that deploys other fields (#231) ------------------------------------------
+
+
+def _redeploy(page, workers, tmp_path, fields: str) -> None:
+    """Stop the process that drew the page and start one whose ReconnectBox has other fields."""
+    port = next(iter(workers))
+    stop_process(workers[port])
+    expect(page.locator("#rbox")).to_have_class(re.compile("wireview-disconnected"))
+    proc, log = launch_uvicorn(port, tmp_path, env={"RECONNECTPROBE_FIELDS": fields})
+    workers[port] = proc
+    wait_until_serving(port, proc, log, READY_TIMEOUT)
+
+
+def test_a_deploy_that_adds_a_field_with_a_default_takes_the_page_back(page, workers, tmp_path):
+    port = next(iter(workers))
+    link = Link(page)
+    link.open(f"http://127.0.0.1:{port}/reconnectprobe/")
+    bump_to(page, 1)
+    bump_to(page, 2)
+    expect_text(by(page, "version"), "first")
+
+    _redeploy(page, workers, tmp_path, "default")
+    wait_live(page, LIVE)
+
+    expect_text(by(page, "version"), "default")
+    expect_text(by(page, "count"), "2")
+    expect_text(by(page, "currency"), "KRW")
+    assert link.same_page, "the old state fits the new class: no reload"
+    bump_to(page, 3)
+
+
+def test_a_deploy_that_adds_a_required_field_reloads_the_page_once(page, workers, tmp_path):
+    """The state the page holds has no ``currency``: the new class does not take it.
+    The page loads again -- once -- and the new code draws it with a state of its own,
+    rather than leaving the old one on screen, marked, until the user reloads."""
+    port = next(iter(workers))
+    link = Link(page)
+    link.open(f"http://127.0.0.1:{port}/reconnectprobe/")
+    bump_to(page, 1)
+    loads = []
+    page.on("load", lambda _page: loads.append(True))
+
+    _redeploy(page, workers, tmp_path, "required")
+
+    expect_text(by(page, "version"), "required")
+    wait_live(page, LIVE)
+    assert not link.same_page, "reloaded"
+    expect_text(by(page, "count"), "0")
+    expect_text(by(page, "currency"), "KRW")
+    expect(page.locator("#rbox.wireview-error")).to_have_count(0)
+    # The reloaded page's state is the new class's: it joins, and nothing reloads again
+    bump_to(page, 1)
+    assert len(loads) == 1, f"one reload, not a loop: {len(loads)}"

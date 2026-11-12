@@ -14,6 +14,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- A page joining with a state an older version of the component signed now gets one of two answers, decided before
+  any of the application's code runs (#231). The deployed class validates it: the page goes on from it (a new field
+  with a default, a removed field, `int` to `float`). It does not -- a new field with no default, a value that no
+  longer fits, the application's own `@field_validator` refusing it, a model field that names another model now --:
+  the page reloads once (`reload`, reason `stale`; telemetry's `join_rejected` reason `stale`), and the new code
+  draws it. Before, the first kind was a join failure that left the old page on screen, marked, until the user
+  reloaded, and a model field pointed at another model joined the stored pk as that model's row. A child's state
+  (a LiveComponent, a nested `{% component %}`) the new class refuses is dropped and the child starts from its
+  parent's props, where it used to fail the parent's join. The signed envelope carries `m`, the models each model
+  field names; a token without it (an older server's) is not checked. `docs/DEPLOYMENT.md` "필드를 바꾸는 배포"
+  says which change gets which.
+
 - `docs/features/react-islands.md`: React on an island -- registering it, a Vite bundle and its dev server, CSP
   nonces, and a policy without nonces for pages a public cache keeps, which allows the header's inline `<style>` by
   its hash (`'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='`; it changes with that style, and the changelog
@@ -89,6 +101,10 @@ The django-reactor era changelog (2.x) is preserved in
   waits for the rest of the handler (or `joined()`, `notification()`, the task) that called `stream()`.
 
 ### Changed
+
+- A join reads a signed state as the class answering to the name now would have signed it (#231): a key that class
+  leaves out of its state (`Meta.exclude_fields`, `Meta.temporary_assigns`) is dropped from one an older version
+  signed, so the field starts as in every other join of the class rather than from the old value.
 
 - **Breaking: Python 3.13 or newer is required; 3.12 is no longer supported** (#225). channels-nats, the NATS
   channel layer, requires 3.13 since 0.7.0, and the 3.12 floor held its dev dependency at `<0.7`. The supported grid

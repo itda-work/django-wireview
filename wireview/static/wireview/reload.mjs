@@ -2,7 +2,8 @@
  * The full-page-reload decision (see docs/implementation/wire-protocol.md).
  *
  * The server sends `reload` when a component's signed state cannot be used:
- * it expired, it predates the envelope format, or it does not verify. A full
+ * it expired, it predates the envelope format, it does not verify, or a
+ * deploy changed the class so that it no longer accepts it (#231). A full
  * page load is the recovery, because the server re-renders with the current
  * auth context and issues fresh tokens.
  *
