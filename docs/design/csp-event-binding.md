@@ -121,7 +121,7 @@ debounce보다 앞에"라고 적는다.
 |---|---|---|
 | `{% upload_input %}` | `onchange="wireview.addFiles(…)"` | 이미 있는 `wire-upload` 속성으로 위임 `change`가 처리 |
 | `{% upload_button %}` | `onclick="wireview.selectFiles(…)"` | `wire-upload-select="<이름>"`, 위임 `click` |
-| `{% wireview_header %}`의 `<style>` | nonce 없음 → `style-src`에 걸림 | 요청에 CSP nonce가 있으면 `<style>`과 `<script>`에 단다(Django 6.0의 `request._csp_nonce`, 없으면 생략) |
+| `{% wireview_header %}`의 `<style>` | nonce 없음 → `style-src`에 걸림 | 요청에 CSP nonce가 있으면 `<style>`과 `<script>`에 단다(Django 6.0의 `django.middleware.csp.get_nonce()`, django-csp의 `request.csp_nonce`, 없으면 생략. #265) |
 | `.inlinejs` 수정자 | README는 "핸들러를 리터럴 JavaScript로"라고 적지만 **태그로는 한 번도 동작하지 않았다** — `{% on %}`이 명령을 컴포넌트 메서드로 먼저 확인하므로 `{% on "click.inlinejs" "alert(1)" %}`는 AssertionError다 | **명확한 템플릿 오류로 바꾸고 `JS()`를 안내한다.** 되살리려면 인라인이거나 `eval`이어야 하고 둘 다 CSP가 막는다. 트랜스파일러의 수정자는 LSP 메타데이터용으로 남는다 |
 
 ## 7. 호환성

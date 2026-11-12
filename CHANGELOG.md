@@ -264,6 +264,11 @@ The django-reactor era changelog (2.x) is preserved in
   page to use the nonce (#224). The middleware's `LazyNonce` is false until something makes it a string, the header
   tested it for truth, and the policy then had no nonce either: under a nonce-only `style-src` the header's `<style>`
   was refused. The header now makes it a string.
+- `{% wireview_header %}` reads the CSP nonce where each middleware publishes it (#265): Django's own (6.0+) through
+  `django.middleware.csp.get_nonce()`, django-csp through `request.csp_nonce`. Under django-csp it read only the
+  private `_csp_nonce`, which django-csp sets once `csp_nonce` is read, so on a page where the header was the first to
+  want the nonce it went out without one and a nonce-only policy refused its `<style>`, as #224 did under Django's.
+  A request no CSP middleware saw still gets no nonce.
 - A hook a morph handed to another component, its element moved there by id, was not mounted again: the element
   kept the marks of the old component's hooks, and the new component's scan took them for mounted (#221). When the
   old component left, it had destroyed them; when it stayed, they lived on and pushed to it. Destroying a hook takes

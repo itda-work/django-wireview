@@ -299,6 +299,79 @@ class TestHeaderNonce:
             response = middleware.process_response(request, HttpResponse(html))
         assert f"'nonce-{nonce}'" in response["Content-Security-Policy"]
 
+    def test_djangos_nonce_is_read_through_its_public_function(self):
+        """Django 6.0+ publishes the nonce as ``django.middleware.csp.get_nonce``; the header reads that (#265)."""
+        csp = pytest.importorskip("django.middleware.csp")
+        from wireview.templatetags import wireview as tags
+
+        assert tags._django_csp_nonce is csp.get_nonce
+
+    def test_django_csps_nonce_nothing_used_before_the_header_is_in_the_header_and_the_policy(self):
+        """django-csp makes ``_csp_nonce`` only when ``request.csp_nonce`` is read. The header looked for the former
+        alone, so a page that had not read the nonce before it went out without one, as in #224 (#265)."""
+        request = RequestFactory().get("/")
+        _DjangoCspStandIn().process_request(request)
+
+        html = self._header(request)
+
+        (nonce,) = set(re.findall(r'nonce="([^"]+)"', html))
+        assert re.search(r"<style\s+nonce=", html), html
+        assert request._csp_nonce == nonce  # what django-csp's process_response puts in the policy
+
+    def test_a_django_csp_nonce_read_earlier_is_the_one_in_the_header(self):
+        request = RequestFactory().get("/")
+        _DjangoCspStandIn().process_request(request)
+        earlier = str(request.csp_nonce)
+
+        assert set(re.findall(r'nonce="([^"]+)"', self._header(request))) == {earlier}
+
+    def test_the_real_django_csp_puts_the_headers_nonce_in_its_policy(self):
+        """The stand-in above against django-csp itself, where it is installed (``uv run --with django-csp``)."""
+        middleware_module = pytest.importorskip("csp.middleware")
+        from csp.constants import NONCE, SELF
+        from django.http import HttpResponse
+        from django.test import override_settings
+
+        policy = {"DIRECTIVES": {"default-src": [SELF], "style-src": [SELF, NONCE]}}
+        with override_settings(CONTENT_SECURITY_POLICY=policy):
+            middleware = middleware_module.CSPMiddleware(lambda request: None)
+            request = RequestFactory().get("/")
+            middleware.process_request(request)
+            html = self._header(request)
+            response = middleware.process_response(request, HttpResponse(html))
+
+        (nonce,) = set(re.findall(r'nonce="([^"]+)"', html))
+        assert f"'nonce-{nonce}'" in response["Content-Security-Policy"]
+
+    def test_an_empty_nonce_adds_nothing(self):
+        """django-csp's context processor stands "" for a request its middleware did not see."""
+        request = RequestFactory().get("/")
+        request.csp_nonce = ""
+
+        assert "nonce" not in self._header(request)
+
+
+class _DjangoCspStandIn:
+    """django-csp 4.0's ``CSPMiddleware.process_request``: a nonce made on first read and kept as ``_csp_nonce``.
+
+    django-csp is not a dependency; ``test_the_real_django_csp_puts_the_headers_nonce_in_its_policy`` checks this
+    against it where it is installed.
+    """
+
+    def process_request(self, request):
+        from django.utils.functional import SimpleLazyObject, empty
+
+        class CheckableLazyObject(SimpleLazyObject):
+            def __bool__(self):
+                return self._wrapped is not empty
+
+        def make():
+            if not isinstance(getattr(request, "_csp_nonce", None), str):
+                request._csp_nonce = "Y3NwLW5vbmNl"
+            return request._csp_nonce
+
+        request.csp_nonce = CheckableLazyObject(make)
+
 
 EVENTS_MJS = Path(__file__).resolve().parent.parent / "wireview" / "static" / "wireview" / "events.mjs"
 

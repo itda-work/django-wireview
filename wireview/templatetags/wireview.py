@@ -87,16 +87,35 @@ def wireview_header(context):
     }
 
 
+try:
+    from django.middleware.csp import get_nonce as _django_csp_nonce  # type: ignore[import-not-found]
+except ImportError:  # Django < 6.0 has no CSP of its own
+
+    def _django_csp_nonce(request: t.Any) -> t.Any:
+        # What django.middleware.csp.get_nonce reads, and where django-csp keeps a nonce once it is made
+        return getattr(request, "_csp_nonce", None)
+
+
 def _csp_nonce(request: t.Any) -> str | None:
     """The request's CSP nonce as a string, generated if nothing has used it yet.
 
-    Django's is a ``LazyNonce``: false until something turns it into a string,
-    and the middleware puts it in the policy only then. Tested for truth as it
-    came, it was false whenever the header was the first to want it -- the
+    Read where each middleware publishes it (#265): Django's own (6.0+) through
+    ``django.middleware.csp.get_nonce``, django-csp through ``request.csp_nonce``.
+    A request neither middleware saw has neither, and no nonce is made for it.
+
+    Both are lazy: false until something turns them into a string, and the
+    middleware puts the nonce in the policy only then. Tested for truth as it
+    came, Django's was false whenever the header was the first to want it -- the
     header went out without nonces, the policy without the nonce, and its
-    ``<style>`` was refused (#224).
+    ``<style>`` was refused (#224). django-csp's ``_csp_nonce`` does not exist
+    until ``csp_nonce`` is read, so the header found it only on a page that had
+    read it first.
     """
-    nonce = getattr(request, "_csp_nonce", None) if request is not None else None
+    if request is None:
+        return None
+    nonce = _django_csp_nonce(request)
+    if nonce is None:
+        nonce = getattr(request, "csp_nonce", None)
     return str(nonce) if nonce is not None else None
 
 

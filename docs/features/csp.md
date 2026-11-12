@@ -40,10 +40,14 @@ SECURE_CSP = {
 }
 ```
 
-- `{% wireview_header %}`가 미들웨어가 요청에 둔 nonce(`request._csp_nonce`)를 읽어 태그에 붙인다. 템플릿에서
-  따로 할 일은 없다.
+- `{% wireview_header %}`가 미들웨어가 요청에 둔 nonce를 Django의 공개 함수 `django.middleware.csp.get_nonce()`로
+  읽어 태그에 붙인다. 템플릿에서 따로 할 일은 없다. nonce는 처음 읽힐 때 만들어지므로, 헤더가 페이지에서 처음 읽어도
+  정책에 들어간다.
+- [django-csp](https://django-csp.readthedocs.io/)(`csp.middleware.CSPMiddleware`)의 nonce(`request.csp_nonce`)도
+  같은 방식으로 읽는다. 정책의 디렉티브에 `NONCE`를 적으면 헤더의 태그가 허용된다.
 - 헤더의 `<style>`은 연결이 끊겼을 때의 표시다. nonce가 없는 정책이면 이 스타일만 적용되지 않는다.
-- Django 5.x나 미들웨어 없이 헤더를 직접 쓰는 경우, 요청에 `_csp_nonce`를 두면 같은 방식으로 붙는다.
+- 두 미들웨어 모두 없는 요청에는 nonce를 만들지 않고 태그에 아무것도 붙이지 않는다. Django 5.x에서 미들웨어 없이 헤더를
+  직접 쓰는 경우, 요청에 `_csp_nonce`(문자열)를 두면 같은 방식으로 붙는다.
 
 검증은 `tests/test_csp_e2e.py`가 한다. 인라인 허용이 없는 정책으로 페이지를 띄우고 모든 바인딩 모양을 실행한 뒤
 브라우저가 거부한 것이 없는지 본다.
