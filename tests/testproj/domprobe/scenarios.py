@@ -311,6 +311,11 @@ SCENARIOS += [
 ]
 
 
+# What DomHooked hears from its chart's hook pushing ``point`` with x=3, and the reply the hook gets
+HOOK_HEARD = [("point", {"hook": "DomPush", "x": 3})]
+HOOK_REPLY = {"event": "point", "doubled": 6, "owner_is_me": True}
+
+
 def heard(component: type, expected: list[tuple[str, dict[str, t.Any]]], log: list[t.Any]) -> list[t.Any]:
     """What ``component``'s handlers named in ``expected`` heard, in order."""
     names = {name for name, _ in expected}

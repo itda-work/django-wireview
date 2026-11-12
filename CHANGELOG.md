@@ -44,6 +44,12 @@ The django-reactor era changelog (2.x) is preserved in
   field its `for` names, or the first one inside it, gets a click of its own -- a checkbox or radio is ticked and
   sends `input` and `change`, a submit button submits. A click on the field itself, or on a button or link inside the
   label, goes no further. Before, a click on a label reached no handler.
+- `MountedComponent.hook_event(selector, event, payload, hook=)` sends what a hook's `this.pushEvent()` sends
+  (GAP-056, #252, Phoenix's `render_hook`): the element must carry `wire-hook` and be the mounted component's, and
+  `hook=` names one of its hooks. `handle_hook_event()` runs as a session runs it, with the payload as JSON carries
+  it, and the call returns the reply the hook's callback or Promise gets -- not the render. A reply JSON cannot carry
+  raises `TypeError`, as it fails on the socket. A browser test clicks a probe's hook and compares what
+  `handle_hook_event()` heard and the reply the hook got.
 - Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
   6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
   (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's

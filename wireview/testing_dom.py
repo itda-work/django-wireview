@@ -1036,6 +1036,28 @@ class Page:
             element=el,
         )
 
+    def hook_id(self, el: Element, hook: str | None) -> str:
+        """The id the client gives the hook ``hook`` of ``el`` (``generateHookId``, with a fixed suffix)."""
+        names = (el.get("wire-hook") or "").split()
+        if not names:
+            raise DomError(f"{el.describe()} has no wire-hook: no hook on it can push an event")
+        if hook is None:
+            if len(names) > 1:
+                raise DomError(f"{el.describe()} has the hooks {names}: name the one that pushes with hook=")
+            hook = names[0]
+        elif hook not in names:
+            raise DomError(f"{el.describe()} has no hook {hook!r}; its wire-hook names {names}")
+        owner = el.closest(is_component)
+        if owner is None:
+            raise DomError(f"{el.describe()} is in no component's element: its hook belongs to none")
+        if owner.get("id") != self.component_id:
+            name = owner.get("data-name") or "that component"
+            raise DomError(
+                f"The hook {hook!r} of {el.describe()} is {name} {owner.get('id')!r}'s, not the mounted "
+                f"{self.component_id!r}'s: its pushEvent goes there. Mount {name} to test it."
+            )
+        return f"{self.component_id}:{hook}:test"
+
     # -- actions ------------------------------------------------------------
 
     def click(self, el: Element, event: t.Mapping[str, t.Any] | None = None) -> list[ServerEvent]:

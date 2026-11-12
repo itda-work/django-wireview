@@ -1219,19 +1219,72 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
         return await self._act(act)
 
-    async def _act(self, action: t.Callable[[testing_dom.Page], list[testing_dom.ServerEvent]]) -> str | None:
-        """Do ``action`` on the page as it is now, send its events in order, and render."""
-        from django.utils.datastructures import MultiValueDict
+    async def hook_event(
+        self,
+        selector: str,
+        event: str,
+        payload: dict[str, t.Any] | None = None,
+        /,
+        *,
+        hook: str | None = None,
+        text: str | re.Pattern[str] | None = None,
+    ) -> t.Any:
+        """Push ``event`` from the hook on the element ``selector`` picks, as its ``this.pushEvent()`` does.
 
-        from .utils import parse_request_data
+        The element must carry ``wire-hook``, and ``hook`` must name one of its
+        hooks (it is needed only when it names several). The hook must be the
+        mounted component's: the one whose element holds it. The component's
+        ``handle_hook_event(hook_id, event, payload)`` runs, as a session runs
+        it, with ``payload`` as JSON carries it.
 
+        Returns the reply -- what ``handle_hook_event`` returned, as the hook's
+        callback or Promise gets it -- and not the render: read that with
+        :meth:`render`. A reply JSON cannot carry fails, as it fails on the socket.
+
+        Example:
+            reply = await view.hook_event("#chart", "point_clicked", {"x": 3})
+            assert reply == {"handled": True}
+        """
+        import json
+
+        page = await self._page()
+        el = page.find(selector, text)
+        hook_id = page.hook_id(el, hook)
+        try:
+            sent = json.loads(json.dumps(payload or {}))
+        except (TypeError, ValueError) as error:
+            raise TypeError(f"A hook pushes JSON, and {payload!r} is not: {error}") from None
+        component = self._component
+        async with self._handling_message():
+            self._unrendered_event = True
+            with render_queries.scope("handler", component, f"handle_hook_event({event!r})"):
+                response = await component.handle_hook_event(hook_id, event, sent)
+            await self._update_subscriptions()
+        try:
+            return json.loads(json.dumps(response))
+        except (TypeError, ValueError) as error:
+            raise TypeError(
+                f"{component._name}.handle_hook_event({event!r}) returned {response!r}, which the reply to the "
+                f"hook cannot carry: it goes as JSON ({error})"
+            ) from None
+
+    async def _page(self) -> testing_dom.Page:
+        """The page as the browser holds it now: the render, with the stream items in it."""
         # Off the loop, as a page's render is: a template may await an async property
         html = await sync_to_async(self.render)()
         if html is None:
             raise testing_dom.DomError(
                 f"{self._component._name} is frozen and draws nothing: there is no page to act on"
             )
-        page = testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops)
+        return testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops)
+
+    async def _act(self, action: t.Callable[[testing_dom.Page], list[testing_dom.ServerEvent]]) -> str | None:
+        """Do ``action`` on the page as it is now, send its events in order, and render."""
+        from django.utils.datastructures import MultiValueDict
+
+        from .utils import parse_request_data
+
+        page = await self._page()
         # Every event of one action is read from the page before any answer, as
         # the browser dispatches them all before the server's render comes back
         for event in action(page):

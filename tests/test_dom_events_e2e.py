@@ -14,11 +14,13 @@ helpers' copy (``testing_dom.apply_stream_ops``) makes of the same run.
 
 import json
 import random
+import re
 
 import pytest
-from testproj.domprobe.live import HEARD
-from testproj.domprobe.scenarios import SCENARIOS, by, heard
-from testproj.e2e_browser import OFFLINE_SHIM, expect_text, open_live
+from playwright.sync_api import expect
+from testproj.domprobe.live import HEARD, DomHooked
+from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, SCENARIOS, by, heard
+from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, WAIT_TIMEOUT, expect_text, open_live
 from testproj.e2e_server import serve
 
 from wireview.testing_dom import Selector, apply_stream_ops, element_children, parse
@@ -102,6 +104,12 @@ READ_CONTAINERS = """async () => {
   );
 }"""
 
+JOINED = """async () => {
+  if (window.__inbox.seen.filter((m) => m.command === "joined").length < 2) return false;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return true;
+}"""
+
 SEND = """(messages) => {
   const socket = window.__link.sockets.at(-1);
   for (const data of messages) socket.dispatchEvent(new MessageEvent("message", { data }));
@@ -111,7 +119,11 @@ SEND = """(messages) => {
 @pytest.mark.parametrize("seed", range(6))
 def test_a_page_holds_the_stream_items_the_helpers_hold(page, server, seed):
     page.add_init_script(OFFLINE_SHIM)
+    page.add_init_script(INBOX_SHIM)
     open_live(page, f"{server}/domprobe/streams/")
+    # Both joins answered and their renders patched in: a join's render that came after the operations
+    # would be a run of its own, and the containers are what the operations alone left
+    page.wait_for_function(JOINED, timeout=WAIT_TIMEOUT * 1000)
     root = parse(page.content())
     ops = _random_ops(random.Random(seed), 12)
     page.evaluate(SEND, [json.dumps({"command": "stream_op", "payload": op}) for op in ops])
@@ -119,3 +131,14 @@ def test_a_page_holds_the_stream_items_the_helpers_hold(page, server, seed):
     apply_stream_ops(root, [{"type": "stream_op", **op} for op in ops])
     ours = [_summary(c) for c in Selector("[wire-stream]").select(root)]
     assert ours == theirs, f"the helpers and the client part on {ops}"
+
+
+def test_a_hooks_push_is_what_hook_event_sends(page, server):
+    """The hook pushes on a click; the helper pushes the same event: handle_hook_event hears the same, and the
+    reply is what the hook's Promise got. ``tests/test_dom_events.py`` holds the helper to the same values."""
+    open_live(page, f"{server}/domprobe/")
+    HEARD.clear()
+    by(page, "chart").click()
+    expect(page.locator("html")).to_have_attribute("data-dom-reply", re.compile("point"))
+    assert json.loads(page.locator("html").get_attribute("data-dom-reply") or "") == HOOK_REPLY
+    assert heard(DomHooked, HOOK_HEARD, HEARD) == HOOK_HEARD

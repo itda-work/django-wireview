@@ -175,6 +175,7 @@ wireview/
 │                          tests/js/bindings.mjs 가 같은 입력에 클라이언트 함수를 돌려 맞춘다. 위임·소유 컴포넌트·필드 직렬화는 wireview.js의
 │                          EventBindings.run·wireview.send·Component.serialize를 따른다 — 클라이언트를 바꾸면 이것과 tests/test_dom_events_e2e.py 도.
 │                          키·포커스(keydown·keyup·focus·blur, 수정 키, Enter의 암묵적 제출)와 <label>의 클릭 이어 주기도 같은 규칙이다.
+│                          hook_event()는 wire-hook 요소의 훅이 pushEvent로 보낼 것을 handle_hook_event에 보내고 응답을 돌려준다
 │                          스트림 연산을 컨테이너에 넣는 것(apply_stream_ops)은 wireview.js의 _streamContainer·_applyStreamOp와 streams.mjs의 사본이고,
 │                          tests/test_dom_events_e2e.py 가 같은 연산 열을 페이지의 클라이언트에 보내 맞춘다. 기록은 MockWireviewMeta.sent_messages(_SentMessages)가 따로 지닌다
 │                          핸들러는 MountedComponent._handle(call()과 같은 길)로 부른다. JavaScript는 돌지 않는다
@@ -345,7 +346,7 @@ tests/
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
-                           domprobe/ 는 사용자의 클릭·change·input·submit·키·포커스가 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent·키 조건·암묵적 제출, DomTrap·DomChat은 바인딩을 지우거나 잘못 건 템플릿. streams/ 는 스트림 연산을 받을 컨테이너들의 페이지),
+                           domprobe/ 는 사용자의 클릭·change·input·submit·키·포커스가 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent·키 조건·암묵적 제출, DomTrap·DomChat은 바인딩을 지우거나 잘못 건 템플릿, DomHooked는 static/domprobe/hooks/dom.js의 훅이 누르면 pushEvent한다. streams/ 는 스트림 연산을 받을 컨테이너들의 페이지),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
                            endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),

@@ -93,6 +93,7 @@ async def test_remove_button_deletes_the_row(item):
 | `await view.keyup(selector, key, ...)` | 같은 인자로 키를 뗀다. `{% on "keyup.enter" "send" %}` 같은 채팅 입력창 |
 | `await view.focus(selector, *, text=None)` | 포커스를 준다: `focus`(그 요소의 바인딩만) 뒤 `focusin`(조상으로 올라간다) |
 | `await view.blur(selector, *, text=None)` | 포커스를 뺀다: `blur` 뒤 `focusout` |
+| `await view.hook_event(selector, event, payload=None, *, hook=None, text=None)` | 그 요소의 훅이 `this.pushEvent(event, payload)`로 보내는 것을 보낸다. **돌려주는 것은 렌더가 아니라 응답**이다 — 아래 "훅 이벤트" |
 
 모두 이벤트를 보낸 뒤의 `view.render()`를 돌려준다(Phoenix의 `render_click`처럼). 핸들러는 `call()`과 같은 길로
 돈다 — `handle_event` 훅, 클라이언트가 부를 수 있는 메서드인지의 검사, `validate_call`, 그 뒤의 `sent_messages`와
@@ -125,6 +126,20 @@ async def test_remove_button_deletes_the_row(item):
 `value`를 주지 않으면 칸은 렌더의 값 그대로 이벤트만 간다. **헬퍼는 부를 때마다 렌더에서 다시 시작한다** — 앞 호출에서
 넣은 값을 기억하지 않으므로 제출에 필요한 값은 `submit(values=...)`에 모두 준다(브라우저에서도 `change` 바인딩의 답이
 폼을 렌더의 값으로 되돌린다. 값을 상태에 두지 않은 폼은 거기서 이미 잃는다, [입력 중인 값](./html-diff.md#입력-중인-값)).
+
+**훅 이벤트.** 훅은 JavaScript라 헬퍼가 돌리지 않지만, 훅이 서버로 보내는 것은 보낼 수 있다(Phoenix의 `render_hook`).
+
+```python
+reply = await view.hook_event("#chart", "point_clicked", {"x": 3})   # <canvas id="chart" wire-hook="Chart">
+assert reply == {"handled": True}            # handle_hook_event가 돌려준 것: 훅의 콜백·Promise가 받는 값
+assert "3번 점" in view.render()
+```
+
+고른 요소에 `wire-hook`이 있어야 하고, `hook=`은 그 이름 중 하나여야 한다(`wire-hook="Chart Tooltip"`처럼 여럿이면
+꼭 준다). 훅은 그 요소를 품은 컴포넌트의 것이라 그것이 마운트한 컴포넌트여야 한다(중첩 컴포넌트의 훅이면 그 컴포넌트를
+마운트하라며 실패한다). `handle_hook_event(hook_id, event, payload)`가 세션에서처럼 돈다 — `hook_id`는
+`"<컴포넌트 id>:<훅 이름>:test"`이고, `payload`와 응답은 JSON을 지난 값이다(튜플은 리스트가 된다). JSON으로 보낼 수 없는
+응답은 소켓에서처럼 실패한다(`TypeError`). 훅이 이벤트를 보내는지, 언제 보내는지는 JavaScript의 일이라 브라우저 E2E로 본다.
 
 **클라이언트와 같은 규칙.** 무엇이 가는지는 클라이언트가 정한 그대로다.
 
@@ -169,7 +184,8 @@ async def test_remove_button_deletes_the_row(item):
   `<button>`(기본 type이 submit)에 `{% on "click" %}`만 걸고 `.prevent`를 잊은 경우도 여기서 잡힌다.
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
 
-**하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅, 로딩 클래스, `wire-disabled-with`는
+**하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅의 코드(`hook_event()`는 훅이 보낼
+것을 대신 보낼 뿐이다), 로딩 클래스, `wire-disabled-with`는
 없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
 
 ## 내비게이션 단언

@@ -24,8 +24,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from testproj.domprobe.live import HEARD, DomBubble, DomChat, DomForm, DomKeys, DomNest, DomTrap
-from testproj.domprobe.scenarios import SCENARIOS, heard
+from testproj.domprobe.live import HEARD, DomBubble, DomChat, DomForm, DomHooked, DomKeys, DomNest, DomTrap
+from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, SCENARIOS, heard
 
 from wireview import JS, Component, mount
 from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
@@ -391,6 +391,59 @@ async def test_the_legend_of_a_disabled_fieldset_is_not_disabled():
     view = await mount(DomDisabled)
     await view.click("[data-testid=in-legend]")
     assert [name for _, name, _ in HEARD] == ["hit"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_hook_event_sends_what_the_hook_pushes():
+    view = await mount(DomHooked)
+    reply = await view.hook_event("[data-testid=chart]", "point", {"x": 3})
+    assert reply == HOOK_REPLY
+    assert heard(DomHooked, HOOK_HEARD, HEARD) == HOOK_HEARD
+    # The handler's change is in the render, as the render behind the reply carries it
+    assert "point" in (view.render() or "")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "match"),
+    [
+        (lambda v: v.hook_event("[data-testid=plain]", "point"), r"has no wire-hook"),
+        (lambda v: v.hook_event("[data-testid=two]", "point"), r"has the hooks \['DomPush', 'DomOther'\]: name"),
+        (lambda v: v.hook_event("[data-testid=chart]", "point", hook="Chart"), r"has no hook 'Chart'"),
+        (lambda v: v.hook_event("[data-testid=leaf-hook]", "point"), r"DomHookLeaf 'hook-leaf''s, not the mounted"),
+    ],
+)
+async def test_a_hook_event_no_hook_can_push_fails(action, match):
+    view = await mount(DomHooked)
+    await _fails(view, action, match)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_hook_event_names_the_hook_among_several():
+    view = await mount(DomHooked)
+    await view.hook_event("[data-testid=two]", "point", {"x": 1}, hook="DomOther")
+    assert HEARD[-1][2] == {"hook": "DomOther", "x": 1}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_hook_event_carries_json():
+    class DomHookedRaw(DomHooked):
+        class Meta:
+            template_name = "domprobe/hooked.html"
+
+        async def handle_hook_event(self, hook_id, event, payload):
+            return {"payload": payload} if event != "object" else object()
+
+    view = await mount(DomHookedRaw)
+    assert await view.hook_event("[data-testid=chart]", "tuple", {"pair": (1, 2)}) == {"payload": {"pair": [1, 2]}}
+    with pytest.raises(TypeError, match="cannot carry"):
+        await view.hook_event("[data-testid=chart]", "object")
+    with pytest.raises(TypeError, match="A hook pushes JSON"):
+        await view.hook_event("[data-testid=chart]", "x", {"when": object()})
 
 
 class DomLabels(Component):

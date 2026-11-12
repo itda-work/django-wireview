@@ -67,6 +67,8 @@ async def test_the_plus_button_increments():
 키는 브라우저의 `event.key` 이름(`"Enter"`, `"Escape"`, `"a"`)이고 `ctrl=True` 등은 수정 키, `composing=True`는 IME
 조합 중인 키다(키 조건이 지나가지 않는다). 폼의 텍스트 칸에서 Enter `keydown`은 브라우저처럼 폼을 제출한다.
 `<label>`을 `click()`하면 그 칸으로 클릭이 이어진다(checkbox 체크·change, 제출 버튼 제출).
+훅이 `pushEvent`로 보내는 것은 `reply = await view.hook_event("#chart", "point", {"x": 3})` — 요소에 `wire-hook`이
+있어야 하고, 돌려주는 것은 렌더가 아니라 `handle_hook_event`의 응답이다.
 
 선택자에 맞는 요소가 없거나 여럿, 바인딩 없음, disabled, 다른 컴포넌트(중첩·LiveComponent)의 바인딩, `.prevent` 없는
 submit은 이유를 말하며 실패한다. JavaScript는 돌지 않는다(`JS()` 체인·훅·debounce의 시간). 부를 때마다 렌더에서

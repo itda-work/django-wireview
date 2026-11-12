@@ -171,6 +171,25 @@ class DomChat(_Recording, Component):
         self._heard("send", {"draft": draft})
 
 
+class DomHooked(_Recording, Component):
+    """A hook's pushEvent: what handle_hook_event hears, and the reply the hook gets."""
+
+    class Meta:
+        template_name = "domprobe/hooked.html"
+
+    heard: str = ""
+
+    async def handle_hook_event(self, hook_id: str, event: str, payload: dict[str, t.Any]) -> t.Any:
+        owner, hook, _ = hook_id.split(":", 2)
+        self._heard(event, {"hook": hook, **payload})
+        return {"event": event, "doubled": payload.get("x", 0) * 2, "owner_is_me": owner == self.id}
+
+
+class DomHookLeaf(Component):
+    class Meta:
+        template_name = "domprobe/hook_leaf.html"
+
+
 class DomStreamHost(Component):
     """Stream containers for ``tests/test_dom_events_e2e.py`` to put operations in: two named alike, one in a
     nested component, one that is the nested component's alone, and one that starts with an item of its own."""

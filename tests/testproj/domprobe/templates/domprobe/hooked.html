@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-hooked">{{ heard }}</output>
+  <button type="button"
+          data-testid="chart"
+          wire-hook="DomPush"
+          data-event="point"
+          data-x="3">chart</button>
+  <div data-testid="two" wire-hook="DomPush DomOther"></div>
+  <p data-testid="plain">plain</p>
+  {% component 'DomHookLeaf' id="hook-leaf" %}
+</div>

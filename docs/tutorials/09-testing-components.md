@@ -73,6 +73,7 @@ DB를 읽거나 쓰는 컴포넌트는 `joined()`에서 이미 DB에 닿으므�
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.call(handler, **kwargs)` | 이벤트 핸들러 호출 |
 | `view.click(selector)` · `change` · `input` · `submit` · `keydown` · `keyup` · `focus` · `blur` | 페이지의 요소로 이벤트 보내기 (아래 참조) |
+| `view.hook_event(selector, event, payload)` | 그 요소의 훅이 `pushEvent`로 보내는 것을 보내고 응답을 돌려준다 |
 | `view.sent_messages` | 전송된 메시지 목록 |
 | `view.redirected_to` | 리다이렉트 URL |
 | `view.is_frozen` | freeze 상태 |
