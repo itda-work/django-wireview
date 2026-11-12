@@ -245,6 +245,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A component whose `get_subscriptions()` raises costs itself alone (#233), as any other code of a component that
+  raises does (`docs/features/errors.md`): it is joined again and the connection and the components beside it carry
+  on. It used to close the socket after the message, and every component of the page joined again. A render asks
+  the components it drew for their subscriptions before its frame goes, so the page never holds the state that
+  raised: the component joins again from the state before the event, which is answered by the `error` alone. One
+  no render drew -- its subscriptions read something besides its state -- is caught when the connection settles
+  them, after the message's answer. In a join it is a join failure, not retried: joined again and raising again,
+  it stops there. A channel only it heard is left.
 - The examples read the address's query as the user may type it (#267). `/todo?showing=bogus` (any value that is not
   a filter, an empty one included) failed the page with a `ValidationError`; it now shows the list with the default
   filter (`Showing.from_query()`). The dashboard took any `?tab=`/`?range=` into its state and drew no tab; rating

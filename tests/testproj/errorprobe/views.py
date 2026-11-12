@@ -13,3 +13,8 @@ def late(request):
 def slot(request):
     """Components whose joins fail, one holding the page's own LiveComponent in its slot."""
     return render(request, "errorprobe/slot.html")
+
+
+def rooms(request):
+    """Two components whose topics name their room: one can leave it and make them raise (#233)."""
+    return render(request, "errorprobe/rooms.html")

@@ -10,8 +10,8 @@
 
 | 무엇이 던졌나 | 서버 | 브라우저 |
 |---|---|---|
-| 이벤트 핸들러, 브로드캐스트 수신(`notification`·`mutation`), `params_changed`, 훅 이벤트, 업로드 콜백, `start_async`의 `handle_async`, LiveComponent `update()`, 렌더 — 업로드의 등록·완료·진행·오류가 부르는 렌더도(#233) | 로그(`log.exception`)를 남기고 인스턴스를 버린다. `joined()`가 돌았던 인스턴스면 `leaving()`을 부른다 | 그 컴포넌트를 요소의 `data-state`로 **다시 join**한다 |
-| `mount`, `on_mount` 훅, `joined()`, join의 첫 렌더 | 로그를 남기고 저장소에서 지운다. `leaving()`은 `joined()`가 돌았을 때만 부른다 — `joined()`가 던졌으면 부르고, `mount`·`on_mount` 훅이 던졌으면 부르지 않는다 | 요소를 그대로 두고 `wireview-error` 클래스를 붙인다. 다시 시도하지 않는다 |
+| 이벤트 핸들러, 브로드캐스트 수신(`notification`·`mutation`), `params_changed`, 훅 이벤트, 업로드 콜백, `start_async`의 `handle_async`, LiveComponent `update()`, 렌더 — 업로드의 등록·완료·진행·오류가 부르는 렌더도(#233), 그리고 메시지를 처리한 뒤 구독을 맞추며 묻는 `get_subscriptions()`(#233, [아래](#구독을-묻다가-던지면)) | 로그(`log.exception`)를 남기고 인스턴스를 버린다. `joined()`가 돌았던 인스턴스면 `leaving()`을 부른다 | 그 컴포넌트를 요소의 `data-state`로 **다시 join**한다 |
+| `mount`, `on_mount` 훅, `joined()`, join의 첫 렌더, join이 묻는 `get_subscriptions()` | 로그를 남기고 저장소에서 지운다. `leaving()`은 `joined()`가 돌았을 때만 부른다 — `joined()`가 던졌으면 부르고, `mount`·`on_mount` 훅이 던졌으면 부르지 않는다 | 요소를 그대로 두고 `wireview-error` 클래스를 붙인다. 다시 시도하지 않는다 |
 | 아무도 기다리지 않는 태스크의 나머지: `start_async`·`assign_async`가 결과를 받은 뒤의 렌더 요청, `assign_async`의 `on_error`, `allow_upload()`의 config 전송 | 끝나는 즉시 `wireview` 로거에 ERROR와 트레이스백을 남긴다. 취소는 남기지 않는다. 컴포넌트는 그대로다(#151) | 없음. config가 가지 않으면 업로드 입력은 그려지지만 아무 동작도 하지 않는다 |
 | 클라이언트가 보내지 않는 메시지(모르는 command, 인자가 맞지 않는 payload) | WARNING 로그를 남기고 버린다 | 없음 |
 | 핸들러가 아닌 이름으로 온 이벤트(`_private`, 없는 이름, `joined` 같은 프레임워크 메서드) | WARNING 로그를 남긴다. 아무것도 호출하지 않는다 | 이벤트가 끝났다는 빈 응답을 받아 로딩 상태가 풀린다 |
@@ -50,6 +50,23 @@ async def transfer(self, amount: int, **_):
 
 LiveComponent가 던지면 그것을 소유한 **루트 컴포넌트가 트리째** 다시 join한다. LiveComponent는
 자기 join이 없기 때문이다([live-component](./live-component.md)).
+
+### 구독을 묻다가 던지면
+
+연결은 메시지를 하나 처리할 때마다 모든 컴포넌트에 `get_subscriptions()`를 물어 들을 채널을 맞춘다.
+핸들러가 비운 필드로 채널 이름을 만드는 코드가 흔한 예다 — `self.room`이 `None`이 됐는데
+`f"room.{self.room.pk}"`. 예전에는 이 예외가 연결을 닫아 페이지의 모든 컴포넌트가 다시 join했다(#233).
+지금은 핸들러가 던진 것과 같다. 그 컴포넌트만 다시 join하고, 연결과 옆 컴포넌트는 그대로다.
+
+- **렌더가 먼저 묻는다.** 렌더는 그린 컴포넌트(와 함께 그린 LiveComponent)의 `get_subscriptions()`를 프레임을
+  보내기 전에 묻고, 던지면 렌더가 던진 것으로 다룬다. 그래서 페이지는 던지게 만든 상태를 받지 않는다 —
+  다시 join은 이벤트 전 상태로 돌아가고, 이벤트는 그 `error` 하나로 끝난다(render와 error로 두 번 답하지 않는다).
+- **렌더가 그리지 않은 컴포넌트**(상태 밖의 것을 읽어 채널을 정하는 것)는 구독을 맞출 때 걸린다. 그때는 그
+  메시지의 답이 이미 나간 뒤이므로 `error`는 어느 이벤트의 답도 아니다(`ref` 없이).
+- 버려진 컴포넌트만 듣던 채널은 구독에서 빠진다. 다른 컴포넌트도 듣는 채널은 남는다.
+- **join 중**이면 join 실패다(다시 시도하지 않는다). 그 상태로 join하면 또 던지기 때문이다. 이벤트로 다시 join한
+  컴포넌트가 join에서 또 던지면 거기서 멈춘다 — 다시 join은 많아야 한 번이다.
+- presence 프로듀서도 같다. 다시 join하며 버려지는 인스턴스의 `leaving()`이 퇴장시킨다.
 
 ### join 실패는 다시 시도하지 않는다
 
@@ -155,7 +172,8 @@ join 실패면 요소를 지운다.
 
 ## 테스트에서
 
-`mount()`로 만든 컴포넌트의 `call()`은 핸들러를 직접 부르므로 **예외가 그대로 올라온다**. 위의 복구는
+`mount()`로 만든 컴포넌트의 `call()`은 핸들러를 직접 부르므로 **예외가 그대로 올라온다**. 핸들러 뒤에
+구독을 맞추며 `get_subscriptions()`가 던진 것도 그렇다. 위의 복구는
 WebSocket 연결의 동작이다. 복구 자체를 검증하려면 `tests/test_errors.py`처럼
 `WebsocketCommunicator`로 연결한다.
 

@@ -245,7 +245,7 @@ def test_every_entry_point_has_a_row():
   `"type": "..."` 리터럴을 `test_session_commands.py`처럼 AST로 모으면 손 목록도 없앨 수 있다.
 - 의무마다 하나의 탐침 컴포넌트와 하나의 단언:
   - `recovers` — 템플릿 property가 던지게 한 뒤 부른다. 예외가 올라오지 않고, `error`가 그 id로 한 번, 다른 컴포넌트는 그대로.
-  - `chores` — 핸들러가 `get_subscriptions()`를 바꾼다. 부른 뒤 `outbound.topics`가 새 집합이다(던지는 경우는 §5-4의 답에 따라).
+  - `chores` — 핸들러가 `get_subscriptions()`를 바꾼다. 부른 뒤 `outbound.topics`가 새 집합이다. 던지면 그 컴포넌트만 다시 join한다(§5-4 결정).
   - `reachable` — `test_live_session_contract.py`의 `TestARefusedIdAnswersNothing`을 그대로 옮긴다(거절된 id에는 답만).
   - `instance` — 같은 id로 새 인스턴스를 세운 뒤 옛 번호로 부른다. 새 인스턴스는 그대로.
   - 그리고 그 경로마다 **대조군** — 같은 진입점이 정상 컴포넌트에는 무언가를 한다(`OBSERVABLE`과 같은 이유: 아무것도 안 하는 것과
@@ -310,7 +310,10 @@ def test_every_entry_point_has_a_row():
   약속하고(13행), 다시 join이 끝나지 않은 업로드를 끝낸다고 적는다(104행). 업로드 경로만 그 계약을 지키지 않았다 → `_crashed`.
   #233이 고친다.
 - **`has_joined` 서버 검사(질문 2)** — 바꾸지 않는다. 클라이언트의 `isLive`가 진다.
-- **`get_subscriptions()`(질문 1)** — 저장소 소유자의 결정을 기다린다. 그때까지 #233의 계약 테스트에 `xfail(strict=True)`로 남긴다.
+- **`get_subscriptions()`(질문 1)** — 저장소 소유자의 답(2026-11-12): **그 컴포넌트만 버린다.** #233 4차가 구현했다.
+  렌더가 그린 컴포넌트의 구독을 프레임을 보내기 전에 묻고(`_render_tree`, 렌더 예외와 같은 길 — 페이지는 던지게 만든 상태를
+  받지 않고 이벤트는 `error` 하나로 끝난다), 렌더가 그리지 않은 것은 `after_mutation_chores`가 컴포넌트마다 회복한다(`ref` 없는
+  `error`). join이 맞추는 구독에서 그 트리가 던지면 join 실패(재시도 없음)라 다시 join은 많아야 한 번이다. 계약 테스트의 xfail은 0이다.
 - **후보 B의 셋째 단계**(이미 맞는 진입점을 도우미로 옮기기, §5-2의 3)는 하지 않는다.
 - **`send_update`의 메일**(`update_live_component`)도 같은 형식으로 닫았다(#233 3차): 부모가 그린 LiveComponent의 인스턴스를
   싣고, 받는 쪽은 `_target`으로 찾은 뒤 `after_mutation_chores`를 한다. 이 메모를 쓸 때의 표(§1-3)는 그것을 ✓로 적었다 —

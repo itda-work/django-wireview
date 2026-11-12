@@ -531,6 +531,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   렌더만 하는 길(업로드 메시지)은 `_render_or_crash`로. 컴포넌트를 id로 부르는 메일은 보낸 인스턴스의 `instance`를 싣고
   받는 쪽이 비교한다(`_target`) — 같은 id로 다시 join한 새 인스턴스를 낡은 메일이 건드리지 않게(#233).
   새 길은 tests/test_session_entry_contract.py 의 표에 행을 넣는다. 설계는 docs/design/session-entry-gate.md
+  `get_subscriptions()`도 컴포넌트 코드다(#233): 렌더가 그린 것의 구독을 프레임 전에 묻고(`_render_tree`의 `_ask_topics` — 페이지가
+  던진 상태를 받지 않게), `after_mutation_chores`는 던진 것을 빼고 맞춘 뒤 컴포넌트마다 `_crashed`(join의 트리면 join 실패).
+  구독을 새로 묻는 곳은 그 예외를 회복하는 `try` 안에서 묻는다(`repo.components_subscribed_to`, `notifications.deliver_unheard`)
+  tests/test_subscriptions_that_raise.py
 - **새 의무는 진입점이 아니라 싱크에 단다.** 모든 길이 지나는 곳(`send_render`, `render_diff`, `register_component`,
   어댑터의 `dispatch`, `stream()`)이 없으면 먼저 그것을 만든다. 진입점마다 손으로 거는 의무는 그것을 부른 문맥이
   있어야 하는 것(답할 ref, 회복할 컴포넌트, 메일의 인스턴스)만 남긴다(#232).

@@ -16,6 +16,9 @@ bound, so a test can see whether the page sends it while the ``remove`` applies.
 The ``slot/`` page's ``ErrorSlotHost`` puts its own LiveComponent in the slot
 of a component whose join fails, next to one that holds its own. Each
 ``ErrorSlotLeaf`` takes an upload once it has joined.
+The ``rooms/`` page holds two ``ErrorRoom`` side by side. ``leave`` empties the
+field its ``get_subscriptions()`` names its channel from, so the topics raise
+after the handler returned (#233): that one joins again, the other carries on.
 """
 
 from wireview import Component, LiveComponent
@@ -162,3 +165,23 @@ class ErrorSlotLeaf(LiveComponent):
 
     async def handle_hook_event(self, hook_id, event, payload):
         HEARD.append((self.id, "hook"))
+
+
+class ErrorRoom(Component):
+    """Names its channel from ``room``, which ``leave`` empties: its topics raise (#233)."""
+
+    class Meta:
+        template_name = "errorprobe/room.html"
+
+    room: int | None = 1
+    count: int = 0
+
+    def get_subscriptions(self) -> set[str]:
+        return {f"errorprobe-room-{self.room:d}"}  # type: ignore[str-format]
+
+    async def bump(self, **_rest):
+        self.count += 1
+
+    async def leave(self, **_rest):
+        self.count += 100
+        self.room = None

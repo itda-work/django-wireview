@@ -1313,7 +1313,14 @@ class ComponentRepository:
     def components_subscribed_to(self, channel):
         # A joined presence producer hears its channel too, for the framework (#202)
         for component in self.reachable_components():
-            if channel in component.get_subscriptions() or channel in presence_channels(component):
+            try:
+                topics = component.get_subscriptions()
+            except Exception:
+                # Handed over all the same: the delivery asks again where one
+                # that raises is recovered alone (notifications.deliver, #233)
+                yield component
+                continue
+            if channel in topics or channel in presence_channels(component):
                 yield component
 
     @property

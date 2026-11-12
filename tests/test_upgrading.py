@@ -308,6 +308,10 @@ NO_UPGRADE_NOTE = {
         "닫히지 말아야 할 연결이 남을 뿐 할 일이 없다"
     ),
     "A render on the upload paths": "닫히던 연결 대신 그 컴포넌트만 다시 join할 뿐 할 일이 없다",
+    "A component whose `get_subscriptions()` raises costs itself alone": (
+        "닫히던 연결 대신 그 컴포넌트만 다시 join할 뿐 할 일이 없다. "
+        "렌더마다 한 번 더 묻는다 — 비싼 일은 그 안에 두지 않는다"
+    ),
     "The `crashed`, `send_render` and `dispatch_event` session mails carry the instance": (
         "세션 내부 메일의 형태만 바뀌었다 — `self.wire`의 멤버는 공개 API가 아니다"
     ),

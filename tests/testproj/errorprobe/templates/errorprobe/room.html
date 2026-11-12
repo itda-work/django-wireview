@@ -1,0 +1,10 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="{{ this.id }}-count">{{ this.count }}</span>
+  <span data-testid="{{ this.id }}-room">{{ this.room }}</span>
+  <button data-testid="{{ this.id }}-bump" {% on "click" "bump" %}>bump</button>
+  <button data-testid="{{ this.id }}-leave"
+          wire-disabled-with="leaving"
+          {% on "click" "leave" %}>leave</button>
+</div>

@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>error probe: rooms</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component 'ErrorRoom' id="left" %}
+    {% component 'ErrorRoom' id="right" %}
+  </body>
+</html>

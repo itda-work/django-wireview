@@ -130,6 +130,19 @@ _IDENTITY_ACTION = {"renew": "opens a new socket", "reload": "reloads"}
 LEAVING_SECONDS = 5.0
 
 
+def _ask_topics(components: t.Iterable[Component]) -> None:
+    """Ask each rendered component what it subscribes to, before its render reaches the page (#233).
+
+    A render whose state cannot say its topics fails as a render does: the
+    page keeps the state before the message, and the component is joined
+    again from it -- had the frame gone first, the page would join it again
+    with the state that raised. The answer is not kept; the subscriptions are
+    settled after the render, from every component (``after_mutation_chores``).
+    """
+    for component in components:
+        component.get_subscriptions()
+
+
 def _event_ref(ref: t.Any) -> int | None:
     """The ``ref`` of a user event or a join if it is one the client can pair, else ``None``."""
     return ref if isinstance(ref, int) and not isinstance(ref, bool) else None
@@ -797,7 +810,7 @@ class WireviewSession:
             # Subscriptions first, then the operations queued during joined():
             # a broadcast queued there must not go out before this connection
             # has joined the group it expects to hear it on.
-            await self.after_mutation_chores()
+            await self.after_mutation_chores(joining=component)
             await component.wire.flush_pending()
             # Through the same queue as what was just flushed, so it arrives last:
             # the stream items joined() sent are on the page when the client
@@ -2378,6 +2391,7 @@ class WireviewSession:
         token = self.repo.begin_tree()
         try:
             rendered = await self._render_level(component, 0)
+            _ask_topics([component, *rendered[2]])
         except BaseException:
             self.repo.tree_failed(token)
             raise
@@ -2520,17 +2534,57 @@ class WireviewSession:
     async def send_command(self, command, payload):
         await self.outbound.send_command(command, payload)
 
-    async def after_mutation_chores(self):
-        await self.update_to_which_channels_im_subscribed_to()
-        await self.send_query_string()
+    async def after_mutation_chores(self, joining: Component | None = None):
+        """Hear what the components subscribe to now, and tell the page its query string.
 
-    async def update_to_which_channels_im_subscribed_to(self):
+        A component whose ``get_subscriptions()`` raises is left out and costs
+        itself alone (#233): it is joined again, as for any code of its that
+        raised, and what only it heard is left. ``joining`` is the root a join
+        is answering: one of its tree that raises fails that join instead, not
+        retried -- the state it joined with would raise again. A render asks
+        first (``_render_tree``), so the page never holds the state that raised;
+        what is left for here is a component no render of this message drew.
+        """
+        broken = await self.update_to_which_channels_im_subscribed_to()
+        await self.send_query_string()
+        await self._drop_the_unsubscribable(broken, joining)
+
+    async def _drop_the_unsubscribable(
+        self, broken: list[tuple[Component, Exception]], joining: Component | None
+    ) -> None:
+        """Recover each component of ``broken``, whose ``get_subscriptions()`` raised, alone (#233)."""
+        # A join's own first: it fails the join, and nothing of it is joined again
+        broken = sorted(broken, key=lambda each: self.repo.root_of(each[0]) is not joining)
+        for component, error in broken:
+            if self.repo.reachable(component.id) is not component:
+                # Gone with a root recovered before it in this loop
+                continue
+            if joining is not None and self.repo.root_of(component) is joining:
+                raise error
+            try:
+                raise error
+            except Exception:
+                # The answer to the message that changed it, if any, went out
+                # before this: nothing here is that event's
+                await self._crashed(component)
+
+    async def update_to_which_channels_im_subscribed_to(self) -> list[tuple[Component, Exception]]:
+        """Settle this connection's subscriptions; returns the components whose ``get_subscriptions()`` raised.
+
+        Those are left out of what the connection hears, and recovered by the
+        caller (``after_mutation_chores``).
+        """
         self._retired_in_render = False
         # One pass for both: the topics, and which instance a topic's patches are for
         subscriptions: set[str] = set()
         book: dict[tuple[str, str], list[Component]] = {}
+        broken: list[tuple[Component, Exception]] = []
         for component in self.repo.reachable_components():
-            topics = component.get_subscriptions()
+            try:
+                topics = component.get_subscriptions()
+            except Exception as error:
+                broken.append((component, error))
+                continue
             # The patches' book and gate are the app's topics; a presence channel is not one
             subscriptions |= topics | presence.presence_channels(component)
             for topic in topics:
@@ -2549,6 +2603,7 @@ class WireviewSession:
         self._patch_book = book
         self._forget_holds()
         await self._settle_patch_topics(subscriptions)
+        return broken
 
     def _forget_holds(self) -> None:
         """A held component that is gone -- its join failed, it left -- is never let through."""

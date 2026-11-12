@@ -79,6 +79,39 @@ def test_the_other_components_and_what_the_user_typed_are_untouched(probe):
     expect(by(probe, "box-draft")).to_have_value("still here")
 
 
+def test_topics_that_raise_join_that_component_again_and_leave_the_one_beside_it(page, server):
+    """``get_subscriptions()`` raising after the handler (#233): the socket stays, as for a handler that raised.
+
+    The page never got the state that raised -- the render asks the topics before it goes -- so
+    the component joins again from what it showed, and the one beside it is not touched.
+    """
+    sockets = []
+    page.on("websocket", lambda ws: sockets.append(ws))
+    page.add_init_script(
+        "window.__wireviewErrors = [];"
+        "document.addEventListener('wireview:error', (e) => window.__wireviewErrors.push(e.detail));"
+    )
+    open_live(page, f"{server}/errorprobe/rooms/", selector="#right[data-is-live='true']")
+    by(page, "left-bump").click()
+    expect_text(by(page, "left-count"), "1")
+    by(page, "right-bump").click()
+    expect_text(by(page, "right-count"), "1")
+
+    by(page, "left-leave").click()
+    page.wait_for_function("window.__wireviewErrors.some((e) => e.id === 'left' && e.during === 'event')")
+    by(page, "left-bump").click()
+
+    # 2 in room 1, not 101 in no room: the leave happened in an instance that was thrown away
+    expect_text(by(page, "left-count"), "2")
+    expect_text(by(page, "left-room"), "1")
+    expect(by(page, "left-leave")).to_be_enabled()
+    by(page, "right-bump").click()
+    expect_text(by(page, "right-count"), "2")
+    assert [e["id"] for e in page.evaluate("window.__wireviewErrors")] == ["left"]
+    expect(page.locator("#right")).not_to_have_class("wireview-disconnected")
+    assert len(sockets) == 1
+
+
 def test_a_component_that_cannot_join_keeps_its_markup_and_is_marked(probe):
     broken = probe.locator("#broken")
 

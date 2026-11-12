@@ -412,15 +412,9 @@ TABLE: dict[str, Row] = {
     "send_query_string": Row("adapter", why="part of after_mutation_chores"),
 }
 
-#: Cells known missing, until #233 decides them. strict: one that passes fails the run.
-MISSING: dict[tuple[str, str], str] = {
-    # The policy question of docs/design/session-entry-gate.md §5-4: kept open (#233)
-    **{
-        (name, "chores raises"): "#233: get_subscriptions() raising waits for the owner's decision"
-        for name, row in TABLE.items()
-        if "chores" in row.duties
-    },
-}
+#: Cells known missing: a strict xfail each, so one that passes fails the run. None now: the
+#: last, get_subscriptions() raising, was decided -- that component alone (#233, the memo's §5-4).
+MISSING: dict[tuple[str, str], str] = {}
 
 
 def _cells(duty: str, *, control: bool = False) -> list[t.Any]:
@@ -604,12 +598,16 @@ async def test_subscriptions_that_raise_cost_only_their_component(name):
     session, outbound = _session()
     beside = _joined(session, "gate-beside")
     target = _target(session, row)
+    # Read before: a LiveComponent recovered is gone from the repository, and its own root then
+    root = session.repo.root_of(target).id
 
     assert row.call is not None
     await row.call(Call(session, target, "break", target.wire.instance))
 
-    assert [error["id"] for error in _errors(outbound)] == [session.repo.root_of(target).id]
+    assert [error["id"] for error in _errors(outbound)] == [root]
     assert session.repo.get(beside.id) is beside
+    # Nothing it subscribed to is heard for it any more
+    assert session.repo.get(target.id) is not target
 
 
 def _replace(session: WireviewConsumer, row: Row, old: Component) -> Component:

@@ -132,9 +132,12 @@ async def deliver_unheard(host: Host, components: t.Iterable[Component]) -> None
         waiting += [(arrival, component, rest) for arrival, *rest in unheard]
     waiting.sort(key=lambda each: each[0])
     for _, component, (receiver, channel, kwargs) in waiting:
-        if not host._holds(component) or channel not in component.get_subscriptions():
+        if not host._holds(component):
             continue
         try:
+            # Asked in here: one whose get_subscriptions() raises is recovered alone (#233)
+            if channel not in component.get_subscriptions():
+                continue
             # Not shared with another session's render (#176): that one is of
             # the message as it came, this one of the component as it joined
             await _hand(host, component, receiver, channel, kwargs, None)
