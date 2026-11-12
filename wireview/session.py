@@ -2012,24 +2012,25 @@ class WireviewSession:
         parent_id: str,
         live_component_id: str,
         assigns: dict,
+        instance: int | None,
     ):
-        """Update a LiveComponent from its parent.
+        """Update a LiveComponent from its parent (``send_update``).
 
         Args:
             parent_id: ID of the parent component (for verification)
             live_component_id: ID of the target LiveComponent
             assigns: New values to update
+            instance: The instance of it the parent drew when it sent this. One
+                drawn anew under the id since -- hidden and shown again -- is
+                not the one the update was for (#233)
         """
         log.debug(f">>> UPDATE-LIVE-COMPONENT {live_component_id} {assigns}")
 
-        # Get the LiveComponent
-        component = self.repo.get(live_component_id)
+        # Not one a failed join left, which runs nothing until the page joins it again,
+        # nor one drawn anew since the parent sent this
+        component = self._target(live_component_id, instance)
         if component is None:
-            log.warning(f"LiveComponent {live_component_id} not found")
-            return
-        if self.repo.reachable(live_component_id) is None:
-            # Its owner's join failed: it runs nothing until the page joins that again
-            log.debug("Dropping the update of %s: what a failed join left runs nothing", live_component_id)
+            log.debug("Dropping the update of %s: not the instance it was sent for, or unreachable", live_component_id)
             return
 
         # Verify it's a LiveComponent
@@ -2053,6 +2054,9 @@ class WireviewSession:
             await self.send_render(component)
         except Exception:
             await self._crashed(component)
+            return
+        # What update() chose to hear is heard from here, as after any handler
+        await self.after_mutation_chores()
 
     # Channel layer messages for uploads
     #

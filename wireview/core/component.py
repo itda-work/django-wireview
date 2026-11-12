@@ -1766,6 +1766,9 @@ class Component(BaseModel):
             parent_id=self.id,
             live_component_id=live_component_id,
             assigns=assigns,
+            # The instance this component last drew under the id: one drawn anew
+            # by the time the mail is handled is not the one this was for (#233)
+            instance=self.wire.live_instances.get(live_component_id),
         )
 
     # Internal render operations

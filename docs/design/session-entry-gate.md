@@ -312,6 +312,9 @@ def test_every_entry_point_has_a_row():
 - **`has_joined` 서버 검사(질문 2)** — 바꾸지 않는다. 클라이언트의 `isLive`가 진다.
 - **`get_subscriptions()`(질문 1)** — 저장소 소유자의 결정을 기다린다. 그때까지 #233의 계약 테스트에 `xfail(strict=True)`로 남긴다.
 - **후보 B의 셋째 단계**(이미 맞는 진입점을 도우미로 옮기기, §5-2의 3)는 하지 않는다.
+- **`send_update`의 메일**(`update_live_component`)도 같은 형식으로 닫았다(#233 3차): 부모가 그린 LiveComponent의 인스턴스를
+  싣고, 받는 쪽은 `_target`으로 찾은 뒤 `after_mutation_chores`를 한다. 이 메모를 쓸 때의 표(§1-3)는 그것을 ✓로 적었다 —
+  `reachable`만 보고 번호와 뒤처리를 보지 않은 판정이었다.
 
 ## 부록 A. fix 커밋 분류 (`v1.0.0..HEAD -- wireview/session.py`)
 

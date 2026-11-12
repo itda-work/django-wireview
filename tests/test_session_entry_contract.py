@@ -174,6 +174,7 @@ def _leaf(session: WireviewConsumer, parent: Component) -> GateLeaf:
     leaf = t.cast(GateLeaf, _joined(session, "gate-leaf", "GateLeaf"))
     leaf._parent_id = parent.id
     leaf.wire.parent_instance = parent.wire.instance
+    parent.wire.live_instances[leaf.id] = leaf.wire.instance
     return leaf
 
 
@@ -181,11 +182,7 @@ def _leaf(session: WireviewConsumer, parent: Component) -> GateLeaf:
 
 
 def _with_instance(method: t.Callable[..., t.Any], instance: int, **kwargs: t.Any) -> t.Any:
-    # component_update_live_component names its LiveComponent by id alone (out of #233's
-    # scope): called without the number, its probe of a stale mail fails as the gap does
-    if "instance" in inspect.signature(method).parameters:
-        kwargs["instance"] = instance
-    return method(**kwargs)
+    return method(instance=instance, **kwargs)
 
 
 def _entry(component: Component, status: UploadStatus = UploadStatus.PENDING) -> UploadEntry:
@@ -418,8 +415,6 @@ MISSING: dict[tuple[str, str], str] = {
         for name, row in TABLE.items()
         if "chores" in row.duties
     },
-    ("component_update_live_component", "instance"): "#233: out of its scope, reported",
-    ("component_update_live_component", "chores"): "#233: out of its scope, reported",
 }
 
 
@@ -525,6 +520,18 @@ async def test_a_live_components_mail_names_the_parent_that_drew_it():
     parent = _joined(session, "gate-root")
     leaf = session.repo.build_live_component("GateLeaf", {"id": "gate-leaf"}, parent.id)
     assert leaf.wire.parent_instance == parent.wire.instance
+
+
+async def test_a_parents_mail_names_the_live_component_it_drew():
+    # send_update() mails update_live_component: with the instance the parent drew under the id
+    session, _ = _session()
+    parent = _joined(session, "gate-root")
+    first = session.repo.build_live_component("GateLeaf", {"id": "gate-leaf"}, parent.id)
+    assert parent.wire.live_instances == {"gate-leaf": first.wire.instance}
+    # Hidden, then drawn anew under the id: the parent's record follows
+    session.repo.remove(first.id)
+    again = session.repo.build_live_component("GateLeaf", {"id": "gate-leaf"}, parent.id)
+    assert parent.wire.live_instances == {"gate-leaf": again.wire.instance} != {"gate-leaf": first.wire.instance}
 
 
 async def test_model_mutation_is_delivered_as_a_notification(monkeypatch):

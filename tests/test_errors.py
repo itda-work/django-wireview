@@ -522,7 +522,7 @@ class ErrorProbeHearingNest(ErrorProbeNest):
 
 
 class ErrorProbeHearingHost(ErrorProbeHost):
-    """Hears the same topic and the same params as its nest, and defers to it."""
+    """Hears the same topic and the same params as its nest."""
 
     class Meta:
         subscriptions = {"error-probe-refused"}
@@ -533,9 +533,6 @@ class ErrorProbeHearingHost(ErrorProbeHost):
     async def params_changed(self, params, uri):
         CALLS.append(("params_changed", self.id))
 
-    async def call(self, **_rest):
-        await self.wire.defer("e-hearing-nest", ErrorProbeHearingNest.poke)
-
     @classmethod
     def _get_template(cls, template_name=None):
         return Template(
@@ -544,12 +541,18 @@ class ErrorProbeHearingHost(ErrorProbeHost):
         )
 
 
-async def test_what_a_failed_join_left_hears_no_broadcast_params_or_deferred_call(failing_nests):
+async def test_what_a_failed_join_left_hears_no_broadcast_or_params(failing_nests):
     # Events, hooks and uploads were refused, but every other path that runs a
     # component's code still found the instance the host's pass built: a
-    # broadcast, params_changed (a message the page sends) and wire.defer. Each
-    # ran its code and rendered it, and that render ran joined() for the
-    # LiveComponent the instance owns. The host hears all three, so they came.
+    # broadcast and params_changed (a message the page sends). Each ran its code
+    # and rendered it, and that render ran joined() for the LiveComponent the
+    # instance owns. The host hears both, so they came.
+    #
+    # A deferred call is mail of the instance that defers (#233): from here no
+    # code can name the refused instance's number, and one with another number
+    # is dropped for that. That the refused instance runs none of the mail
+    # naming it is test_session_entry_contract.py's
+    # test_what_a_failed_join_left_runs_nothing[component_dispatch_event].
     from wireview import utils
 
     communicator = await _connect()
@@ -571,7 +574,6 @@ async def test_what_a_failed_join_left_hears_no_broadcast_params_or_deferred_cal
         await Broadcast(ErrorProbeHearingNest, "error-probe-refused").push_event("patched").asend()
         await Broadcast(ErrorProbeHearingHost, "error-probe-refused").push_event("patched").asend()
         await _send(communicator, "params_changed", params={"q": "1"}, uri="?q=1")
-        await _event(communicator, "e-host", "call", ref=4)
         heard = await _heard_until_host_answers(communicator, 5)
     finally:
         await communicator.disconnect()
@@ -590,7 +592,7 @@ async def test_a_parent_update_does_not_reach_a_live_component_of_a_failed_join(
     child._parent_id = "root"  # type: ignore[union-attr]
 
     # ErrorProbeChild.update() raises: reaching it would cost the root an ``error``
-    await consumer.component_update_live_component("root", "child", {"x": 1})
+    await consumer.component_update_live_component("root", "child", {"x": 1}, child.wire.instance)
 
     assert outbound.commands == []
     assert consumer.repo.get("child") is child
@@ -843,7 +845,7 @@ async def test_a_live_component_that_raises_rejoins_its_root_with_the_whole_tree
     # The page joined the root, and its render the child: both get leaving()
     root.wire.has_joined = child.wire.has_joined = True
 
-    await consumer.component_update_live_component("root", "child", {"x": 1})
+    await consumer.component_update_live_component("root", "child", {"x": 1}, child.wire.instance)
 
     assert outbound.commands == [("error", {"id": "root", "during": "event"})]
     assert consumer.repo.get("root") is None and consumer.repo.get("child") is None

@@ -606,6 +606,8 @@ class TestSendUpdate:
             parent_id=view.component.id,
             live_component_id="counter-1",
             assigns={"count": 10},
+            # The parent drew no counter-1: no instance to name, and the session drops it (#233)
+            instance=None,
         )
 
     @pytest.mark.asyncio

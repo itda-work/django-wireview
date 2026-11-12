@@ -180,6 +180,9 @@ class WireviewMeta:
         # A LiveComponent's: the instance of the parent that drew it, which its
         # send_to_parent() mail names (#233). Set by the repository that builds it.
         self.parent_instance: int | None = None
+        # The other way: the instance of each LiveComponent this component drew,
+        # which its send_update() mail names (#233). Kept by the repository.
+        self.live_instances: dict[str, int] = {}
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
         self.broker: Broker = broker

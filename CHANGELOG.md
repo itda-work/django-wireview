@@ -224,7 +224,9 @@ The django-reactor era changelog (2.x) is preserved in
 - The `crashed`, `send_render` and `dispatch_event` session mails carry the instance that sent them -- a
   LiveComponent's `send_to_parent()` the parent that drew it -- and the session drops them for another instance under
   the id, as it already did `release_patches`, `deliver_unheard` and `upload_op`. A background task's crash mail used
-  to retire the instance a later join had made under the same id (#233).
+  to retire the instance a later join had made under the same id. `send_update()`'s mail carries the LiveComponent
+  instance the parent drew: one hidden and drawn anew under the id since is left be, and what `update()` changed
+  about the subscriptions is heard from then on (#233).
 - `{% wireview_header %}` left its nonces out under Django 6.0's CSP middleware whenever it was the first thing on the
   page to use the nonce (#224). The middleware's `LazyNonce` is false until something makes it a string, the header
   tested it for truth, and the policy then had no nonce either: under a nonce-only `style-src` the header's `<style>`
