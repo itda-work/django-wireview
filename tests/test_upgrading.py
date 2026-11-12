@@ -252,6 +252,7 @@ EXAMPLE = "저장소의 예제만 바뀌었다"
 NO_UPGRADE_NOTE = {
     "`MountedComponent.click()`, `change()`, `input()` and `submit()`": "테스트 헬퍼가 늘 뿐 바뀌는 것이 없다",
     "`MountedComponent.keydown()`, `keyup()`, `focus()` and `blur()`": "테스트 헬퍼가 늘 뿐 바뀌는 것이 없다",
+    "The DOM test helpers find stream items": "실패하던 테스트 헬퍼 호출이 통과할 뿐 바뀌는 것이 없다",
     "`examples/todo`: unchecking": "예제만 고쳤다",
     "Inbound limits per connection": "기본으로 꺼져 있다",
     "`wireview.W024` names an inbound limit": "경고만 더해진다",

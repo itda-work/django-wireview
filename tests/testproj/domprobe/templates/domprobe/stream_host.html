@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <ul wire-stream="rows">
+    <li id="seed-host">seed</li>
+  </ul>
+  {% component 'DomStreamGuest' id="guest" %}
+</div>

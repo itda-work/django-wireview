@@ -34,6 +34,12 @@ The django-reactor era changelog (2.x) is preserved in
   browser does (a click on its first submit button, or a submit when it has none and one text field). `focus` and
   `blur` run the element's own bindings and then dispatch `focusin` and `focusout`, which bubble, as the client's
   capture listener does. The random comparison with `events.mjs` and the browser scenarios take key and focus events.
+- The DOM test helpers find stream items (GAP-056, #252): the page they act on holds every stream operation sent
+  since the mount -- inserts, deletes, `limit`, `reset`, `update_only` -- put in its `wire-stream` containers as the
+  client puts them (`_streamContainer`, `_applyStreamOp`, `streams.mjs`), so `click("#row-2 button.delete")` reaches
+  a streamed item's binding instead of failing with "it matches a stream item". `clear_messages()` keeps them, as
+  the page does. A browser test sends random runs of operations to the page's client and compares each container
+  with the helpers' copy.
 - Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
   6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
   (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's

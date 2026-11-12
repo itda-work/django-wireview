@@ -104,6 +104,13 @@ async def test_remove_button_deletes_the_row(item):
 남긴다. 정규식(`re.compile(...)`)이면 `search`로 본다. **정확히 하나가 남아야 한다** — 없거나 여럿이면 맞은 요소를
 나열하며 실패한다. 더 좁은 선택자나 `text=`로 고른다.
 
+**스트림 항목도 페이지에 있다.** 렌더는 `wire-stream` 컨테이너를 비워서 그리지만, 헬퍼가 읽는 페이지에는 마운트 뒤
+보낸 스트림 연산(삽입·삭제·`limit`·`reset`·`update_only`)이 보낸 순서대로 클라이언트와 같은 규칙으로 들어가 있다 —
+`click("#messages-12 button.delete")`가 그대로 된다. `clear_messages()`는 그 기록을 지우지 않는다(메시지를 비워도 화면의
+항목은 남는다). 연산은 지금 렌더의 컨테이너에 다시 적용하므로, 렌더 사이에 컨테이너가 사라졌다 다시 생겨 브라우저가
+항목을 잃은 경우는 따라 하지 않는다. 클라이언트처럼 항목 HTML의 첫 요소만 들어가고, 표의 행(`<tr>`)으로 시작하는 항목은
+브라우저의 파서가 행을 버리듯 셀의 내용만 남는다.
+
 **값.** `change`·`input`의 `value`와 `submit`의 `values`는 사용자가 칸에 남긴 것이다.
 
 | 칸 | 값 |
@@ -144,7 +151,7 @@ async def test_remove_button_deletes_the_row(item):
 
 **실패가 계약이다.** 다음은 아무 일도 하지 않고 통과하는 대신 이유를 말하며 `AssertionError`로 실패한다.
 
-- 선택자에 맞는 요소가 없다, 여럿이다. 스트림 항목에만 있으면 그렇다고 말한다.
+- 선택자에 맞는 요소가 없다, 여럿이다.
 - 이벤트가 만난 바인딩 중 서버 핸들러를 부르는 것이 없다. 수정자 조건 때문에 건너뛴 바인딩은 함께 나열한다.
 - 포커스를 받을 수 없는 요소에 `focus`·`blur`를 했다(칸·버튼·`href` 있는 링크·`tabindex`·`contenteditable` 밖).
 - 요소가 disabled다(자신, 감싼 `<button disabled>`, `<fieldset disabled>` — 그 첫 `<legend>` 안은 아니다). readonly·
@@ -156,8 +163,7 @@ async def test_remove_button_deletes_the_row(item):
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
 
 **하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅, 로딩 클래스, `wire-disabled-with`는
-없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. `<label>`을 눌러 칸을 누르는 것, 스트림 항목(렌더에 없다),
-중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
+없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. `<label>`을 눌러 칸을 누르는 것, 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
 
 ## 내비게이션 단언
 

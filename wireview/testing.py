@@ -161,6 +161,40 @@ class MockChannelLayer(BaseChannelLayer):
         self.sent_messages.clear()
 
 
+class _SentMessages(list[dict[str, t.Any]]):
+    """``sent_messages``, which also keeps every stream operation apart (GAP-056).
+
+    ``clear_messages()`` empties the list, and the page keeps its stream items:
+    the DOM test helpers put on the page every operation sent since the mount.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stream_ops: list[dict[str, t.Any]] = []
+
+    def _note(self, message: dict[str, t.Any]) -> None:
+        if isinstance(message, dict) and message.get("type") == "stream_op":
+            self.stream_ops.append(message)
+
+    def append(self, message: dict[str, t.Any]) -> None:
+        self._note(message)
+        super().append(message)
+
+    def extend(self, messages: t.Iterable[dict[str, t.Any]]) -> None:
+        messages = list(messages)
+        for message in messages:
+            self._note(message)
+        super().extend(messages)
+
+    def insert(self, index: t.SupportsIndex, message: dict[str, t.Any]) -> None:
+        self._note(message)
+        super().insert(index, message)
+
+    def __iadd__(self, messages: t.Iterable[dict[str, t.Any]]) -> t.Self:  # type: ignore[override]
+        self.extend(messages)
+        return self
+
+
 class MockWireviewMeta(WireviewMeta):
     """
     Mock WireviewMeta for testing without WebSocket.
@@ -178,7 +212,7 @@ class MockWireviewMeta(WireviewMeta):
             channel_layer=self._mock_channel_layer,
         )
         # Track calls for assertions
-        self.sent_messages: list[dict[str, t.Any]] = []
+        self.sent_messages = _SentMessages()
         # Where a mounted component's mail goes: its connection's channel, read
         # once the message it is handling ends (MountedComponent._post)
         self._post: t.Callable[[dict[str, t.Any], int | None], None] | None = None
@@ -1197,7 +1231,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             raise testing_dom.DomError(
                 f"{self._component._name} is frozen and draws nothing: there is no page to act on"
             )
-        page = testing_dom.Page(html, self._component.id, self.stream_items())
+        page = testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops)
         # Every event of one action is read from the page before any answer, as
         # the browser dispatches them all before the server's render comes back
         for event in action(page):

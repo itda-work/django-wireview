@@ -29,7 +29,16 @@ from testproj.domprobe.scenarios import SCENARIOS, heard
 
 from wireview import JS, Component, mount
 from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
-from wireview.testing_dom import NON_BUBBLING, Element, Selector, _Dispatch, key_event, parse
+from wireview.testing_dom import (
+    NON_BUBBLING,
+    Element,
+    Selector,
+    _Dispatch,
+    key_event,
+    parse,
+    plan_insert,
+    plan_trim,
+)
 
 DRIVER = Path(__file__).parent / "js" / "bindings.mjs"
 
@@ -143,6 +152,49 @@ def test_the_helpers_run_bindings_as_the_client_does():
         fired += len(ours["fired"])
     # The cases exercise firing, not only skipping
     assert fired > 400
+
+
+STREAMS = Path(__file__).parent.parent / "wireview" / "static" / "wireview" / "streams.mjs"
+
+
+@pytest.mark.integration
+def test_the_helpers_place_stream_items_as_streams_mjs_does():
+    inserts = [
+        {"exists": e, "at": at, "childCount": n, "updateOnly": u, "placed": placed}
+        for e in (False, True)
+        for at in (-1, 0, 1, 2, 5)
+        for n in (0, 1, 2, 4)
+        for u in (False, True)
+        for placed in (0, 1, 3)
+    ]
+    trims = [
+        {"childCount": n, "limit": limit, "at": at} for n in range(5) for limit in (-1, 0, 1, 3) for at in (-1, 0, 2)
+    ]
+    script = (
+        f"import {{ planInsert, planTrim }} from {json.dumps(STREAMS.as_uri())};"
+        "let input = ''; for await (const c of process.stdin) input += c;"
+        "const { inserts, trims } = JSON.parse(input);"
+        "process.stdout.write(JSON.stringify({ inserts: inserts.map(planInsert), trims: trims.map(planTrim) }));"
+    )
+    node = shutil.which("node")
+    assert node, "node is required: the stream plans are compared with streams.mjs"
+    out = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        input=json.dumps({"inserts": inserts, "trims": trims}),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    client = json.loads(out.stdout)
+    ours = [
+        plan_insert(
+            exists=c["exists"], at=c["at"], child_count=c["childCount"], update_only=c["updateOnly"], placed=c["placed"]
+        )
+        for c in inserts
+    ]
+    assert ours == client["inserts"]
+    assert [plan_trim(child_count=c["childCount"], limit=c["limit"], at=c["at"]) for c in trims] == client["trims"]
 
 
 # ============================================================================
@@ -346,18 +398,74 @@ class DomStreamed(Component):
         template_name = "domprobe/streamed.html"
 
     async def joined(self) -> None:
-        await self.stream("rows", [{"id": 1, "label": "one"}], dom_id=lambda row: f"row-{row['id']}")
+        await self.stream("rows", [self._row(1), self._row(2)], dom_id=self._dom_id)
+
+    @staticmethod
+    def _row(n: int, label: str = "") -> dict:
+        return {"id": n, "label": label or f"row {n}"}
+
+    @staticmethod
+    def _dom_id(row: dict) -> str:
+        return f"row-{row['id']}"
 
     async def remove(self, id: int) -> None:
         HEARD.append(("DomStreamed", "remove", {"id": id}))
+        await self.stream_delete("rows", f"row-{id}")
+
+    async def add(self, id: int, at: int = -1, limit: int = 0) -> None:
+        await self.stream_insert("rows", self._row(id), at=at, limit=limit, dom_id=self._dom_id)
+
+    async def rename(self, id: int, label: str) -> None:
+        await self.stream_insert("rows", self._row(id, label), dom_id=self._dom_id)
+
+    async def reset(self) -> None:
+        await self.stream("rows", [self._row(9)], reset=True, dom_id=self._dom_id)
 
 
 @pytest.mark.integration
 @pytest.mark.django_db
 @pytest.mark.asyncio
-async def test_a_stream_item_is_named_as_one():
+async def test_a_stream_item_is_on_the_page():
     view = await mount(DomStreamed)
-    await _fails(view, lambda v: v.click("[data-testid=row-remove]"), r"matches a stream item")
+    view.clear_messages()
+    await view.click("#row-2 [data-testid=row-remove]")
+    assert HEARD == [("DomStreamed", "remove", {"id": 2})]
+    # The delete the handler streamed took it off the page
+    await _fails_after(view, lambda v: v.click("#row-2 button"), r"No element matches '#row-2 button'")
+    await view.click("button", text="row 1")
+    assert [kwargs["id"] for _, _, kwargs in HEARD] == [2, 1]
+
+
+async def _fails_after(view, action, match: str) -> None:
+    with pytest.raises(AssertionError, match=match):
+        await action(view)
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.asyncio
+async def test_the_page_holds_the_items_the_operations_left():
+    view = await mount(DomStreamed)
+    await view.call("add", id=3, at=0)
+    await view.call("add", id=4, limit=3)
+    # A newer version of an item replaces it where it stands
+    await view.call("rename", id=2, label="two")
+    page = await _page(view)
+    assert _rows(page) == [("row-1", "row 1"), ("row-2", "two"), ("row-4", "row 4")]
+    await view.call("reset")
+    assert _rows(await _page(view)) == [("row-9", "row 9")]
+
+
+async def _page(view):
+    from asgiref.sync import sync_to_async
+
+    from wireview.testing_dom import Page
+
+    return Page(await sync_to_async(view.render)(), view.component.id, view._wire.sent_messages.stream_ops)
+
+
+def _rows(page) -> list[tuple[str, str]]:
+    return [(li.get("id"), li.text.strip()) for li in Selector("[wire-stream=rows] > li").select(page.root)]
 
 
 @pytest.mark.integration

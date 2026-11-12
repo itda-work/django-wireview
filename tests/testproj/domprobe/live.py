@@ -171,6 +171,19 @@ class DomChat(_Recording, Component):
         self._heard("send", {"draft": draft})
 
 
+class DomStreamHost(Component):
+    """Stream containers for ``tests/test_dom_events_e2e.py`` to put operations in: two named alike, one in a
+    nested component, one that is the nested component's alone, and one that starts with an item of its own."""
+
+    class Meta:
+        template_name = "domprobe/stream_host.html"
+
+
+class DomStreamGuest(Component):
+    class Meta:
+        template_name = "domprobe/stream_guest.html"
+
+
 class DomTrap(_Recording, Component):
     """The mistake the helpers catch and ``call()`` does not: a button that is not wired to ``remove``.
 

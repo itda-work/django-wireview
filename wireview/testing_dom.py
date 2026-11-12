@@ -109,13 +109,21 @@ class Element:
         return f"Element({self.describe()})"
 
 
+#: What a browser's parser ignores in a body outside a ``<table>``: a stream item
+#: ``<tr>`` parses to its cells' contents, not to a row
+TABLE_PARTS = frozenset({"tr", "td", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup"})
+
+
 class _TreeBuilder(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, in_body: bool = False) -> None:
         super().__init__(convert_charrefs=True)
         self.root = Element("#document", [], None)
         self._open: list[Element] = [self.root]
+        self._in_body = in_body
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._in_body and tag in TABLE_PARTS and not any(e.tag == "table" for e in self._open):
+            return
         if tag in SELF_CLOSING_SIBLINGS and self._open[-1].tag == tag:
             self._open.pop()
         parent = self._open[-1]
@@ -150,6 +158,150 @@ def parse(html: str) -> Element:
     builder.feed(html)
     builder.close()
     return builder.root
+
+
+def parse_item(html: str) -> Element | None:
+    """``_parseHtml`` in wireview.js: the first element of ``html`` parsed as a document's body, or ``None``."""
+    builder = _TreeBuilder(in_body=True)
+    builder.feed(html)
+    builder.close()
+    first = next((c for c in builder.root.children if isinstance(c, Element)), None)
+    if first is not None:
+        first.parent = None
+    return first
+
+
+def element_children(el: Element) -> list[Element]:
+    """``el.children``: its elements, without the text between them."""
+    return [c for c in el.children if isinstance(c, Element)]
+
+
+# ============================================================================
+# Streams: _handleStreamOp in wireview.js, and streams.mjs
+# ============================================================================
+
+
+def plan_insert(*, exists: bool, at: int, child_count: int, update_only: bool = False, placed: int = 0) -> dict:
+    """``planInsert`` in streams.mjs: where an incoming item goes."""
+    if exists:
+        return {"mode": "replace"}
+    if update_only:
+        return {"mode": "skip"}
+    if at == -1:
+        return {"mode": "append"}
+    index = at + placed
+    if index == 0:
+        return {"mode": "prepend"}
+    if index >= child_count:
+        return {"mode": "append"}
+    return {"mode": "before", "index": index}
+
+
+def plan_trim(*, child_count: int, limit: int, at: int) -> dict:
+    """``planTrim`` in streams.mjs: how many items to drop once a limit is exceeded, and from which end."""
+    if not limit or limit <= 0 or child_count <= limit:
+        return {"count": 0, "fromEnd": False}
+    return {"count": child_count - limit, "fromEnd": at == 0}
+
+
+def stream_container(root: Element, stream: str, owner: str | None) -> Element | None:
+    """``_streamContainer``: the owner's own ``wire-stream`` container of that name, else the first inside it."""
+
+    def named(el: Element) -> bool:
+        return el.get("wire-stream") == stream
+
+    if owner is None:
+        return next((d for d in root.descendants() if named(d)), None)
+    owner_el = next((d for d in root.descendants() if d.get("id") == owner), None)
+    if owner_el is None:
+        return None
+    if named(owner_el):
+        return owner_el
+    inside = [d for d in owner_el.descendants() if named(d)]
+    return next((c for c in inside if c.closest(is_component) is owner_el), inside[0] if inside else None)
+
+
+def _adopt(parent: Element, el: Element, index: int | None = None) -> None:
+    if el.parent is not None:
+        el.parent.children.remove(el)
+    el.parent = parent
+    if index is None:
+        parent.children.append(el)
+    else:
+        parent.children.insert(index, el)
+
+
+def _remove(el: Element) -> None:
+    if el.parent is not None:
+        el.parent.children.remove(el)
+        el.parent = None
+
+
+def _by_id_inside(container: Element, id_: str) -> Element | None:
+    """``container.querySelector(#id)``: a descendant, not the container itself."""
+    return next((d for d in container.descendants() if d.get("id") == id_), None)
+
+
+def apply_stream_op(container: Element, op: t.Mapping[str, t.Any]) -> None:
+    """``_applyStreamOp``: put one stream operation's items into ``container`` as the client does."""
+    kind = op.get("op")
+    items = op.get("items") or []
+    at = op.get("at", -1)
+    limit = op.get("limit") or 0
+    if kind == "reset":
+        container.children = []
+        for item in items:
+            if (el := parse_item(item.get("html", ""))) is not None:
+                el.attrs["id"] = item["id"]
+                _adopt(container, el)
+    elif kind == "insert":
+        placed = 0
+        for item in items:
+            el = parse_item(item.get("html", ""))
+            if el is None:
+                continue
+            el.attrs["id"] = item["id"]
+            existing = _by_id_inside(container, item["id"])
+            plan = plan_insert(
+                exists=existing is not None,
+                at=at,
+                child_count=len(element_children(container)),
+                update_only=op.get("update_only") is True,
+                placed=placed,
+            )
+            mode = plan["mode"]
+            if mode not in ("replace", "skip"):
+                placed += 1
+            if mode == "replace":
+                assert existing is not None and existing.parent is not None
+                parent = existing.parent
+                _adopt(parent, el, parent.children.index(existing))
+                _remove(existing)
+            elif mode == "prepend":
+                _adopt(container, el, 0)
+            elif mode == "append":
+                _adopt(container, el)
+            elif mode == "before":
+                sibling = element_children(container)[plan["index"]]
+                _adopt(container, el, container.children.index(sibling))
+    elif kind == "delete":
+        for item in items:
+            if (found := _by_id_inside(container, item["id"])) is not None:
+                _remove(found)
+    trim = plan_trim(child_count=len(element_children(container)), limit=limit, at=at)
+    for _ in range(trim["count"]):
+        children = element_children(container)
+        if children:
+            _remove(children[-1] if trim["fromEnd"] else children[0])
+
+
+def apply_stream_ops(root: Element, ops: t.Iterable[t.Mapping[str, t.Any]]) -> None:
+    """Every stream operation sent so far, in order, on the containers of ``root``. One whose container
+    is not on the page is dropped, as the client drops it once its wait for the container ends."""
+    for op in ops:
+        container = stream_container(root, op.get("stream", ""), op.get("id"))
+        if container is not None:
+            apply_stream_op(container, op)
 
 
 # ============================================================================
@@ -818,12 +970,13 @@ class _Dispatch:
 class Page:
     """The mounted component's render, as the browser holds it, and what each user action sends from it."""
 
-    def __init__(self, html: str, component_id: str, stream_items: t.Sequence[t.Mapping[str, str]] = ()) -> None:
+    def __init__(self, html: str, component_id: str, stream_ops: t.Iterable[t.Mapping[str, t.Any]] = ()) -> None:
         self.html = html
         self.root = parse(html)
+        # The render carries its stream containers empty; the page has the items the operations put there
+        apply_stream_ops(self.root, stream_ops)
         self.component_id = component_id
         self.fields = Fields()
-        self._stream_items = stream_items
 
     # -- finding ------------------------------------------------------------
 
@@ -841,27 +994,13 @@ class Page:
             if matches:
                 listed = "\n".join(f"  {el.describe()}" for el in matches[:10])
                 raise DomError(f"No {what} matches {label}. These match the selector without the text:\n{listed}")
-            message = f"No {what} matches {label} in the render of {self.component_id}."
-            if self._in_stream_items(selector, text):
-                message += (
-                    " It matches a stream item: those are sent apart from the render, and the test helpers "
-                    "do not put them on the page yet. Test the item's handler with call()."
-                )
-            raise DomError(message)
+            raise DomError(f"No {what} matches {label} in the render of {self.component_id}.")
         listed = "\n".join(f"  {el.describe()}" for el in found[:10])
         more = f"\n  ...and {len(found) - 10} more" if len(found) > 10 else ""
         raise DomError(
             f"{len(found)} elements match {label}; the helpers act on one. Narrow the selector "
             f"(an id, [data-testid=...], a parent) or pass text=:\n{listed}{more}"
         )
-
-    def _in_stream_items(self, selector: str, text: str | re.Pattern[str] | None) -> bool:
-        compiled = Selector(selector)
-        for item in self._stream_items:
-            for el in compiled.select(parse(item.get("html", ""))):
-                if text is None or _text_matches(el, text):
-                    return True
-        return False
 
     # -- what an event sends ------------------------------------------------
 

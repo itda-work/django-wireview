@@ -76,7 +76,8 @@ submit은 이유를 말하며 실패한다. JavaScript는 돌지 않는다(`JS()
 
 스트림 아이템은 `view.render()`에 없다. 컴포넌트 템플릿은 빈
 컨테이너만 렌더하고, 아이템 HTML은 별도 메시지로 간다. `view.stream_html(name)`이 그것을
-모아 준다.
+모아 준다. `click()` 같은 DOM 헬퍼가 읽는 페이지에는 아이템이 들어가 있으므로 아이템 안의 버튼은
+`await view.click("#messages-12 button.delete")`로 누른다(`clear_messages()`로 비워도 페이지의 아이템은 남는다).
 
 ```python
 @pytest.mark.asyncio
