@@ -848,3 +848,178 @@ def test_a_manual_input_outside_any_form_says_once_that_nothing_starts_it(form):
     stray = [text for text in warnings if "stray" in text]
     assert len(stray) == 1, warnings
     assert "auto_upload=False" in stray[0]
+
+
+@pytest.fixture
+def held_last_chunk(monkeypatch):
+    """Hold the last chunk of a many-chunk upload at the endpoint: the ones before it land, with their progress."""
+    from wireview.views import UploadView
+
+    release = threading.Event()
+    post = UploadView.post
+
+    async def held(self, request, *args, **kwargs):
+        total = int(request.headers.get("X-Total-Chunks", "1"))
+        if total > 1 and int(request.headers.get("X-Chunk-Index", "0")) == total - 1:
+            await asyncio.to_thread(release.wait, WAIT_TIMEOUT)
+        return await post(self, request, *args, **kwargs)
+
+    monkeypatch.setattr(UploadView, "post", held)
+    return release
+
+
+def test_the_progress_renders_of_a_submits_uploads_do_not_end_its_loading_state(held_last_chunk, user_events, form):
+    # Each chunk's progress re-renders the component without an event's ref. Such a
+    # render ends the loading state of an event sent without one -- the submit's,
+    # unless it is held for its uploads (LoadingLedger.hold).
+    by(form, "big").set_input_files(text_file("big.txt", "x" * 40))  # five chunks of eight bytes
+    expect_count(entries(form, "pending"), 1)
+    by(form, "save").click()
+
+    # A progress render is on the page: the entry shows bytes past the first chunk
+    expect(by(form, "entries").locator("li[data-progress]:not([data-progress='0'])")).to_have_count(1)
+    expect(by(form, "save")).to_be_disabled()
+    expect(by(form, "save")).to_have_text("Saving...")
+    expect(by(form, "form")).to_have_class(re.compile("wireview-submit-loading"))
+    assert user_events == []
+
+    held_last_chunk.set()
+    expect(by(form, "saved").locator("li")).to_have_text(["title:", "big:big.txt:40"])
+    expect(by(form, "save")).to_be_enabled()
+    expect(by(form, "save")).to_have_text("Save")
+    expect(by(form, "form")).not_to_have_class(re.compile("wireview-loading"))
+    assert user_events == ["save"]
+
+
+@pytest.fixture
+def refused_on_complete(monkeypatch):
+    """The server refuses ``reject.txt`` when the page says it is complete, once the test sets the event.
+
+    Every chunk landed and the endpoint answered ``complete``; the session's own
+    check (``_promote_completed``) then says no. Held in a task so the session goes
+    on reading the socket meanwhile, as it would while a slow disk is checked.
+    """
+    from wireview.session import WireviewSession
+
+    release = threading.Event()
+    command = WireviewSession.command_upload_complete
+    promote = WireviewSession._promote_completed
+    later: list[asyncio.Task] = []
+
+    def refusing(entry) -> bool:
+        return False if entry.client_name == "reject.txt" else promote(entry)
+
+    async def deferred(self, id, name, ref):
+        component = self.repo.reachable(id)
+        entry = component._upload_registry.get_entry(name, ref) if component else None
+        if entry is None or entry.client_name != "reject.txt":
+            return await command(self, id, name, ref)
+
+        async def refuse():
+            await asyncio.to_thread(release.wait, WAIT_TIMEOUT)
+            await command(self, id, name, ref)
+
+        later.append(asyncio.create_task(refuse()))
+
+    monkeypatch.setattr(WireviewSession, "_promote_completed", staticmethod(refusing))
+    monkeypatch.setattr(WireviewSession, "command_upload_complete", deferred)
+    return release
+
+
+def test_a_submit_waits_for_the_server_to_take_the_file_not_for_the_last_chunk(refused_on_complete, user_events, form):
+    by(form, "photos").set_input_files(text_file("reject.txt", "nope"))
+    expect_count(entries(form, "pending"), 1)
+    by(form, "save").click()
+
+    # Every chunk went: the page holds the entry as completed on its side
+    form.wait_for_function(
+        """() => {
+          const el = document.getElementById("upform");
+          const [entry] = window.wireview.getUploadManager(el).getEntries("photos");
+          return entry && entry.status === "completed";
+        }""",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    # Something else moves the uploads on meanwhile: a file for another upload
+    by(form, "stray").set_input_files(text_file("other.txt", "other"))
+    expect_text(entries(form, "pending"), "stray:other.txt:pending")
+    expect(by(form, "save")).to_be_disabled()
+    assert user_events == []
+
+    refused_on_complete.set()
+    expect_text(entries(form, "error"), "photos:reject.txt:error:Upload did not finish on the server")
+    expect(by(form, "save")).to_be_enabled()
+    assert user_events == []
+
+
+UPLOAD_ERRORS = """() => {
+  window.__errors = [];
+  document.addEventListener("wireview:upload-error", (e) => window.__errors.push(e.detail));
+}"""
+
+
+def test_a_chunked_upload_that_the_network_drops_says_upload_error_once(probe):
+    # external-uploads.md: "external이 아닌 업로드도 같은 이벤트를 낸다" -- a chunk
+    # that never reached the server failed the entry with no event at all
+    probe.evaluate(UPLOAD_ERRORS)
+    probe.route("**/__wireview_upload__/**", lambda route: route.abort())
+    by(probe, "files").set_input_files(text_file("lost.txt", "lost"))
+
+    probe.wait_for_function("window.__errors.length >= 1", timeout=WAIT_TIMEOUT * 1000)
+    errors = probe.evaluate("window.__errors")
+    assert len(errors) == 1, errors
+    assert errors[0]["upload"] == "files" and errors[0]["componentId"] == "probe"
+    assert errors[0]["ref"] and errors[0]["errors"]
+
+
+CHUNK_ANSWERS = """
+(() => {
+  const native = window.fetch;
+  window.__chunkAnswers = 0;
+  window.fetch = async (...args) => {
+    const response = await native(...args);
+    if (String(args[0]).includes("/__wireview_upload__/")) window.__chunkAnswers += 1;
+    return response;
+  };
+})();
+"""
+
+
+def test_a_chunk_the_server_refuses_says_upload_error_once(page, server):
+    # The endpoint answers 400 and tells the session too, which sends its own
+    # error: the entry fails once, and so does the event
+    page.add_init_script(OFFLINE_SHIM + CHUNK_ANSWERS)
+    open_live(page, f"{server}/fileprobe/", selector=PROBE_LIVE)
+    expect(by(page, "images")).to_have_count(1)
+    page.evaluate(UPLOAD_ERRORS)
+    page.evaluate(
+        """() => {
+          window.__opErrors = 0;
+          window.__link.sockets.forEach((socket) => socket.addEventListener("message", (e) => {
+            const message = JSON.parse(e.data);
+            if (message.command === "upload_op" && message.payload?.op === "error") window.__opErrors += 1;
+          }));
+        }"""
+    )
+    by(page, "images").set_input_files({"name": "fake.png", "mimeType": "image/png", "buffer": b"not a png"})
+    page.wait_for_function(
+        """() => {
+          const el = document.getElementById("probe");
+          const [entry] = window.wireview.getUploadManager(el).getEntries("images");
+          return entry?.status === "registered";
+        }""",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    page.evaluate(
+        """() => {
+          const el = document.getElementById("probe");
+          const manager = window.wireview.getUploadManager(el);
+          manager.startUpload("images", manager.getEntries("images")[0].ref);
+        }"""
+    )
+
+    # Both answers are in: the endpoint's 400 and the session's error
+    page.wait_for_function("window.__chunkAnswers >= 1 && window.__opErrors >= 1", timeout=WAIT_TIMEOUT * 1000)
+    page.wait_for_function("window.__errors.length >= 1", timeout=WAIT_TIMEOUT * 1000)
+    errors = page.evaluate("window.__errors")
+    assert len(errors) == 1, errors

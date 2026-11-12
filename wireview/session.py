@@ -1627,7 +1627,7 @@ class WireviewSession:
         published. Neither is trusted on its own: the entry is promoted only if
         the bytes are actually on disk (#83).
         """
-        from .features.uploads import UploadOp
+        from .features.uploads import UploadOp, UploadStatus
 
         log.debug(f"<<< UPLOAD-COMPLETE {id} {name} {ref}")
 
@@ -1645,13 +1645,19 @@ class WireviewSession:
 
         if not self._promote_completed(entry):
             log.warning(f"Upload {name}/{ref} reported complete, but its file is not: {entry.temp_path}")
+            refusal = "Upload did not finish on the server"
+            if entry.status not in (UploadStatus.CANCELLED, UploadStatus.ERROR):
+                # The page holds it failed from here on; the template's entry says so
+                # too, where it went on showing an upload in progress (#264)
+                entry.status = UploadStatus.ERROR
+                entry.errors.append(refusal)
             await self.send_command(
                 "upload_op",
                 UploadOp(
                     op="error",
                     upload=name,
                     ref=ref,
-                    data={"errors": ["Upload did not finish on the server"]},
+                    data={"errors": [refusal]},
                 ).to_payload(),
             )
             await self._render_or_crash(component)

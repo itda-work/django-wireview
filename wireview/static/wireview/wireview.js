@@ -2540,6 +2540,7 @@ class ViewportObserver {
  * @property {string|null} token - Upload token (from server)
  * @property {AbortController|null} controller - For cancellation
  * @property {boolean} [confirmed] - The server said the upload is complete (#264)
+ * @property {boolean} [announced] - `upload:error` went out for it
  */
 
 /** @type {UploadManagers<UploadManager>} */
@@ -2964,9 +2965,24 @@ class UploadManager {
     if (entry) {
       entry.status = "error";
       entry.errors = errors;
-      this._dispatchEvent("upload:error", { upload: name, ref, errors });
+      this._announceError(name, ref, entry, errors);
       scheduleSubmits();
     }
+  }
+
+  /**
+   * `upload:error` for an entry, once: a chunk the endpoint refuses fails the
+   * request here and is also reported by the session, in either order.
+   * @param {string} name
+   * @param {string} ref
+   * @param {UploadEntry} entry
+   * @param {string[]} errors
+   * @private
+   */
+  _announceError(name, ref, entry, errors) {
+    if (entry.announced) return;
+    entry.announced = true;
+    this._dispatchEvent("upload:error", { upload: name, ref, errors });
   }
 
   /**
@@ -3059,9 +3075,12 @@ class UploadManager {
         entry.status = "cancelled";
         debugLog("upload", `Cancelled: ${name}/${ref}`);
       } else {
+        // The session's error may have come first, with the server's reasons
+        if (!entry.announced) entry.errors.push(error.message);
         entry.status = "error";
-        entry.errors.push(error.message);
         debugLog("upload", `Error: ${name}/${ref}`, error.message);
+        // Like an external upload's: the page hears every failed entry (#264)
+        this._announceError(name, ref, entry, entry.errors);
       }
       scheduleSubmits();
     }
@@ -3146,10 +3165,10 @@ class UploadManager {
         entry.status = "cancelled";
         debugLog("upload", `External upload cancelled: ${name}/${ref}`);
       } else {
+        if (!entry.announced) entry.errors.push(error.message);
         entry.status = "error";
-        entry.errors.push(error.message);
         debugLog("upload", `External upload error: ${name}/${ref}`, error.message);
-        this._dispatchEvent("upload:error", { upload: name, ref, errors: [error.message] });
+        this._announceError(name, ref, entry, [error.message]);
       }
       scheduleSubmits();
     }

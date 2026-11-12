@@ -7,12 +7,13 @@
     <div data-testid="drop" {% upload_drop_zone "photos" %}>drop here</div>
     {% upload_input "notes" data_testid="notes" %}
     {% upload_input "remote" data_testid="remote" %}
+    {% upload_input "big" data_testid="big" %}
     <button type="submit" data-testid="save" wire-disabled-with="Saving...">Save</button>
   </form>
   <ul data-testid="entries">
     {% for name, entries in this.uploads.items %}
       {% for entry in entries %}
-        <li data-status="{{ entry.status }}">{{ name }}:{{ entry.client_name }}:{{ entry.status }}{% if entry.errors %}:{{ entry.errors|join:"," }}{% endif %}</li>
+        <li data-status="{{ entry.status }}" data-progress="{{ entry.progress }}">{{ name }}:{{ entry.client_name }}:{{ entry.status }}{% if entry.errors %}:{{ entry.errors|join:"," }}{% endif %}</li>
       {% endfor %}
     {% endfor %}
   </ul>

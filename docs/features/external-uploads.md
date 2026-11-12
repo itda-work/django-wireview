@@ -199,7 +199,7 @@ external이 아닌 업로드도 같은 이벤트를 낸다.
 | `wireview:upload-added` | 파일을 골랐거나 떨어뜨렸다 | |
 | `wireview:upload-progress` | 진행률이 바뀌었다 | `ref`, `progress`(0–100) |
 | `wireview:upload-complete` | 한 항목이 끝났다 | `ref` |
-| `wireview:upload-error` | 한 항목이 실패했다 | `ref`, `errors` |
+| `wireview:upload-error` | 한 항목이 실패했다(서버의 거절, 청크·스토리지 요청의 네트워크·HTTP 오류). 항목마다 한 번 | `ref`, `errors` |
 | `wireview:upload-cancel` | 한 항목이 취소됐다 | `ref` |
 
 0.x의 이름(`upload:progress` 등)도 2.0까지 함께 나간다.

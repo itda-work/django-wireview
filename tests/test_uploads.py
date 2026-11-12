@@ -1253,7 +1253,9 @@ class TestConsumerUploadHandlers:
 
         await consumer.command_upload_complete(id=component.component.id, name="images", ref="upload-1")
 
-        assert entry.status != UploadStatus.COMPLETED
+        # Failed, as the page now holds it -- not left showing an upload in progress (#264)
+        assert entry.status == UploadStatus.ERROR
+        assert entry.errors == ["Upload did not finish on the server"]
         ops = [call.args[1] for call in consumer.send_command.call_args_list if call.args[0] == "upload_op"]
         assert any(op["op"] == "error" for op in ops)
 

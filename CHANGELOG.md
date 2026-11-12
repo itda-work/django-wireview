@@ -247,6 +247,13 @@ The django-reactor era changelog (2.x) is preserved in
   to upload submits at once, as before. An `auto_upload=False` upload with no such form around it has no way to
   start, and the page now says so once in the console. No new message: it runs on `upload_register`,
   `upload_complete` and the `upload_op`s there were.
+- A chunked upload whose request failed -- the network dropped it, or the endpoint answered with an error -- sent no
+  `wireview:upload-error` (#264), which the upload events table promises for every failed entry and an external
+  upload already sent. It does now, once per entry: a chunk the endpoint refuses is also reported by the session,
+  and the second report no longer sends the event again.
+- An upload the page reported complete whose file the server did not find stayed `uploading` in `this.uploads`
+  while the page was told it failed (#264). The entry is `error` now, with `"Upload did not finish on the server"`
+  in its `errors`.
 - `{% wireview_header %}` left its nonces out under Django 6.0's CSP middleware whenever it was the first thing on the
   page to use the nonce (#224). The middleware's `LazyNonce` is false until something makes it a string, the header
   tested it for truth, and the policy then had no nonce either: under a nonce-only `style-src` the header's `<style>`

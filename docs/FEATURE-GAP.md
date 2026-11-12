@@ -238,7 +238,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
 | phx-change | ✅ | `{% on "input" %}` | ✅ | `tests/test_input_values_e2e.py::test_typing_continues_through_the_answer_to_its_own_input_event`<br>`tests/test_input_values_e2e.py::test_an_earlier_events_answer_does_not_take_the_enter_mark` |
-| phx-submit | ✅ | `{% on "submit" %}` | ✅ | `tests/test_input_values_e2e.py::test_a_submit_still_empties_its_form`<br>`tests/test_forms_e2e.py::test_a_valid_django_form_saves` |
+| phx-submit | ✅ | `{% on "submit" %}` | ✅ | `tests/test_input_values_e2e.py::test_a_submit_still_empties_its_form`<br>`tests/test_forms_e2e.py::test_a_valid_django_form_saves`<br>`tests/test_uploads_e2e.py::test_a_manual_upload_goes_up_when_its_form_is_submitted` |
 | phx-debounce | ✅ | `.debounce.N` | ✅ | `tests/test_forms_e2e.py::test_debounce_sends_once_after_the_typing_stops`<br>`tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy` |
 | phx-throttle | ✅ | `.throttle.N` | ✅ | `tests/test_forms_e2e.py::test_throttle_lets_one_through_per_window` |
 | phx-feedback-for | ✅ | `wire-feedback-for` | ✅ | `tests/test_forms_e2e.py::test_feedback_waits_for_the_field_to_be_touched`<br>`tests/test_forms_e2e.py::test_a_submit_shows_every_fields_feedback` |

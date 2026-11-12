@@ -152,7 +152,8 @@ class FileForm(Component):
     """A form whose uploads wait for its submit: ``auto_upload=False`` (#264).
 
     ``photos`` and ``notes`` are two chunked inputs of the form, ``photos`` with a
-    drop zone; ``remote`` goes to the external target. The ``save`` handler takes
+    drop zone; ``remote`` goes to the external target; ``big`` goes up eight bytes a
+    chunk. The ``save`` handler takes
     what came up; ``saves`` counts how many submits reached it. ``stray`` is a
     manual input outside any form: nothing can start it, and the page says so.
     """
@@ -169,6 +170,8 @@ class FileForm(Component):
         self.allow_upload("notes", accept=[".txt"], max_entries=1, auto_upload=False)
         self.allow_upload("remote", accept=[".txt"], external=self._presign, auto_upload=False)
         self.allow_upload("stray", accept=[".txt"], max_entries=2, auto_upload=False)
+        # Eight bytes a chunk: a short file goes up in many, with a progress render after each
+        self.allow_upload("big", accept=[".txt"], max_entries=1, chunk_size=8, auto_upload=False)
 
     def _presign(self, entry, component) -> ExternalUploadMeta:
         return ExternalUploadMeta(uploader="Plain", url=reverse("fileprobe:put", args=[entry.ref]))
@@ -176,7 +179,7 @@ class FileForm(Component):
     async def save(self, title: str = ""):
         self.saves += 1
         saved = [f"title:{title}"]
-        for name in ("photos", "notes"):
+        for name in ("photos", "notes", "big"):
             async for upload in self.consume_uploads(name):
                 saved.append(f"{name}:{upload.name}:{len(upload.read())}")
         saved.extend(f"remote:{entry.client_name}" for entry in self.uploads["remote"] if entry.status == "completed")
