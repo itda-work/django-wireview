@@ -397,6 +397,11 @@ TABLE: dict[str, Row] = {
     "stop": Row("adapter", why="the connection ends: leaving() under LEAVING_SECONDS (tests/test_session_end.py)"),
     "stop_handing_over": Row("adapter", why="part of stop()"),
     "close": Row("adapter", why="closes the socket"),
+    "refuse_inbound": Row(
+        "adapter",
+        why="closes the socket for what the page sent (#230): the consumer's websocket_receive before the frame is "
+        "parsed, and command_join before it builds the instance; logs, telemetry and close, no component's code",
+    ),
     "handle_message": Row("adapter", why="routes an inbound frame to its command_* row"),
     "message_from_component": Row("adapter", why="routes a mail to its component_* row"),
     "templates_changed": Row("adapter", why="the autoreloader's call; mails template_changed"),

@@ -388,6 +388,10 @@ async def test_a_live_component_whose_class_changed_starts_anew_and_its_parent_c
     assert child.count == row.count  # type: ignore[attr-defined]
     if row.new is ItemOtherModel:
         assert child.book is None  # type: ignore[attr-defined]
+    # Started anew or from the page's state, the parent's mail and the child's name each other (#233)
+    shelf = session.repo.get("shelf")
+    assert child.wire.parent_instance == shelf.wire.instance
+    assert shelf.wire.live_instances == {"item": child.wire.instance}
 
 
 class _ItemWithBook(_Recording, LiveComponent, public=False, name="FcItem"):
