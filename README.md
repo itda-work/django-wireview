@@ -128,7 +128,7 @@ Claude Code 같은 코딩 에이전트에게 아래 프롬프트를 줍니다. �
 https://itda.work/wireview/llms.txt 를 참고해 django-wireview를 설치하고, 실시간 투표 화면을 만들어줘.
 ```
 
-[llms.txt](https://itda.work/wireview/llms.txt)는 설치 명령, 프로젝트 준비 순서, 문서 페이지 목록을 담은 텍스트 파일입니다. 그 순서에 있는 `python manage.py wireview_agent_setup`은 패키지에 실린 앱 개발자용 [스킬](https://github.com/itda-work/django-wireview/blob/main/docs/features/agent-skill.md)을 프로젝트의 `.claude/skills/wireview/`에 설치합니다. 스킬은 언제 무엇을 읽을지와 조용히 실패하는 함정을 담고, 설치한 뒤에는 네트워크 없이 읽힙니다. `manage.py check`는 그런 함정 22가지를 `wireview.W*` 경고로 알립니다([체크 목록](https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md)).
+[llms.txt](https://itda.work/wireview/llms.txt)는 설치 명령, 프로젝트 준비 순서, 문서 페이지 목록을 담은 텍스트 파일입니다. 그 순서에 있는 `python manage.py wireview_agent_setup`은 패키지에 실린 앱 개발자용 [스킬](https://github.com/itda-work/django-wireview/blob/main/docs/features/agent-skill.md)을 프로젝트의 `.claude/skills/wireview/`에 설치합니다. 스킬은 언제 무엇을 읽을지와 조용히 실패하는 함정을 담고, 설치한 뒤에는 네트워크 없이 읽힙니다. `manage.py check`는 그런 함정 23가지를 `wireview.W*` 경고로 알립니다([체크 목록](https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md)).
 
 ## 무엇이 포함되어 있나요?
 

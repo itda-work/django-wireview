@@ -11,6 +11,7 @@ puts on the wire.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import typing as t
@@ -19,11 +20,13 @@ import pytest
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
 from django.template import Template
+from testproj.bookmarks.models import Bookmark
 from testproj.e2e_server import serve
 from testproj.wireview_setting import set_wireview
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
+from examples.search.models import Book
 from wireview import Component, telemetry
 from wireview.consumer import WireviewConsumer
 from wireview.core import inbound
@@ -380,3 +383,131 @@ def test_the_reasons_are_a_closed_set_with_a_code_and_a_log_line_each():
     from wireview import session
 
     assert set(inbound.CLOSE_CODES) == telemetry.MESSAGE_REFUSED_REASONS == set(session._REFUSED_DETAIL)
+
+
+# --- the components limit and a state the deployed class refuses (#231) -------
+#
+# A join's state is judged in two places. What the envelope says -- signature,
+# expiry, identity, boundary, the models a model field named (``fit``) -- is
+# judged before the limit: such a join adds no instance, and is answered as on
+# any connection (``reload``). Whether the deployed class validates the fields
+# is known only by building the instance -- registering it and loading its
+# models -- which is what the limit bounds: at the limit, the connection closes
+# (1008) first, and the page's next connection, empty, gets the ``reload``.
+
+
+class CapCart(Component):
+    """The class as the open page's version signed it."""
+
+    count: int = 0
+    book: Book | None = None
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<div {% tag_header %}>{{ count }}</div>")
+
+
+class CapCartRequired(Component, public=False, name="CapCart"):
+    """The deployed version: a new field with no default, which the old state lacks."""
+
+    count: int = 0
+    currency: str
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<div {% tag_header %}>{{ count }}</div>")
+
+
+class CapCartOtherModel(Component, public=False, name="CapCart"):
+    """The deployed version: ``book`` names another model, so the pk the page holds is a Book's."""
+
+    count: int = 0
+    book: Bookmark | None = None
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<div {% tag_header %}>{{ count }}</div>")
+
+
+@contextlib.contextmanager
+def _deployed(new: type[Component]):
+    """``new`` where the registries hold the class it shares names with, as a restart would.
+
+    The same as tests/test_deploy_field_changes.py's ``deployed``; test modules are not imported (CLAUDE.md).
+    """
+    registries = [Component._all, Component._by_fqn, Component._by_app]
+    saved = [dict(registry) for registry in registries]
+    old = Component._by_fqn[new._fqn]
+    try:
+        for registry in registries:
+            for key, value in list(registry.items()):
+                if value is old:
+                    registry[key] = new
+        yield
+    finally:
+        for registry, before in zip(registries, saved):
+            registry.clear()
+            registry.update(before)
+
+
+def _old_cart(id: str) -> str:
+    """A join of the page's CapCart, signed before the deploy; its book is a Book's pk."""
+    state = sign_state(
+        CapCart(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id, count=5, book=Book(pk=7, title="t"))
+    )
+    return json.dumps({"command": "join", "payload": {"name": "CapCart", "state": state, "children": {}, "ref": 2}})
+
+
+async def _at_the_limit(monkeypatch, most: int) -> WebsocketCommunicator:
+    set_wireview(monkeypatch, CONNECTION_MAX_COMPONENTS=most)
+    communicator = await _connect()
+    for index in range(most):
+        await communicator.send_to(text_data=_join(f"held-{index}"))
+        await _until(communicator, "joined")
+    return communicator
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_at_the_limit_a_state_whose_models_changed_still_reloads(monkeypatch, refused):
+    """Judged from the envelope, before the limit: no instance, a ``reload``, the connection goes on."""
+    communicator = await _at_the_limit(monkeypatch, 1)
+    with _deployed(CapCartOtherModel):
+        await communicator.send_to(text_data=_old_cart("cart"))
+        (answer,) = await _until(communicator, "reload")
+    assert answer["payload"]["reason"] == "stale"
+    # Still open: the page's own component answers
+    await communicator.send_to(text_data=_bump("held-0", 3))
+    await _until(communicator, "render")
+    await _end(communicator)
+    assert refused == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_at_the_limit_a_state_the_class_does_not_validate_closes_first(monkeypatch, refused):
+    """Known only by building it, which the limit bounds: 1008, and no ``reload`` on this connection."""
+    communicator = await _at_the_limit(monkeypatch, 1)
+    with _deployed(CapCartRequired):
+        await communicator.send_to(text_data=_old_cart("cart"))
+        code, commands = await _closed(communicator)
+    assert (code, commands) == (1008, [])
+    await _end(communicator)
+    assert [(e["reason"], e["size"], e["limit"]) for e in refused] == [("components", 1, 1)]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_below_the_limit_the_same_state_reloads(monkeypatch, refused):
+    """The next connection the page opens is empty: the same join gets its ``reload``."""
+    set_wireview(monkeypatch, CONNECTION_MAX_COMPONENTS=1)
+    communicator = await _connect()
+    with _deployed(CapCartRequired):
+        await communicator.send_to(text_data=_old_cart("cart"))
+        (answer,) = await _until(communicator, "reload")
+    assert answer["payload"]["reason"] == "stale"
+    await _end(communicator)
+    assert refused == []

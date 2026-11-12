@@ -37,7 +37,7 @@ def test_the_check_ids_are_found():
     assert len(_check_ids()) > 10
 
 
-# "함정 22가지를" in README, "실수 22가지(" in WHY
+# "함정 23가지를" in README, "실수 23가지(" in WHY
 CHECK_COUNT = re.compile(r"(?:함정|실수) (\d+)가지")
 
 
