@@ -12,6 +12,7 @@ import {
   arrivesOnRestore,
   attachmentName,
   beforeNavigateDetail,
+  boostsForm,
   boostsLink,
   carriedAcross,
   fetchOutcome,
@@ -374,6 +375,16 @@ test("the nearest wire-boost decides", () => {
   assert.equal(boostsLink(element({ href: "/a/" }, element({}, element({ "wire-boost": "" })))), true);
   // A download is the browser's even where boost is turned on
   assert.equal(boostsLink(element({ href: "/a/", download: "", "wire-boost": "" })), false);
+});
+
+test("a form boosts only by its own wire-boost, and not when it is false", () => {
+  assert.equal(boostsForm(element({ "wire-boost": "" })), true);
+  assert.equal(boostsForm(element({ "wire-boost": "true" })), true);
+  assert.equal(boostsForm(element({ "wire-boost": "false" })), false);
+  assert.equal(boostsForm(element({ "wire-boost": " FALSE " })), false);
+  assert.equal(boostsForm(element({})), false);
+  // An element around it does not turn it on (#103)
+  assert.equal(boostsForm(element({}, element({ "wire-boost": "" }))), false);
 });
 
 test("the mark on an entry a file left has its own name", () => {

@@ -1300,6 +1300,20 @@ def test_a_link_under_wire_boost_false_is_the_browsers(box, traffic):
     assert traffic.fetches == []
 
 
+@pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"), ("inside-send", "i")], ids=["false", "inside"])
+def test_a_form_that_does_not_ask_is_submitted_by_the_browser(box, traffic, testid, tab):
+    # `wire-boost="false"` read as asking: the attribute was there (#227). And
+    # an element around a form does not ask for it (#103)
+    page = box
+    with page.expect_event("load", timeout=WAIT_TIMEOUT * 1000):
+        by(page, testid).click()
+    wait_live(page)
+    at(page, f"/historyprobe/other/?tab={tab}")
+    expect_text(by(page, "page"), "other")
+    assert not page.evaluate("window.__samePage === true"), "a page load"
+    assert traffic.fetches == []
+
+
 def test_the_nearest_wire_boost_decides(box):
     page = box
     by(page, "reboosted").click()

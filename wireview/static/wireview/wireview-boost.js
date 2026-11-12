@@ -12,6 +12,7 @@ import {
   arrivesOnRestore,
   attachmentName,
   beforeNavigateDetail,
+  boostsForm,
   boostsLink,
   fetchOutcome,
   formMethod,
@@ -477,7 +478,7 @@ if (BOOST_PAGES) {
     // A component's {% on "submit.prevent" %} handled it
     if (e.defaultPrevented) return;
     const form = e.target;
-    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("wire-boost")) return;
+    if (!(form instanceof HTMLFormElement) || !boostsForm(form)) return;
     const submitter = /** @type {HTMLButtonElement|HTMLInputElement|null} */ (e.submitter);
     const target = submitter?.getAttribute("formtarget") ?? form.getAttribute("target");
     if (target && target !== "_self") return;

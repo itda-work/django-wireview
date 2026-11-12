@@ -17,11 +17,11 @@
     },
     {
       "name": "wire-boost",
-      "description": "On a `<form>`: submit without a full page load when `WIREVIEW[\"BOOST_PAGES\"]` is on. `wire-boost=\"false\"` on a link or an element around it leaves its links to the browser; the nearest `wire-boost` decides.",
+      "description": "On a `<form>`: submit without a full page load when `WIREVIEW[\"BOOST_PAGES\"]` is on; only the form's own attribute asks. `wire-boost=\"false\"` on a form does not ask, and on a link or an element around it leaves its links to the browser; the nearest `wire-boost` decides.",
       "values": [
         {
           "name": "false",
-          "description": "On a link or around links: the browser follows them, with a full page load."
+          "description": "On a form: it is not boosted. On a link or around links: the browser follows them, with a full page load."
         }
       ]
     },

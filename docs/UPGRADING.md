@@ -358,6 +358,8 @@ dependencies = ["django-wireview>=1.5,<2"]
     `text/html`이다)는 이제 전체 로드다.
   - boost한 POST 폼의 `attachment` 답은 다시 보내지 않고 받은 것을 저장한다. 그 밖의 파일 답(JSON 등)은 페이지가 남고
     `wireview:navigation-failed`가 `answered: true`로 간다. 자세한 것은 [boost](./features/boost.md#boost하지-않는-링크와-응답).
+  - `<form wire-boost="false">`는 더는 boost되지 않는다. 1.5는 속성이 있다는 것만 보고 그 폼을 boost했다. 링크에서
+    `"false"`가 끄는 뜻이 되어 폼도 같게 읽는다. boost하려던 폼이면 값을 지운다(`wire-boost`).
 
 ### 템플릿
 

@@ -50,6 +50,19 @@
       <a data-testid="unboosted" href="/historyprobe/other/">unboosted</a>
       <span><a data-testid="reboosted" href="/historyprobe/other/" wire-boost>reboosted</a></span>
     </div>
+    {# Its wire-boost="false" does not ask, as on a link (#227); one around a form does not turn it on #}
+    <form action="/historyprobe/other/"
+          wire-boost="false"
+          data-testid="off-form">
+      <input name="tab" value="f">
+      <button type="submit" data-testid="off-send">off</button>
+    </form>
+    <div wire-boost>
+      <form action="/historyprobe/other/" data-testid="inside-form">
+        <input name="tab" value="i">
+        <button type="submit" data-testid="inside-send">inside</button>
+      </form>
+    </div>
     <form action="/historyprobe/report/" wire-boost data-testid="get-file-form">
       <button type="submit" data-testid="get-file-send">get file</button>
     </form>

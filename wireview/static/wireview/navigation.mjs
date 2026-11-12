@@ -464,7 +464,30 @@ export function attachmentName(disposition) {
 export function boostsLink(link) {
   if (link.hasAttribute("download")) return false;
   const nearest = link.closest("[wire-boost]");
-  return nearest === null || nearest.getAttribute("wire-boost")?.trim().toLowerCase() !== "false";
+  return nearest === null || !turnsBoostOff(nearest.getAttribute("wire-boost"));
+}
+
+/**
+ * Whether boost takes a form's submission (#103, #227): only a form that asks
+ * with its own `wire-boost`. An element around it does not turn it on -- a
+ * form can change who is signed in, and boost keeps the socket. Its
+ * `wire-boost="false"` is a form that does not ask, as on a link.
+ * @param {{getAttribute(name: string): string|null}} form
+ * @returns {boolean}
+ */
+export function boostsForm(form) {
+  const value = form.getAttribute("wire-boost");
+  return value !== null && !turnsBoostOff(value);
+}
+
+/**
+ * Whether a `wire-boost` value turns boost off: "false", whatever the case
+ * and the spaces around it.
+ * @param {string|null|undefined} value
+ * @returns {boolean}
+ */
+function turnsBoostOff(value) {
+  return value?.trim().toLowerCase() === "false";
 }
 
 /**
