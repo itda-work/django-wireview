@@ -35,9 +35,10 @@ The django-reactor era changelog (2.x) is preserved in
   `CONNECTION_MAX_COMPONENTS` below 1, `INBOUND_RATE_PER_SECOND` at or below 0, `INBOUND_BURST` below 1 while the rate
   is on, or any of them neither `None` nor an int or a float. The server started as usual, and every page was closed on
   its first frame or join and reconnected at the backoff for good. A small value is not named.
-- A page whose tab is shown again, or whose network comes back, reconnects at once instead of waiting out the
-  `RECONNECT_*` backoff, and asks a socket that looks open but has been quiet with `sync`, opening another when
-  nothing answers within 4 seconds; hidden tabs wait as before (#228).
+- A page whose tab is shown again, whose network comes back, or that the back/forward cache restores reconnects at
+  once instead of waiting out the `RECONNECT_*` backoff, and asks a socket that looks open, has been quiet and has
+  nothing sent unanswered with `sync`, opening another when nothing answers within 4 seconds; hidden tabs wait as
+  before (#228).
 - `docs/features/react-islands.md`: React on an island -- registering it, a Vite bundle and its dev server, CSP
   nonces, and a policy without nonces for pages a public cache keeps, which allows the header's inline `<style>` by
   its hash (`'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='`; it changes with that style, and the changelog

@@ -182,13 +182,22 @@ export const SYNC_SINCE = 8;
  * - `probe`: the socket looks open but has been quiet; send `sync` and open
  *   another if nothing comes back within `PROBE_TIMEOUT_MS`.
  * - `none`: the page is hidden, a socket is already opening or being asked,
- *   or the server is one that would not answer.
+ *   the server is one that would not answer, or the conversation is not at
+ *   rest.
+ *
+ * Only a conversation at rest is asked: one where the page has sent nothing
+ * since it last heard from the server (`awaiting`). The server handles a
+ * connection's messages in order, so while it works on a handler -- one that
+ * waits on an outside API for seconds -- the `sync` waits behind it too, and
+ * silence says nothing about the socket. Asking then took a live socket for
+ * dead and threw that handler's render away. The price: a dead socket the
+ * page sent an event on before it froze is not caught on return, as before.
  *
  * @param {{visible: boolean, waiting: boolean, readyState: number | undefined,
- *   probing: boolean, serverVsn: number, quietFor: number}} state
+ *   probing: boolean, serverVsn: number, quietFor: number, awaiting: boolean}} state
  * @returns {"connect" | "probe" | "none"}
  */
-export function onReturn({ visible, waiting, readyState, probing, serverVsn, quietFor }) {
+export function onReturn({ visible, waiting, readyState, probing, serverVsn, quietFor, awaiting }) {
   // A tab nobody looks at waits the backoff out, as every page did before
   if (!visible) return "none";
   if (waiting) return "connect";
@@ -198,7 +207,40 @@ export function onReturn({ visible, waiting, readyState, probing, serverVsn, qui
   // A server before vsn 8 drops `sync`: the probe would close a socket that works
   if (serverVsn < SYNC_SINCE) return "none";
   if (quietFor < HEARD_RECENTLY_MS) return "none";
+  // Something sent may still be in the server's hands: silence is not death
+  if (awaiting) return "none";
   return "probe";
+}
+
+/**
+ * Whether an event the window fires is the user coming back (#228): the tab
+ * shown (`onReturn` reads whether it is visible), the network back, or the
+ * page restored from the back/forward cache -- WebKit closes the socket of a
+ * page it keeps there, and may bring the page back (navigation.mjs,
+ * `arrivesOnRestore`). A `pageshow` of a fresh load is not one: the page is
+ * opening its first socket.
+ *
+ * @param {{type: string, persisted?: boolean}} event
+ * @returns {boolean}
+ */
+export function isReturn(event) {
+  if (event.type === "visibilitychange" || event.type === "online") return true;
+  return event.type === "pageshow" && event.persisted === true;
+}
+
+/**
+ * Whether the reconnect a `renew` asked for (#209) is the page's to start.
+ * Only on a socket that is open or opening: one that dropped meanwhile is
+ * waiting out its backoff, and the socket that wait opens is the renewal
+ * already -- `Renewal.opened()` tells its joins so. Starting it early would
+ * take a page out of a deploy's spread for no gain.
+ *
+ * @param {{waiting: boolean, readyState: number | undefined}} state
+ * @returns {boolean}
+ */
+export function renewsNow({ waiting, readyState }) {
+  if (waiting) return false;
+  return readyState === OPEN || readyState === 0;
 }
 
 /**
@@ -211,6 +253,13 @@ export class Revival {
     this.probe = null;
     /** @type {number} when the server was last heard from, by the page's clock */
     this.heardAt = -Infinity;
+    /** @type {boolean} whether the page has sent something since it last heard from the server */
+    this.awaiting = false;
+  }
+
+  /** The page wrote a message on the socket -- not a probe's own `sync`. */
+  sent() {
+    this.awaiting = true;
   }
 
   /** Whether a probe is waiting for its answer. */
@@ -227,6 +276,7 @@ export class Revival {
   heard(now) {
     this.heardAt = now;
     this.probe = null;
+    this.awaiting = false;
   }
 
   /**
@@ -263,5 +313,6 @@ export class Revival {
   /** The socket closed: no answer will come on it. */
   closed() {
     this.probe = null;
+    this.awaiting = false;
   }
 }

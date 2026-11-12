@@ -225,7 +225,8 @@ wireview/
                            wireview:before-navigate의 detail과 이동 종류(kind). 취소한 뒤로·앞으로 가기는 Navigation API가
                            알려 준 떠난 항목으로 traverseTo로 돌아가고, 그 사이의 popstate를 TraversalUndo가 가른다, #154),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*. 대기는 라이브러리가 아니라 페이지가 한다(Backoff, URL 공급 함수의 Promise) — 탭이 다시 보이거나 online이면 끝낸다.
-                           열려 보이는 조용한 소켓은 sync로 묻고 4초 안에 아무것도 안 오면 새로 연다(Revival·onReturn). 숨은 탭은 아무것도 하지 않는다, #228),
+                           열려 보이는 조용한 소켓은 sync로 묻고 4초 안에 아무것도 안 오면 새로 연다(Revival·onReturn). 마지막으로 받은 뒤 보낸 것이 있으면(_send가 Revival.sent) 묻지 않는다 — 느린 핸들러의 침묵이다.
+                           pageshow(persisted)도 돌아옴이다(isReturn). renew는 백오프를 기다리는 소켓을 그 기다림에 맡긴다(renewsNow). 숨은 탭은 아무것도 하지 않는다, #228),
                            tab.mjs (페이지 로드의 이름. 소켓 URL의 tab으로 재연결마다 같은 값을 보낸다 — presence가 탭을 가른다, #202),
                            renew.mjs (서버의 renew에 새 소켓을 소켓마다 한 번 연다. 그 소켓의 첫 join 바퀴만 renewed를 싣는다 — 서버는 그 join에 다시 renew하지 않고 로그인이 다르면 reload. 이어지는 renew는 재연결 백오프만큼 기다린다, #209),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
@@ -306,7 +307,7 @@ tests/
                            slot/ 은 join이 실패하는 컴포넌트 둘 — 슬롯에 호스트의 LiveComponent를 받은 것과 자기 LiveComponent를 든 것 — 과 그 훅들이 떠나는 페이지.
                            그 LiveComponent는 업로드를 받는다(슬롯의 것은 실패 뒤에도 끝내야 한다).
                            핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
-                           offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
+                           offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구, 사용자가 돌아올 때의 재연결·확인(#228, slow_bump 은 확인 시한보다 오래 걸리는 핸들러)을 보는 E2E(test_offline_e2e.py)의 픽스처,
                            islandprobe/ 는 섬의 수명(한 번 mount·바뀐 props만 update·예외 뒤 다시 join·재연결·boost 이동·sticky·늦은 등록·뒤로 가기의 사본)과 ctx를 보는 E2E(test_islands_e2e.py)의 픽스처(again/ 은 같은 id의 board, holder/ 는 같은 섬 id를 다른 컴포넌트가, sides/ 는 남아 있는 두 컴포넌트 사이로 섬이 옮겨 가는 페이지),
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처(?nest=1 은 호스트의 패스, 다른 컴포넌트의 슬롯 안, 호스트 값을 그리는 fill을 받은 component_block으로 그려진 probe, ?rows=1 은 행을 중첩 컴포넌트가 그리는 목록, ?live=1 은 호스트의 패스가 그리는 블록에 목록과 함께 든 LiveComponent, ?notes=1 은 서명 상태 밖의 temporary assign이 바뀌는 중첩 컴포넌트를 목록과 함께 든 블록, ?joined=1 은 그 temporary assign을 joined()에서 불러오는 것, ?func=1 은 그 자리를 함수 컴포넌트의 템플릿이 그리고 그것의 joined()가 서명 필드를 바꾸는 것, ?nestrows=1 은 호스트의 패스가 그리는 컴포넌트가 유지한 id 없는 행이 계속 답하는지),

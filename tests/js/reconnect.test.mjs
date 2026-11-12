@@ -11,9 +11,11 @@ import {
   Revival,
   SYNC_SINCE,
   backoffDelay,
+  isReturn,
   onReturn,
   readReconnectSettings,
   reconnectOptions,
+  renewsNow,
 } from "../../wireview/static/wireview/reconnect.mjs";
 
 function documentWith(attributes) {
@@ -166,7 +168,7 @@ test("skipping ends the wait at once, once", async () => {
   assert.equal(backoff.skip(), false);
 });
 
-const OPEN_QUIET = { visible: true, waiting: false, readyState: 1, probing: false, serverVsn: SYNC_SINCE, quietFor: 60000 };
+const OPEN_QUIET = { visible: true, waiting: false, readyState: 1, probing: false, serverVsn: SYNC_SINCE, quietFor: 60000, awaiting: false };
 
 test("a shown tab whose socket waits out its backoff connects now", () => {
   assert.equal(onReturn({ ...OPEN_QUIET, waiting: true, readyState: 3 }), "connect");
@@ -265,4 +267,55 @@ test("the probe gives a socket the time the library gives one to open", () => {
     import.meta.url
   );
   assert.match(readFileSync(url, "utf8"), new RegExp(`connectionTimeout: ${PROBE_TIMEOUT_MS},`));
+});
+
+// --- only a conversation at rest is asked (#228, second round) -----------------------
+
+test("a socket the page sent something on since it last heard is not asked", () => {
+  // A handler waiting on an outside API for seconds: the sync would wait behind it
+  assert.equal(onReturn({ ...OPEN_QUIET, awaiting: true }), "none");
+  // Waiting out the backoff is another matter: nothing is in a server's hands
+  assert.equal(onReturn({ ...OPEN_QUIET, awaiting: true, waiting: true, readyState: 3 }), "connect");
+});
+
+test("the page awaits an answer from a send until it next hears, and not after a close", () => {
+  const revival = new Revival();
+  assert.equal(revival.awaiting, false);
+  revival.sent();
+  assert.equal(revival.awaiting, true);
+  revival.heard(10);
+  assert.equal(revival.awaiting, false);
+  revival.sent();
+  revival.closed();
+  assert.equal(revival.awaiting, false);
+});
+
+test("the slow handler: sent, quiet for seconds, then the tab comes back", () => {
+  const revival = new Revival();
+  revival.heard(0);
+  revival.sent();
+  const state = { ...OPEN_QUIET, quietFor: revival.quietFor(5000), awaiting: revival.awaiting };
+  assert.equal(onReturn(state), "none");
+  // Its render lands: the conversation is at rest again, and a later return may ask
+  revival.heard(8000);
+  assert.equal(onReturn({ ...OPEN_QUIET, quietFor: revival.quietFor(20000), awaiting: revival.awaiting }), "probe");
+});
+
+test("a page restored from the back/forward cache is a return; a fresh load is not", () => {
+  assert.equal(isReturn({ type: "pageshow", persisted: true }), true);
+  assert.equal(isReturn({ type: "pageshow", persisted: false }), false);
+  assert.equal(isReturn({ type: "pageshow" }), false);
+  assert.equal(isReturn({ type: "visibilitychange" }), true);
+  assert.equal(isReturn({ type: "online" }), true);
+  assert.equal(isReturn({ type: "focus" }), false);
+});
+
+test("a renew reconnects a socket open or opening, and leaves a waiting one to its backoff", () => {
+  assert.equal(renewsNow({ waiting: false, readyState: 1 }), true);
+  assert.equal(renewsNow({ waiting: false, readyState: 0 }), true);
+  // Dropped since: the backoff's socket is the renewal (Renewal.opened)
+  assert.equal(renewsNow({ waiting: true, readyState: 3 }), false);
+  // Closed, the library about to start its attempt
+  assert.equal(renewsNow({ waiting: false, readyState: 3 }), false);
+  assert.equal(renewsNow({ waiting: false, readyState: 2 }), false);
 });

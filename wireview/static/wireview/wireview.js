@@ -24,9 +24,11 @@ import {
   Backoff,
   PROBE_TIMEOUT_MS,
   Revival,
+  isReturn,
   onReturn,
   readReconnectSettings,
   reconnectOptions,
+  renewsNow,
 } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
@@ -191,10 +193,14 @@ class ServerConnection {
       }
     );
 
-    // The user is back: a tab shown again, or the network back (#228)
-    const returned = () => this.userReturned();
+    // The user is back: a tab shown again, the network back, or the page
+    // restored from the back/forward cache (#228)
+    const returned = (/** @type {Event} */ event) => {
+      if (isReturn(/** @type {PageTransitionEvent} */ (event))) this.userReturned();
+    };
     document.addEventListener("visibilitychange", returned);
     window.addEventListener("online", returned);
+    window.addEventListener("pageshow", returned);
 
     this.socket.addEventListener("open", () => {
       debugLog("ws", "Connected to server");
@@ -303,6 +309,7 @@ class ServerConnection {
       probing: this.revival.probing,
       serverVsn: this.serverVsn,
       quietFor: this.revival.quietFor(now),
+      awaiting: this.revival.awaiting,
     });
     if (action === "connect") {
       debugLog("ws", "Back: connecting now");
@@ -322,7 +329,8 @@ class ServerConnection {
     const ref = ++this.lastRef;
     this.revival.probed(ref, this.epoch);
     debugLog("ws", "Back: asking the socket whether it still answers");
-    this._send("sync", { ref });
+    // Not counted as awaiting an answer: it is the question itself
+    this._send("sync", { ref }, false, false);
     window.setTimeout(() => {
       if (!this.revival.expired(ref, this.epoch)) return;
       debugLog("ws", "No answer: opening another socket");
@@ -707,8 +715,14 @@ class ServerConnection {
           // At once the first time; a renew soon after the last waits, as a reconnect does
           const epoch = this.epoch;
           const wait = this.renewal.request(epoch, Date.now());
-          if (wait === 0) this.socket?.reconnect();
-          else if (wait !== null) setTimeout(() => this.epoch === epoch && this.socket?.reconnect(), wait);
+          // A socket that dropped meanwhile waits out its backoff, and the one
+          // that wait opens is the renewal; reconnect() did nothing to it anyway
+          const renew = () => {
+            if (this.epoch !== epoch || !this.socket || !this.backoff) return;
+            if (renewsNow({ waiting: this.backoff.waiting, readyState: this.socket.readyState })) this.socket.reconnect();
+          };
+          if (wait === 0) renew();
+          else if (wait !== null) setTimeout(renew, wait);
         }
         break;
       case "focus_on":
@@ -1271,9 +1285,12 @@ class ServerConnection {
    * @param {string} command - Command type
    * @param {Object} payload - Message payload
    * @param {boolean} [through] - a rejoin's own join, not held by its barrier (#180)
+   * @param {boolean} [awaitsAnswer] - false for the probe a return sends (#228):
+   *   everything else may keep the server busy, and the page does not ask a
+   *   socket whether it is alive while it is
    * @private
    */
-  _send(command, payload, through = false) {
+  _send(command, payload, through = false, awaitsAnswer = true) {
     const message = { command, payload };
     // A rejoin waits for its sync's answer and holds what the page sends
     // meanwhile, until its own joins are out (#180)
@@ -1285,6 +1302,7 @@ class ServerConnection {
     const doSend = () => {
       if (this.isOpen) {
         this.socket.send(JSON.stringify(message));
+        if (awaitsAnswer) this.revival.sent();
         if (command === "hook_event" && payload.ref) this.replies.sent(payload.ref);
       } else if (!this.wasConnected) {
         // Before the first connection: sent once it opens.

@@ -7,7 +7,13 @@ to the socket (static/offlineprobe/hooks/pinger.js) -- may reach the server
 after it is back.
 """
 
+import asyncio
+
 from wireview import Component
+
+#: How long ``slow_bump`` takes: past a return's quiet second and probe deadline
+#: (reconnect.mjs HEARD_RECENTLY_MS + PROBE_TIMEOUT_MS = 5 s) with room to spare.
+SLOW_SECONDS = 7
 
 
 class OfflineBox(Component):
@@ -20,6 +26,12 @@ class OfflineBox(Component):
 
     async def bump(self, **_rest):
         self.count += 1
+
+    async def slow_bump(self, **_rest):
+        # A handler waiting on an outside API (#228): longer than a return's probe
+        # gives a quiet socket, so a probe sent meanwhile would go unanswered
+        await asyncio.sleep(SLOW_SECONDS)
+        self.count += 100
 
     async def add(self, item: str = "", **_rest):
         self.added = item

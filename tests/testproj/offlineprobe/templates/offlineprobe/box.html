@@ -3,6 +3,7 @@
 <div {% tag_header %}>
   <span data-testid="count">{{ this.count }}</span>
   <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+  <button data-testid="slow-bump" {% on "click" "slow_bump" %}>slow bump</button>
   <form data-testid="form" {% on "submit.prevent" "add" %}>
     <input data-testid="item" name="item">
   </form>

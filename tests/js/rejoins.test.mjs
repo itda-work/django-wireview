@@ -115,6 +115,6 @@ test("every frame the page sends goes through _send, where the barrier holds it"
   const source = readFileSync(new URL("../../wireview/static/wireview/wireview.js", import.meta.url), "utf8");
   assert.equal(source.split(".socket.send(").length - 1, 1);
   const write = source.indexOf(".socket.send(");
-  const sender = source.lastIndexOf("  _send(command, payload, through = false) {", write);
+  const sender = source.lastIndexOf("  _send(command, payload, through = false", write);
   assert.ok(sender !== -1 && sender > source.lastIndexOf("\n  }\n", write), "the one write is inside _send");
 });

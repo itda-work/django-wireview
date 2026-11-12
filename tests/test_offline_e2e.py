@@ -345,3 +345,35 @@ def test_a_tab_shown_again_right_after_its_socket_opened_is_not_asked(visibility
     page.evaluate("() => { window.__visibility('hidden'); window.__visibility('visible'); }")
 
     assert "sync" not in page.evaluate("window.__link.sent")
+
+
+def test_a_return_while_a_slow_handler_runs_keeps_the_socket_and_its_render(visibility, link):
+    """The user starts something that takes the server seconds -- a report, an outside
+    API -- and looks at another tab meanwhile. The socket has sent and not yet heard
+    back: its silence is the server working, and asking it then took it for dead,
+    replaced it, and the handler's render went to an instance no page holds."""
+    page = link.page
+    before = sockets(page)
+    by(page, "slow-bump").click()
+    page.evaluate("window.__visibility('hidden')")
+    wait_quiet(page)
+
+    page.evaluate("window.__visibility('visible')")
+
+    # Past where an unanswered probe would have replaced the socket: the render lands
+    expect_text(by(page, "count"), "100")
+    assert "sync" not in page.evaluate("window.__link.sent")
+    assert sockets(page) == before
+
+
+def test_a_page_restored_from_the_back_forward_cache_connects_without_waiting(slow_reconnect, link):
+    """WebKit closes the socket of a page it keeps in the back/forward cache and may
+    bring the page back. Chromium keeps a page with an open socket out of that cache,
+    so the restore is the event alone, as tests/test_history_e2e.py fires it."""
+    page = link.page
+    link.cut()
+    page.evaluate("window.__link.offline = false")
+
+    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))")
+
+    wait_live(page, LIVE)
