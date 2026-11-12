@@ -94,7 +94,8 @@ wireview/
 │                          tests/test_uvicorn_patches.py의 test_uvicorn_still_has_the_defect가 실패하면 상류가 고친 것이다 — 그때 뺀다
 ├── core/inbound.py        연결이 보내는 것의 상한(#230): 프레임 크기(INBOUND_MAX_BYTES, 1009, 파싱 전에 UTF-8 바이트), 빈도(INBOUND_RATE_PER_SECOND·INBOUND_BURST 토큰 버킷,
 │                          모든 프레임을 센다, 1008, 기본 꺼짐), 바이너리 프레임(1003). 컨슈머의 websocket_receive가 Gate에 묻고 세션의 refuse_inbound가 닫는다.
-│                          연결이 드는 컴포넌트 수(CONNECTION_MAX_COMPONENTS, 1008)는 command_join이 본다. 시계는 모듈의 monotonic(테스트가 바꾼다)
+│                          연결이 드는 컴포넌트 수(CONNECTION_MAX_COMPONENTS, 1008)는 command_join이 본다. 시계는 모듈의 monotonic(테스트가 바꾼다).
+│                          모든 연결을 닫는 값은 W024(checks.check_inbound_limits)가 기동 전에 알린다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -153,7 +154,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W023)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W024)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
@@ -453,7 +454,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ## 함정
 
-아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W023`, `docs/features/checks.md`).
+아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W024`, `docs/features/checks.md`).
 
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 

@@ -993,8 +993,14 @@ class WebSocketRateLimitMiddleware:
 ### 메시지 크기와 빈도
 
 `.throttle`·`.debounce`는 브라우저에서만 돈다. 소켓에 직접 프레임을 쓰는 클라이언트는 그것을 거치지 않으므로, 연결
-하나가 서버에 쓰게 할 수 있는 것에 wireview가 상한을 둔다(#230). 넘으면 그 메시지를 처리하지 않고 소켓을 닫는다 —
-정상 페이지라면 다시 연결해 요소의 상태로 join하고, 재연결 백오프(`RECONNECT_*`)가 그 사이의 제동이 된다.
+하나가 서버에 쓰게 할 수 있는 것에 wireview가 상한을 둔다(#230). 넘으면 그 메시지를 처리하지 않고 소켓을 닫는다.
+
+클라이언트는 닫힘 코드를 가리지 않고 끊김 하나로 다룬다(`wireview/static/wireview/wireview.js`의 `close` 리스너): 컴포넌트에
+`wireview-disconnected`를 붙이고 로딩 표시를 풀고 기다리던 훅 `pushEvent` 응답을 `"disconnected"`로 거절한 뒤, 재연결 백오프
+(`RECONNECT_*`, 연결이 5초를 못 버티면 대기가 계속 는다)만큼 기다려 다시 붙고 모든 컴포넌트를 요소의 `data-state`로 다시 join한다.
+거절된 메시지와 끊긴 동안 보낸 메시지는 다시 보내지 않는다(`_send`가 버린다) — 그래서 다시 끊기는 것은 페이지가 스스로 같은
+것을 다시 보낼 때뿐이다: `wire-auto-recover` 폼은 재연결 뒤 그 값을 다시 보내고(`recoverForms`), 훅의 `mounted()`·`reconnected()`가
+보내는 것도 다시 나간다.
 
 | 상한 | 설정 | 기본 | 넘으면 |
 |------|------|------|--------|

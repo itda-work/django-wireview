@@ -243,6 +243,7 @@ UPGRADE_NOTE = {
 EXAMPLE = "저장소의 예제만 바뀌었다"
 NO_UPGRADE_NOTE = {
     "Inbound limits per connection": "기본으로 꺼져 있다",
+    "`wireview.W024` names an inbound limit": "경고만 더해진다",
     "A binary WebSocket frame, or a text frame that is not JSON": "no client of ours sends one",
     "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",

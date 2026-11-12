@@ -43,6 +43,9 @@ WIREVIEW = {
 | `INBOUND_BURST` | `200` | 한꺼번에 보낼 수 있는 메시지 수(토큰 버킷의 크기). 연결이 열리면 가득 차 있다. 페이지의 첫 바퀴는 컴포넌트마다 join 하나를 한꺼번에 보내므로 가장 큰 페이지의 컴포넌트 수보다 넉넉해야 한다. `INBOUND_RATE_PER_SECOND`가 `None`이면 쓰지 않는다 |
 | `CONNECTION_MAX_COMPONENTS` | `None` | 연결 하나가 들 수 있는 컴포넌트 인스턴스 수(LiveComponent·중첩 컴포넌트 포함). 새 id의 join이 그 수를 넘기려 하면 1008로 닫는다. 같은 id의 다시 join은 세지 않는다. boost 이동은 새 페이지의 join이 옛 페이지의 leave보다 먼저 올 수 있으므로 가장 큰 페이지의 두 배쯤으로 둔다. `None`이면 세지 않는다 |
 
+어떤 연결도 살아남지 못하는 값(`0`, 음수, `INBOUND_RATE_PER_SECOND`를 켰을 때 1보다 작은 `INBOUND_BURST`, 숫자가 아닌 값)은
+`manage.py check`가 `wireview.W024`로 알린다([체크](./checks.md)).
+
 바이너리 프레임은 크기와 상관없이 1003으로 닫는다 — 클라이언트는 텍스트만 보낸다. JSON이 아닌 텍스트 프레임은
 WARNING 로그를 남기고 버린다(모르는 명령과 같다, [wire protocol](../implementation/wire-protocol.md#2-inbound-브라우저--세션)).
 

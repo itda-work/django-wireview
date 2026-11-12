@@ -31,6 +31,10 @@ The django-reactor era changelog (2.x) is preserved in
   Both are off by default. A page whose components have no id signs a fresh id on every load, so a client could grow
   one connection's instances without bound. Each refusal emits the new telemetry event `message_refused` (reasons in
   `telemetry.MESSAGE_REFUSED_REASONS`) and logs a WARNING without the message.
+- `wireview.W024` names an inbound limit no connection survives (#230): `INBOUND_MAX_BYTES` or
+  `CONNECTION_MAX_COMPONENTS` below 1, `INBOUND_RATE_PER_SECOND` at or below 0, `INBOUND_BURST` below 1 while the rate
+  is on, or any of them neither `None` nor an int or a float. The server started as usual, and every page was closed on
+  its first frame or join and reconnected at the backoff for good. A small value is not named.
 - `docs/features/react-islands.md`: React on an island -- registering it, a Vite bundle and its dev server, CSP
   nonces, and a policy without nonces for pages a public cache keeps, which allows the header's inline `<style>` by
   its hash (`'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='`; it changes with that style, and the changelog

@@ -36,6 +36,7 @@ from wireview.checks import (
     check_component_name_collisions,
     check_cookie_paths,
     check_django_templates,
+    check_inbound_limits,
     check_live_sessions,
     check_presence_producer_ids,
     check_reconnect_settings,
@@ -1523,3 +1524,112 @@ class TestTestprojIsClean:
 
         assert defined - plain - deploy == set()
         assert defined & deploy == {check_channel_layer}
+
+
+class TestInboundLimitsCheck:
+    """W024: an inbound limit that closes every connection (#230)."""
+
+    def test_the_defaults_are_silent(self):
+        assert check_inbound_limits(None) == []
+
+    def test_the_deployment_example_is_silent(self, monkeypatch):
+        """docs/DEPLOYMENT.md's limits."""
+        set_wireview(
+            monkeypatch,
+            INBOUND_MAX_BYTES=1024 * 1024,
+            INBOUND_RATE_PER_SECOND=20,
+            INBOUND_BURST=200,
+            CONNECTION_MAX_COMPONENTS=2000,
+        )
+        assert check_inbound_limits(None) == []
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            # Small is a choice, not a mistake
+            {"INBOUND_MAX_BYTES": 1, "INBOUND_RATE_PER_SECOND": 0.001, "INBOUND_BURST": 1},
+            {"CONNECTION_MAX_COMPONENTS": 1},
+            # Floats work as numbers
+            {"INBOUND_MAX_BYTES": 1.5e6, "INBOUND_RATE_PER_SECOND": 2.5, "INBOUND_BURST": 10.0},
+            # Every limit off
+            {"INBOUND_MAX_BYTES": None, "INBOUND_RATE_PER_SECOND": None, "CONNECTION_MAX_COMPONENTS": None},
+            # The burst is not read while the rate is off
+            {"INBOUND_RATE_PER_SECOND": None, "INBOUND_BURST": 0},
+            {"INBOUND_RATE_PER_SECOND": None, "INBOUND_BURST": "200"},
+            # NaN turns the limit off; it closes nothing
+            {"INBOUND_MAX_BYTES": float("nan"), "CONNECTION_MAX_COMPONENTS": float("nan")},
+            # Infinity is no limit
+            {"INBOUND_MAX_BYTES": float("inf"), "INBOUND_RATE_PER_SECOND": float("inf")},
+        ],
+    )
+    def test_a_value_a_connection_survives_is_silent(self, monkeypatch, values):
+        set_wireview(monkeypatch, **values)
+        assert check_inbound_limits(None) == []
+
+    @pytest.mark.parametrize(
+        ("values", "key", "says"),
+        [
+            # The brief's breaking input: the server starts, every connection closes on its first frame
+            ({"INBOUND_RATE_PER_SECOND": 50, "INBOUND_BURST": 0}, "INBOUND_BURST", "on its first"),
+            ({"INBOUND_RATE_PER_SECOND": 50, "INBOUND_BURST": 0.5}, "INBOUND_BURST", "on its first"),
+            ({"INBOUND_RATE_PER_SECOND": 50, "INBOUND_BURST": -3}, "INBOUND_BURST", "on its first"),
+            ({"INBOUND_RATE_PER_SECOND": 0}, "INBOUND_RATE_PER_SECOND", "never refills"),
+            ({"INBOUND_RATE_PER_SECOND": -1}, "INBOUND_RATE_PER_SECOND", "never refills"),
+            ({"INBOUND_MAX_BYTES": 0}, "INBOUND_MAX_BYTES", "1009"),
+            ({"INBOUND_MAX_BYTES": -1024}, "INBOUND_MAX_BYTES", "1009"),
+            ({"CONNECTION_MAX_COMPONENTS": 0}, "CONNECTION_MAX_COMPONENTS", "first join"),
+            ({"INBOUND_MAX_BYTES": "1MB"}, "INBOUND_MAX_BYTES", "is a str"),
+            ({"CONNECTION_MAX_COMPONENTS": "100"}, "CONNECTION_MAX_COMPONENTS", "is a str"),
+            ({"INBOUND_RATE_PER_SECOND": "fast"}, "INBOUND_RATE_PER_SECOND", "is a str"),
+            ({"INBOUND_RATE_PER_SECOND": 5, "INBOUND_BURST": [200]}, "INBOUND_BURST", "is a list"),
+            ({"INBOUND_MAX_BYTES": True}, "INBOUND_MAX_BYTES", "is a bool"),
+            ({"INBOUND_RATE_PER_SECOND": (200, 20)}, "INBOUND_RATE_PER_SECOND", "is a tuple"),
+        ],
+    )
+    def test_a_value_no_connection_survives_is_named(self, monkeypatch, values, key, says):
+        set_wireview(monkeypatch, **values)
+        (message,) = check_inbound_limits(None)
+
+        assert message.id == "wireview.W024"
+        assert f"WIREVIEW[{key!r}]" in message.msg and says in message.msg, message.msg
+        assert "docs/features/settings.md" in message.hint
+
+    def test_every_bad_key_is_named_once(self, monkeypatch):
+        set_wireview(
+            monkeypatch,
+            INBOUND_MAX_BYTES=0,
+            INBOUND_RATE_PER_SECOND=0,
+            INBOUND_BURST=0,
+            CONNECTION_MAX_COMPONENTS=0,
+        )
+        messages = check_inbound_limits(None)
+        assert [m.id for m in messages] == ["wireview.W024"] * 4
+        assert [next(k for k in wireview_checks.INBOUND_LIMITS if f"[{k!r}]" in m.msg) for m in messages] == list(
+            wireview_checks.INBOUND_LIMITS
+        )
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            {"INBOUND_MAX_BYTES": 0},
+            {"INBOUND_RATE_PER_SECOND": 50, "INBOUND_BURST": 0},
+            {"INBOUND_RATE_PER_SECOND": 0, "INBOUND_BURST": 3},
+        ],
+    )
+    def test_what_it_names_is_what_the_gate_refuses(self, monkeypatch, values):
+        """The check and wireview.core.inbound agree: a named value refuses a page's first messages."""
+        from wireview.core import inbound
+
+        set_wireview(monkeypatch, **values)
+        assert check_inbound_limits(None)
+        clock = iter(range(1000, 2000, 10))  # ten seconds between frames: any refill would show
+        monkeypatch.setattr(inbound, "monotonic", lambda: next(clock))
+        gate = inbound.Gate()
+        refused = [gate.refusal('{"command": "join"}', None) for _ in range(5)]
+        assert refused[-1] is not None, refused
+
+    def test_it_runs_under_manage_py_check(self, monkeypatch):
+        from django.core.checks import run_checks
+
+        set_wireview(monkeypatch, INBOUND_RATE_PER_SECOND=50, INBOUND_BURST=0)
+        assert "wireview.W024" in [m.id for m in run_checks()]

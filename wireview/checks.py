@@ -500,6 +500,62 @@ def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+#: The inbound limits (wireview.core.inbound, #230): each key, the least value a
+#: connection survives, and what the value counts. ``INBOUND_BURST`` is read only
+#: while ``INBOUND_RATE_PER_SECOND`` is on.
+INBOUND_LIMITS = {
+    "INBOUND_MAX_BYTES": (1, "every message is larger, and each closes its connection with 1009"),
+    "INBOUND_RATE_PER_SECOND": (
+        0,
+        "the bucket never refills, so every connection closes with 1008 once its burst is spent",
+    ),
+    "INBOUND_BURST": (1, "the bucket holds no message, so every connection closes with 1008 on its first"),
+    "CONNECTION_MAX_COMPONENTS": (1, "no join fits, so every connection closes with 1008 on its first join"),
+}
+
+
+def check_inbound_limits(app_configs, **kwargs) -> list[CheckMessage]:
+    """W024: an inbound limit no connection survives (#230).
+
+    The server starts as usual, and every page connects, is closed, and comes
+    back at the reconnect backoff for good. A value that is merely small is a
+    choice, and is not named: only one below what the first message needs, and
+    one that is not an int or a float. Of those, a string or another type raises
+    on the frame or the join that reads it -- except a rate or a burst
+    ``float()`` reads, which works today and is named all the same, as W016
+    names one -- and a bool is read as 0 or 1. NaN compares false with every
+    frame and turns its limit off; it closes nothing, and is not named.
+    """
+    from . import settings as wireview_settings
+
+    messages: list[CheckMessage] = []
+    rated = wireview_settings.INBOUND_RATE_PER_SECOND is not None
+    for key, (floor, effect) in INBOUND_LIMITS.items():
+        value = getattr(wireview_settings, key)
+        if value is None and key != "INBOUND_BURST" or key == "INBOUND_BURST" and not rated:
+            continue
+        above = "above 0" if floor == 0 else f"of at least {floor}"
+        off = "" if key == "INBOUND_BURST" else ", or None for no limit"
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            messages.append(
+                Warning(
+                    f"WIREVIEW[{key!r}] = {_shown(value)} is a {type(value).__name__}, not an int or a float.",
+                    hint=f"Set it to a number {above}{off} (docs/features/settings.md).",
+                    id="wireview.W024",
+                )
+            )
+        # NaN compares false with every frame and turns the limit off: not one that closes connections
+        elif not math.isnan(value) and not (value > floor if floor == 0 else value >= floor):
+            messages.append(
+                Warning(
+                    f"WIREVIEW[{key!r}] = {_shown(value)}: {effect}.",
+                    hint=f"Set it to a number {above}{off} (docs/features/settings.md).",
+                    id="wireview.W024",
+                )
+            )
+    return messages
+
+
 def check_channel_layer(app_configs, **kwargs) -> list[CheckMessage]:
     """W006 (deploy): the in-memory layer cannot broadcast across processes."""
     from django.conf import settings
@@ -1265,6 +1321,7 @@ def register_checks() -> None:
     register(check_auto_broadcast_senders, WIREVIEW_TAG)
     register(check_auto_broadcast_credentials, WIREVIEW_TAG)
     register(check_reconnect_settings, WIREVIEW_TAG)
+    register(check_inbound_limits, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_live_sessions, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)
