@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     "testproj.stickyprobe",
     "testproj.deadprobe",
     "testproj.inheritprobe",
+    "testproj.cascadeprobe",
     "testproj.nestprobe",
     "testproj.reconnectprobe",
     "testproj.imeprobe",

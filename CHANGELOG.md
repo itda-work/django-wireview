@@ -118,6 +118,12 @@ The django-reactor era changelog (2.x) is preserved in
   before it reads until its operation is written. A loop of `stream_insert` over a list read first does not hold, as
   in 1.5 -- a hold taken at the call would not cover the read -- and an item deleted meanwhile comes back. What is held
   waits for the rest of the handler (or `joined()`, `notification()`, the task) that called `stream()`.
+- `wireview.W025`: a model `AUTO_BROADCAST` broadcasts (with `model`, `model_pk` or `related` on) holds a relation
+  whose `on_delete` is Django 6.1's `DB_CASCADE`, `DB_SET_NULL` or `DB_SET_DEFAULT` (#265). Deleting the parent lets
+  the database delete or change that model's rows, and Django sends no signal for them, so no component heard it and
+  the page kept the deleted rows. The hint names the Python-side variant and announcing from the code that deletes.
+  `docs/features/settings.md` "알림이 가지 않는 변경" lists the changes no signal announces (`QuerySet.update()`,
+  `bulk_create()`/`bulk_update()`, raw SQL, the `DB_*` options), each pinned by a test. Quiet before Django 6.1.
 
 ### Changed
 

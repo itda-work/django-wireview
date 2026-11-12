@@ -17,6 +17,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from django.db.models import deletion as model_deletion
 from django.template import Context, Template, TemplateSyntaxError
 from django.template.loader import get_template
 from django.test import override_settings
@@ -29,6 +30,7 @@ from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
     check_auto_broadcast_credentials,
+    check_auto_broadcast_db_on_delete,
     check_auto_broadcast_senders,
     check_channel_layer,
     check_channel_layer_configured,
@@ -644,6 +646,78 @@ process.stdout.write(JSON.stringify(out));
         encoding="utf-8",
     )
     return json.loads(result.stdout)
+
+
+class TestAutoBroadcastDbOnDeleteCheck:
+    """W025: a sender's rows the database deletes or changes without a signal (#265).
+
+    What the database does without a signal is in tests/test_unannounced_changes.py.
+    """
+
+    needs_db_on_delete = pytest.mark.skipif(
+        not hasattr(model_deletion, "DB_CASCADE"), reason="DB_CASCADE and friends arrived in Django 6.1"
+    )
+
+    @needs_db_on_delete
+    @pytest.mark.parametrize(
+        ("model_name", "option", "result"),
+        [
+            ("Comment", "DB_CASCADE", "deletes the cascadeprobe.comment rows"),
+            ("Note", "DB_SET_NULL", "sets 'post' to NULL"),
+            ("Pin", "DB_SET_DEFAULT", "sets 'post' to its db_default"),
+        ],
+    )
+    def test_a_child_whose_rows_the_database_changes_is_flagged(self, monkeypatch, model_name, option, result):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("cascadeprobe", model_name)}))
+        (message,) = check_auto_broadcast_db_on_delete(None)
+
+        assert message.id == "wireview.W025"
+        assert f"cascadeprobe.{model_name.lower()}.post has on_delete={option}" in message.msg
+        assert "when a cascadeprobe.post is deleted" in message.msg
+        assert result in message.msg
+        assert f"on_delete=models.{option.removeprefix('DB_')}" in message.hint
+        assert "wireview.broadcast()" in message.hint
+
+    @needs_db_on_delete
+    @pytest.mark.parametrize("flag", ["model", "model_pk", "related"])
+    def test_every_flag_that_announces_rows_is_judged(self, monkeypatch, flag):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(**{flag: True}, senders={("cascadeprobe", "Comment")}))
+
+        assert [m.id for m in check_auto_broadcast_db_on_delete(None)] == ["wireview.W025"]
+
+    @needs_db_on_delete
+    def test_the_parent_is_not_flagged(self, monkeypatch):
+        """Deleting the parent itself sends its pre_delete; its children are the ones left unannounced."""
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("cascadeprobe", "Post")}))
+
+        assert check_auto_broadcast_db_on_delete(None) == []
+
+    @needs_db_on_delete
+    def test_m2m_alone_announces_no_row_and_is_not_judged(self, monkeypatch):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(m2m=True, senders={("cascadeprobe", "Comment")}))
+
+        assert check_auto_broadcast_db_on_delete(None) == []
+
+    @needs_db_on_delete
+    def test_a_python_side_on_delete_is_not_flagged(self, monkeypatch):
+        set_wireview(
+            monkeypatch,
+            AUTO_BROADCAST=AutoBroadcast(model=True, senders={("rating", "Rating"), ("auth", "User")}),
+        )
+
+        assert check_auto_broadcast_db_on_delete(None) == []
+
+    def test_no_senders_reports_nothing(self, monkeypatch):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast())
+
+        assert check_auto_broadcast_db_on_delete(None) == []
+
+    def test_an_older_django_reports_nothing(self, monkeypatch):
+        """Before 6.1 there is no DatabaseOnDelete to find; the check stays quiet rather than failing."""
+        monkeypatch.delattr(model_deletion, "DatabaseOnDelete", raising=False)
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("cascadeprobe", "Post")}))
+
+        assert check_auto_broadcast_db_on_delete(None) == []
 
 
 class TestReconnectSettingsCheck:

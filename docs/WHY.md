@@ -38,7 +38,7 @@ RTT가 큰 망(먼 리전, 모바일 망)의 사용자가 주 대상이고 클�
 확인도 Python 안에서 끝납니다.
 
 - **`mount()` 테스트.** 브라우저와 WebSocket 없이 컴포넌트를 마운트하고, 핸들러를 부르고, 렌더된 HTML을 봅니다([테스트](features/testing.md)).
-- **`manage.py check`.** 조용히 실패하는 실수 23가지(async가 아닌 핸들러, 이름 충돌, 로드되지 않는 JS, 다중 프로세스의 InMemory 레이어 등)를 `wireview.W*` 경고로 알립니다([체크 목록](features/checks.md)).
+- **`manage.py check`.** 조용히 실패하는 실수 24가지(async가 아닌 핸들러, 이름 충돌, 로드되지 않는 JS, 다중 프로세스의 InMemory 레이어 등)를 `wireview.W*` 경고로 알립니다([체크 목록](features/checks.md)).
 - **타입 스텁과 편집기 지원.** 컴포넌트마다 `.pyi`를 만들고, VS Code 확장이 템플릿 태그를 진단합니다([편집기 지원](features/editor-support.md)).
 
 어려운 점도 있습니다. 핸들러와 라이프사이클 메서드는 이벤트 루프 위에서 도는 async 함수라, 동기 ORM을 그대로 부르면 Django가 막습니다. `await Model.objects.aget(...)` 같은 async API를 쓰거나 `sync_to_async`로 감쌉니다. 처음에는 이 규칙이 가장 자주 걸립니다. 순서대로 따라 할 [튜토리얼](tutorials/README.md)이 15편 있습니다.

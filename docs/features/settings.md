@@ -145,6 +145,25 @@ m2m 변경(`m2m`)은 **바꾼 쪽의 모델**이 `senders`에 있을 때 알린�
 `user.groups.add(g)`는 `User`를, `group.user_set.add(u)`는 `Group`을 적어야 알린다. 어느 쪽에서 바꿔도 알리려면
 두 모델을 모두 적는다.
 
+### 알림이 가지 않는 변경
+
+알림은 Django의 `post_save`·`pre_delete`·`m2m_changed` 시그널에서 나간다. 시그널을 거치지 않는 변경은 어떤 컴포넌트에도
+닿지 않고, 화면은 옛 행을 그대로 보인다. 오류도 경고도 없다.
+
+- `QuerySet.update()`(`aupdate()`), `bulk_create()`·`bulk_update()`(`abulk_create()`·`abulk_update()`)
+- raw SQL(`connection.cursor()`로 쓴 `UPDATE`·`DELETE`)
+- **Django 6.1의 `DB_CASCADE`·`DB_SET_NULL`·`DB_SET_DEFAULT`.** 부모를 지우면 데이터베이스의 `ON DELETE`가 자식 행을 지우거나
+  FK를 NULL·`db_default`로 바꾼다. Django의 삭제 수집기가 그 행들을 보지 않으므로 자식 모델에는 `pre_delete`도 `post_save`도
+  오지 않는다 — 부모의 삭제만 알려진다. 자식 모델이 `senders`에 있으면 `wireview.W025`가 알린다.
+
+`QuerySet.delete()`(`adelete()`)는 다르다: Django가 행을 모아 하나씩 `pre_delete`를 보내므로 알려진다. Python 쪽
+`CASCADE`·`SET_NULL`도 같은 수집기를 거쳐 자식 행마다 알린다.
+
+알려야 하는 변경이면 인스턴스를 읽어 `asave()`·`adelete()`로 바꾸거나, `on_delete`를 Python 쪽 변형으로 두거나, 바꾼 코드가
+직접 알린다. 마지막 경우 행이 지워진 뒤에는 무엇이 지워졌는지 알 수 없으므로, 지우기 전에 영향받는 행(또는 그 부모의 pk)을
+읽어 두고 지운 뒤 [`wireview.broadcast()`](./component-api.md#부르는-것)로 컴포넌트가 구독한 채널에 알린다(받는 쪽은 `mutation()`이 아니라 `notification()`이다). 각 경우가 실제로 알리지 않는다는 것은
+`tests/test_unannounced_changes.py`가 본다.
+
 ## 개발 도구
 
 | 키 | 기본값 | 뜻 |

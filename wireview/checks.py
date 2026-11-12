@@ -350,6 +350,73 @@ def check_auto_broadcast_credentials(app_configs, **kwargs) -> list[CheckMessage
     return messages
 
 
+#: What the database does to a child row under each ``DB_*`` ``on_delete`` (Django 6.1+).
+DB_ON_DELETE_RESULTS = {
+    "DB_CASCADE": "deletes the {child} rows that point at it",
+    "DB_SET_NULL": "sets '{field}' to NULL on the {child} rows that point at it",
+    "DB_SET_DEFAULT": "sets '{field}' to its db_default on the {child} rows that point at it",
+}
+
+
+def check_auto_broadcast_db_on_delete(app_configs, **kwargs) -> list[CheckMessage]:
+    """W025: a sender's relation leaves its rows to the database's ``ON DELETE`` (#265).
+
+    Django 6.1's ``DB_CASCADE``, ``DB_SET_NULL`` and ``DB_SET_DEFAULT`` skip the
+    deletion collector: when the parent is deleted, the database deletes or
+    changes the sender's rows and Django sends neither ``pre_delete`` nor
+    ``post_save`` for them, so a component subscribed to them keeps showing the
+    rows as they were. Only the child side is reported -- the side whose rows
+    change. A parent in ``senders`` is announced as usual. On older Django no
+    ``on_delete`` is a ``DatabaseOnDelete`` and nothing is reported.
+    """
+    try:
+        from django.db.models.deletion import DatabaseOnDelete  # type: ignore[attr-defined]
+    except ImportError:  # Django < 6.1
+        return []
+
+    from . import auto_broadcast
+    from . import settings as wireview_settings
+
+    config = wireview_settings.AUTO_BROADCAST
+    # Saves and deletes are announced under these flags; m2m alone announces neither.
+    if not (config.model or config.model_pk or config.related):
+        return []
+    try:
+        senders = auto_broadcast.resolve_senders(config)
+    except ImproperlyConfigured:
+        return []  # connect() already refused this configuration at startup
+
+    messages: list[CheckMessage] = []
+    for model in senders:
+        child = model._meta.label_lower
+        for field in model._meta.fields:
+            on_delete = getattr(field.remote_field, "on_delete", None) if field.is_relation else None
+            if not isinstance(on_delete, DatabaseOnDelete):
+                continue
+            name = str(on_delete)  # the option's name, DB_CASCADE
+            related = field.related_model
+            parent = related._meta.label_lower if isinstance(related, type) else str(related)
+            result = DB_ON_DELETE_RESULTS.get(name, "changes the {child} rows that point at it").format(
+                child=child, field=field.name
+            )
+            messages.append(
+                Warning(
+                    f"WIREVIEW['AUTO_BROADCAST'] broadcasts {child}, but {child}.{field.name} has "
+                    f"on_delete={name}: when a {parent} is deleted, the database {result} and Django sends no "
+                    "signal for them, so no component hears the change.",
+                    hint=(
+                        f"Use the Python-side variant (on_delete=models.{name.removeprefix('DB_')}) so Django "
+                        "changes the rows itself and announces each one, or have the code that deletes the "
+                        f"{parent} tell the components, for example with wireview.broadcast() on a channel "
+                        "they subscribe to."
+                    ),
+                    obj=field,
+                    id="wireview.W025",
+                )
+            )
+    return messages
+
+
 #: The reconnect settings and the least value the client takes for each
 #: (``static/wireview/reconnect.mjs``): a delay may be 0, a factor below 1
 #: would shrink the wait on every retry.
@@ -1320,6 +1387,7 @@ def register_checks() -> None:
     register(check_settings_keys, WIREVIEW_TAG)
     register(check_auto_broadcast_senders, WIREVIEW_TAG)
     register(check_auto_broadcast_credentials, WIREVIEW_TAG)
+    register(check_auto_broadcast_db_on_delete, WIREVIEW_TAG)
     register(check_reconnect_settings, WIREVIEW_TAG)
     register(check_inbound_limits, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)

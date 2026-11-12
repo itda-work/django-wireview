@@ -250,6 +250,7 @@ NO_UPGRADE_NOTE = {
     "`wireview.W024` names an inbound limit": "경고만 더해진다",
     "A binary WebSocket frame, or a text frame that is not JSON": "no client of ours sends one",
     "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
+    "`wireview.W025`: a model `AUTO_BROADCAST` broadcasts": "경고가 하나 늘 뿐 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",
     "`docs/features/react-islands.md`": "문서만 더해졌다",
     "A page whose tab is shown again": "클라이언트만 바뀌고 설정·서버·앱 코드에 할 일이 없다",
