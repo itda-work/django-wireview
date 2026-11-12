@@ -39,6 +39,12 @@ The django-reactor era changelog (2.x) is preserved in
   once instead of waiting out the `RECONNECT_*` backoff, and asks a socket that looks open, has been quiet and has
   nothing sent unanswered with `sync`, opening another when nothing answers within 4 seconds; hidden tabs wait as
   before (#228).
+- Boost leaves files to the browser (#227). A link with `download`, or under `wire-boost="false"` (the nearest
+  `wire-boost` decides), is not boosted. An answer that is not an HTML document (`Content-Type` other than
+  `text/html`/`application/xhtml+xml`, or `Content-Disposition: attachment`) no longer replaces the page: a link's is
+  asked for again by the browser -- a second GET -- with the screen and history as they were, and a boosted POST
+  form's attachment is saved from the answer without sending the form again. Before, boost parsed a CSV as HTML and
+  showed it in place of the page.
 - `docs/features/react-islands.md`: React on an island -- registering it, a Vite bundle and its dev server, CSP
   nonces, and a policy without nonces for pages a public cache keeps, which allows the header's inline `<style>` by
   its hash (`'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='`; it changes with that style, and the changelog

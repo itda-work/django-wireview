@@ -425,7 +425,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ### 클라이언트 DOM 속성
 
-`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`, `wire-island`·`wire-island-props`(`{% island %}`가 그린다). 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼의 opt-in, 링크·조상의 `"false"`는 opt-out, 가장 가까운 것이 이긴다), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`, `wire-island`·`wire-island-props`(`{% island %}`가 그린다). 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
 
 ## 명령
 

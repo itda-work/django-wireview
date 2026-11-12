@@ -157,6 +157,14 @@ export class NavigationLog {
 export const PAGE_KEY = "wireviewPage";
 
 /**
+ * The mark on a history entry a boosted navigation made for a file (#227).
+ * The entry cannot be taken back: a download does not prune the entries
+ * after the one the browser is on, so it stays as Forward's. Arriving at it
+ * hands the file to the browser again and goes back to the entry before it.
+ */
+export const FILE_KEY = "wireviewFile";
+
+/**
  * Undoing a cancelled Back or Forward (#154). The address bar has moved by the
  * time `popstate` runs, and the History API tells no page which entry it left
  * or how far it went: a guess written into `history.state` sent a later undo
@@ -363,6 +371,10 @@ export function formRequest(method, body) {
 /**
  * What a boosted navigation's fetch came to (#170).
  * - "page": an answer to show -- a 404 or a 500 included, under its URL
+ * - "file": an answer that is not a page to show (#227): a body that is not
+ *   an HTML document (`isDocument`), or one the server marks to be saved
+ *   (`Content-Disposition: attachment`). The browser's to handle -- a link's
+ *   is asked for again, a form's is saved from what came back
  * - "elsewhere": the server answered with a redirect to another origin, which
  *   only a `no-cors` request (`formRequest`) sees as such; its target is
  *   hidden from the page
@@ -372,15 +384,87 @@ export function formRequest(method, body) {
  *   Chromium `window.stop()` lands here too: it rejects the fetch with the
  *   same `TypeError` a dropped connection does, and the two cannot be told
  *   apart.
- * @param {{response?: {type: string}, error?: unknown}} result - what the
- *   fetch resolved to, or what it rejected with
- * @returns {"page" | "elsewhere" | "aborted" | "unanswered"}
+ * @param {{response?: {type: string, headers?: {get(name: string): string|null}}, error?: unknown}} result -
+ *   what the fetch resolved to, or what it rejected with
+ * @returns {"page" | "file" | "elsewhere" | "aborted" | "unanswered"}
  */
 export function fetchOutcome({ response, error }) {
   if (error !== undefined || response === undefined) {
     return /** @type {{name?: string} | null} */ (error)?.name === "AbortError" ? "aborted" : "unanswered";
   }
-  return response.type === "opaque" || response.type === "opaqueredirect" ? "elsewhere" : "page";
+  if (response.type === "opaque" || response.type === "opaqueredirect") return "elsewhere";
+  // An opaque answer's headers are hidden; any other's are the server's
+  const headers = response.headers;
+  if (headers === undefined) return "page";
+  return isDocument(headers.get("content-type"), headers.get("content-disposition")) ? "page" : "file";
+}
+
+/**
+ * Whether an answer is an HTML document to show in place (#227): its
+ * `Content-Type` is `text/html` or `application/xhtml+xml`, whatever the case
+ * and parameters, and its `Content-Disposition` does not ask to save it. An
+ * answer without a `Content-Type` is not one: the browser sniffs it, and
+ * boost would parse whatever it is as HTML.
+ * @param {string|null} contentType
+ * @param {string|null} [disposition]
+ * @returns {boolean}
+ */
+export function isDocument(contentType, disposition = null) {
+  const type = (contentType ?? "").split(";", 1)[0].trim().toLowerCase();
+  if (type !== "text/html" && type !== "application/xhtml+xml") return false;
+  return !isAttachment(disposition);
+}
+
+/**
+ * Whether a `Content-Disposition` asks for the answer to be saved (RFC 6266):
+ * its type is `attachment`, whatever the case.
+ * @param {string|null} disposition
+ * @returns {boolean}
+ */
+export function isAttachment(disposition) {
+  return (disposition ?? "").split(";", 1)[0].trim().toLowerCase() === "attachment";
+}
+
+/**
+ * The file name a `Content-Disposition` gives (RFC 6266): `filename*` (an
+ * RFC 8187 `UTF-8''…` value) over `filename`, quoted or not, without any path
+ * a server put in it. Empty when it gives none, or one that cannot be read --
+ * the browser then names the file itself.
+ * @param {string|null} disposition
+ * @returns {string}
+ */
+export function attachmentName(disposition) {
+  const header = disposition ?? "";
+  let name = "";
+  const extended = /;\s*filename\*\s*=\s*([^']*)'[^']*'([^;]*)/i.exec(header);
+  if (extended && /^utf-8$/i.test(extended[1].trim())) {
+    try {
+      name = decodeURIComponent(extended[2].trim());
+    } catch {
+      name = "";
+    }
+  }
+  if (!name) {
+    const plain = /;\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/i.exec(header);
+    if (plain) name = plain[1] !== undefined ? plain[1].replace(/\\(.)/g, "$1") : plain[2].trim();
+  }
+  return name.split(/[\\/]/).pop() ?? "";
+}
+
+/**
+ * Whether boost takes a click on a link (#227). A link with `download` saves
+ * what it names, and the browser does that. `wire-boost="false"` on the link
+ * or an element around it leaves the links inside to the browser; the nearest
+ * element with `wire-boost` decides, so `wire-boost` (any other value) inside
+ * one turns boost back on. The rest of the click's conditions -- the origin,
+ * the target, the button and its keys -- are the click handler's.
+ * @param {{hasAttribute(name: string): boolean, closest(selector: string): {getAttribute(name: string): string|null} | null}} link
+ * @returns {boolean}
+ */
+export function boostsLink(link) {
+  if (link.hasAttribute("download")) return false;
+  const nearest = link.closest("[wire-boost]");
+  return nearest === null || nearest.getAttribute("wire-boost")?.trim().toLowerCase() !== "false";
 }
 
 /**

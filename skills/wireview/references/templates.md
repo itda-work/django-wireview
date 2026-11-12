@@ -75,7 +75,7 @@
 | 속성 | 용도 |
 |---|---|
 | `wire-hook` | JavaScript Hook 연결 (Chart.js, 지도 등) |
-| `wire-boost` | `<form>`에 달면 `BOOST_PAGES`에서 전체 로드 없이 제출. 로그인·로그아웃 폼에는 달지 않는다 |
+| `wire-boost` | `<form>`에 달면 `BOOST_PAGES`에서 전체 로드 없이 제출. 로그인·로그아웃 폼에는 달지 않는다. 링크나 감싼 요소의 `wire-boost="false"`는 그 링크를 boost하지 않는다(가장 가까운 것이 정한다). `download` 링크는 언제나 브라우저의 것 |
 | `wire-update="ignore"` | 첫 렌더 뒤로 렌더가 이 요소(속성·자식)를 건드리지 않는다. 훅·위젯이 바꾼 DOM을 지킨다 |
 | `wire-stream` | Streams가 아이템을 넣을 컨테이너 |
 | `wire-viewport-top` / `wire-viewport-bottom` | 무한 스크롤 |

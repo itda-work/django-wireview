@@ -78,7 +78,9 @@ interface WireviewNavigationFailedDetail {
   /**
    * False: no answer, the network failed, and the form may or may not have
    * reached the server. True: the server took it and redirected to another
-   * origin, which a boosted request cannot follow.
+   * origin, which a boosted request cannot follow -- or answered with a
+   * file to show rather than a page, which cannot be shown without sending
+   * the form again (#227).
    */
   answered: boolean;
 }

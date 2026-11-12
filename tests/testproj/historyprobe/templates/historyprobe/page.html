@@ -42,6 +42,24 @@
       {% csrf_token %}
       <button type="submit" data-testid="away-send">away</button>
     </form>
+    {# Not pages to boost (#227): a file to save, a file or non-document answer, links boost leaves alone #}
+    <a data-testid="download" href="/historyprobe/report/" download>download</a>
+    <a data-testid="to-report" href="/historyprobe/report/">report</a>
+    <a data-testid="to-notes" href="/historyprobe/notes/">notes</a>
+    <div wire-boost="false">
+      <a data-testid="unboosted" href="/historyprobe/other/">unboosted</a>
+      <span><a data-testid="reboosted" href="/historyprobe/other/" wire-boost>reboosted</a></span>
+    </div>
+    <form action="/historyprobe/report/" wire-boost data-testid="get-file-form">
+      <button type="submit" data-testid="get-file-send">get file</button>
+    </form>
+    <form method="post"
+          action="/historyprobe/report/"
+          wire-boost
+          data-testid="post-file-form">
+      {% csrf_token %}
+      <button type="submit" data-testid="post-file-send">post file</button>
+    </form>
     {% component 'HistoryDock' %}
     {% if name == "box" %}
       {% component 'HistoryTray' %}

@@ -51,7 +51,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다. Phoenix LiveV
 | **Function Components** | 상태 없는 재사용 가능 컴포넌트 | [문서](./function-components.md) |
 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | [문서](./live-component.md) |
 | **Lifecycle Hooks** | `on_mount` 훅, `attach_hook`으로 라이프사이클 가로채기 | [문서](./lifecycle-hooks.md) |
-| **Boost** | `BOOST_PAGES`: 링크와 `wire-boost` 폼을 전체 로드 없이, `wireview.visit()` | [문서](./boost.md) |
+| **Boost** | `BOOST_PAGES`: 링크와 `wire-boost` 폼을 전체 로드 없이, `wireview.visit()`. `download` 링크·`wire-boost="false"`·HTML 아닌 응답은 브라우저에 | [문서](./boost.md) |
 | **Sticky** | `Meta.sticky`: boost 이동을 건너 이어지는 컴포넌트. id가 없으면 클래스에서 만든 id. 이동 알림은 `navigated()`·`wireview:navigated` | [문서](./boost.md#이동을-건너-살아남기-sticky) |
 | **live_session** | 페이지 단위 인증 경계. 경계를 넘는 이동은 전체 로드 | [문서](./live-session.md) |
 | **세션 읽기** | `self.session`으로 Django 세션 읽기 (읽기 전용) | [문서](./session.md) |

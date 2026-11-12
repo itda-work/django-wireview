@@ -3,17 +3,22 @@ import test from "node:test";
 
 import {
   BEFORE_NAVIGATE_EVENT,
+  FILE_KEY,
   NAVIGATED_EVENT,
   NAVIGATION_FAILED_EVENT,
   NavigationLog,
   PAGE_KEY,
   TraversalUndo,
   arrivesOnRestore,
+  attachmentName,
   beforeNavigateDetail,
+  boostsLink,
   carriedAcross,
   fetchOutcome,
   formMethod,
   formRequest,
+  isAttachment,
+  isDocument,
   isFragmentLink,
   isPatch,
   isSameUrl,
@@ -272,6 +277,108 @@ test("no answer at all is the network's failure", () => {
   // The body failed on the way: an answer that never arrived
   assert.equal(fetchOutcome({ response: { type: "basic" }, error: new TypeError("network error") }), "unanswered");
   assert.equal(fetchOutcome({ error: null }), "unanswered");
+});
+
+// --- answers and links that are not a page to boost (#227) ---
+
+const answer = (headers, type = "basic") => ({ type, headers: new Headers(headers) });
+
+test("an HTML document is a page, whatever the case and parameters of its type", () => {
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "text/html; charset=utf-8" }) }), "page");
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "TEXT/HTML" }) }), "page");
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "application/xhtml+xml" }) }), "page");
+  // An error page is a page too
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "text/html", "Content-Disposition": "inline" }) }), "page");
+});
+
+test("an answer that is not an HTML document is a file", () => {
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "text/csv" }) }), "file");
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "application/pdf" }) }), "file");
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "text/plain; charset=utf-8" }) }), "file");
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "application/json" }) }), "file");
+  // A type that only starts like one
+  assert.equal(fetchOutcome({ response: answer({ "Content-Type": "text/html-fragment" }) }), "file");
+  // No type: the browser sniffs it, and boost would parse anything as HTML
+  assert.equal(fetchOutcome({ response: answer({}) }), "file");
+});
+
+test("an HTML answer the server marks to be saved is a file", () => {
+  const headers = { "Content-Type": "text/html", "Content-Disposition": 'Attachment; filename="page.html"' };
+  assert.equal(fetchOutcome({ response: answer(headers) }), "file");
+});
+
+test("an opaque answer stays a redirect elsewhere: its headers are hidden", () => {
+  assert.equal(fetchOutcome({ response: answer({}, "opaque") }), "elsewhere");
+  assert.equal(fetchOutcome({ response: answer({}, "opaqueredirect") }), "elsewhere");
+});
+
+test("a document is text/html or application/xhtml+xml, not saved", () => {
+  assert.equal(isDocument("text/html"), true);
+  assert.equal(isDocument(" text/html ;charset=utf-8"), true);
+  assert.equal(isDocument("application/xhtml+xml", "inline"), true);
+  assert.equal(isDocument("text/html", "attachment"), false);
+  assert.equal(isDocument("image/svg+xml"), false);
+  assert.equal(isDocument(null), false);
+});
+
+test("an attachment is the disposition type, not a word in a parameter", () => {
+  assert.equal(isAttachment("attachment"), true);
+  assert.equal(isAttachment(' ATTACHMENT ; filename="a.csv"'), true);
+  assert.equal(isAttachment('inline; filename="attachment"'), false);
+  assert.equal(isAttachment(null), false);
+});
+
+test("an attachment's name is filename* over filename, without a path", () => {
+  assert.equal(attachmentName('attachment; filename="report.csv"'), "report.csv");
+  assert.equal(attachmentName("attachment; filename=report.csv"), "report.csv");
+  assert.equal(attachmentName("attachment; filename*=UTF-8''%EB%B3%B4%EA%B3%A0%EC%84%9C.csv; filename=\"r.csv\""), "보고서.csv");
+  assert.equal(attachmentName('attachment; filename="a \\"b\\".txt"'), 'a "b".txt');
+  assert.equal(attachmentName('attachment; filename="../../etc/passwd"'), "passwd");
+  assert.equal(attachmentName('attachment; filename="C:\\\\x\\\\y.txt"'), "y.txt");
+  // A name that cannot be read is the browser's to pick, as is none
+  assert.equal(attachmentName("attachment; filename*=UTF-8''%E0%A4%A"), "");
+  assert.equal(attachmentName("attachment; filename*=ISO-8859-1''r%E9sum%E9.txt; filename=resume.txt"), "resume.txt");
+  assert.equal(attachmentName("attachment"), "");
+  assert.equal(attachmentName(null), "");
+});
+
+/**
+ * A stand-in for an element: its attributes, and the elements around it.
+ * @param {Record<string, string>} attributes
+ * @param {any} [parent]
+ */
+const element = (attributes, parent = null) => ({
+  hasAttribute: (name) => name in attributes,
+  getAttribute: (name) => attributes[name] ?? null,
+  closest(selector) {
+    const name = /^\[([\w-]+)\]$/.exec(selector)[1];
+    for (let at = this; at !== null; at = at.parent) if (at.hasAttribute(name)) return at;
+    return null;
+  },
+  parent,
+});
+
+test("a link boosts unless it is a download or turned off around it", () => {
+  assert.equal(boostsLink(element({ href: "/a/" })), true);
+  assert.equal(boostsLink(element({ href: "/a.csv", download: "" })), false);
+  assert.equal(boostsLink(element({ href: "/a.csv", download: "a.csv" })), false);
+  assert.equal(boostsLink(element({ href: "/a/", "wire-boost": "false" })), false);
+  assert.equal(boostsLink(element({ href: "/a/", "wire-boost": " False " })), false);
+  assert.equal(boostsLink(element({ href: "/a/" }, element({ "wire-boost": "false" }))), false);
+});
+
+test("the nearest wire-boost decides", () => {
+  const off = element({ "wire-boost": "false" });
+  assert.equal(boostsLink(element({ href: "/a/", "wire-boost": "" }, off)), true);
+  assert.equal(boostsLink(element({ href: "/a/" }, element({ "wire-boost": "true" }, off))), true);
+  assert.equal(boostsLink(element({ href: "/a/" }, element({}, element({ "wire-boost": "" })))), true);
+  // A download is the browser's even where boost is turned on
+  assert.equal(boostsLink(element({ href: "/a/", download: "", "wire-boost": "" })), false);
+});
+
+test("the mark on an entry a file left has its own name", () => {
+  assert.equal(FILE_KEY, "wireviewFile");
+  assert.notEqual(FILE_KEY, PAGE_KEY);
 });
 
 // --- a document the back/forward cache restored (#170) ---

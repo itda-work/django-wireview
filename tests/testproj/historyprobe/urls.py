@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import path
 
@@ -27,6 +28,24 @@ def post(request):
     return redirect("/historyprobe/other/?tab=p")
 
 
+#: The requests that reached the file views, as "METHOD path" (#227)
+FILES: list[str] = []
+
+
+def report(request):
+    # A file to save: the browser downloads it and the page stays
+    FILES.append(f"{request.method} {request.path}")
+    response = HttpResponse("name,count\nbox,1\n", content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="report.csv"'
+    return response
+
+
+def notes(request):
+    # Not a document but shown in place, as the browser shows plain text
+    FILES.append(f"{request.method} {request.path}")
+    return HttpResponse("plain notes", content_type="text/plain; charset=utf-8")
+
+
 def bars(name):
     return lambda request: render(request, "historyprobe/bars.html", {"name": name})
 
@@ -38,6 +57,9 @@ urlpatterns = [
     path("bar-b/", bars("bar-b"), name="bar-b"),
     path("other/", page("other"), name="other"),
     path("post/", post, name="post"),
+    # Answers that are not a page to boost (#227)
+    path("report/", report, name="report"),
+    path("notes/", notes, name="notes"),
     # Inside ls-members: a patch stays inside it, a push to other/ leaves it
     path("members/", members.view(page("members")), name="members"),
     # Components whose params_changed returns early on a query they already hold (#177)

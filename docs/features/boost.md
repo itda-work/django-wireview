@@ -18,9 +18,14 @@ history에 항목을 남긴다. htmx의 `hx-boost`, Turbo Drive와 같은 생각
 | 같은 사이트의 링크(왼쪽 클릭, 수정키 없음, `target` 없음) | ✅ | 지금 주소와 같은 주소면 기록 항목을 늘리지 않고 그 자리에서 가져온다. 브라우저가 자기 주소로 가는 링크를 그렇게 다룬다 |
 | 같은 페이지 안의 조각 링크(`<a href="#section">`, 경로와 쿼리가 같고 `#`이 있다) | — | 브라우저의 것이다. 스크롤하고 기록 항목을 만든다. 가져오지 않고 컴포넌트에 알리지도 않는다. 그 항목 사이의 뒤로·앞으로 가기도 같다(#170) |
 | `{% on "click.prevent" %}`가 처리한 링크 | — | 컴포넌트 이벤트다 |
+| `download` 속성이 있는 링크 | — | 브라우저가 내려받는다(#227) |
+| `wire-boost="false"`인 링크, 또는 그 값을 단 요소 안의 링크 | — | 브라우저의 이동이다. 아래 「boost하지 않는 링크와 응답」 |
 | `wire-boost`를 단 폼 | ✅ | 아래 |
 | `wire-boost`가 없는 폼 | — | 평소의 제출 |
 | `wireview.visit(url)` | ✅ | 코드에서 부르는 이동. 조각만 다른 주소(`"#top"`)는 링크처럼 브라우저가 한다 |
+
+답이 HTML 문서가 아니면(파일, `Content-Disposition: attachment`) 화면과 history를 그대로 두고 브라우저에
+맡긴다. 아래 「boost하지 않는 링크와 응답」.
 
 `live_session` 경계를 넘는 이동은 boost하지 않고 전체 로드로 바꾼다. 응답을 받은 뒤에 판단하므로
 리다이렉트가 경계 밖에서 끝나도 잡는다([live_session](./live-session.md)).
@@ -67,6 +72,44 @@ document.addEventListener("wireview:navigation-failed", (e) => {
 
 뒤로·앞으로 가기 캐시(bfcache)가 이동 도중에 얼어붙은 문서를 되살리면, 그 문서는 주소창이 가리키는 항목에 다시
 도착한다(그 항목으로 가는 popstate처럼). Chromium은 열린 WebSocket이 있는 페이지를 그 캐시에 넣지 않는다.
+
+### boost하지 않는 링크와 응답
+
+boost는 페이지 이동만 가로챈다(#227). 1.5까지는 파일을 가리키는 링크도 가져와 CSV·PDF를 HTML로 파싱한 것으로
+화면을 바꿨다.
+
+- **`download` 속성이 있는 링크**는 boost하지 않는다. 브라우저가 평소처럼 내려받고 페이지는 그대로다.
+
+  ```html
+  <a href="{% url 'reports:csv' %}" download>내려받기</a>
+  ```
+
+- **`wire-boost="false"`** 를 링크나 그것을 감싼 요소에 달면 그 안의 링크는 브라우저의 이동이다(전체 로드).
+  가장 가까운 `wire-boost`가 정한다 — 끈 영역 안에서도 `wire-boost`(`"false"`가 아닌 값)를 단 링크는 다시 boost한다.
+  폼은 지금처럼 자기 `wire-boost`로만 청한다(감싼 요소의 값은 폼에 영향이 없다).
+
+  ```html
+  <nav wire-boost="false">
+    <a href="/admin/">관리</a>                {# 전체 로드 #}
+    <a href="/rooms/" wire-boost>방 목록</a>  {# boost #}
+  </nav>
+  ```
+
+- **답이 HTML 문서가 아니면** — `Content-Type`이 `text/html`·`application/xhtml+xml`이 아니거나(없는 것도),
+  `Content-Disposition`이 `attachment`면 — 화면을 바꾸지 않는다. 링크에 아무 표시가 없어도 답이 정한다.
+  - 링크·`push_to`·GET 폼: 이동이 만든 기록 항목에서 물러나 화면의 페이지로 돌아간 뒤, 브라우저가 그 주소를 연다
+    (`location.assign`). 내려받는 파일이면 페이지가 그대로 남고 컴포넌트도 계속 답한다. 보여 주는 파일(텍스트,
+    PDF)이면 브라우저가 그것을 자기 문서로 연다. **그 주소로 GET이 두 번 간다** — boost의 가져오기와 브라우저의 것.
+    가져오기는 머리만 읽고 본문을 끊는다. 미리 `HEAD`로 묻는 방법은 모든 이동의 요청을 두 배로 만들어 쓰지 않는다.
+    두 번 가면 안 되는 주소(내려받기를 세는 뷰)에는 `download`를 단다.
+  - 내려받은 뒤에도 이동이 만든 기록 항목은 앞으로 가기 쪽에 남는다(브라우저는 이미 만든 항목을 지울 수 없게
+    하고, 내려받기는 그 뒤 항목을 치우지 않는다). 앞으로 가기로 그 항목에 오면 같은 파일을 다시 브라우저에 맡기고
+    화면의 페이지 항목으로 돌아온다. 다음 이동이 그 항목을 치운다.
+  - `replace_to`·`redirect_to`: 지금 항목이 원래 주소를 되찾고, 브라우저가 그 주소를 `location.replace`로 연다.
+  - 뒤로·앞으로 가기로 간 항목의 답이 파일이면 그 항목을 boost 없이 연다(가져오기가 실패했을 때처럼).
+  - POST 폼: 폼을 **다시 보내지 않는다.** `attachment`면 받은 답을 그 `filename`(`filename*` 우선)으로 저장한다 —
+    브라우저가 저장했을 것과 같다. 그 밖의 파일(JSON, 텍스트)은 다시 보내지 않고는 보여 줄 수 없으므로 페이지가
+    그대로 남고 `wireview:navigation-failed`가 `answered: true`로 간다. 그런 폼에는 `wire-boost`를 달지 않는다.
 
 ## 폼은 스스로 청한다 (`wire-boost`)
 

@@ -1196,3 +1196,139 @@ def test_a_page_restored_mid_navigation_arrives_at_the_address_bar(box):
     at(page, "/historyprobe/other/?tab=o")
     assert page.evaluate("window.__samePage === true")
     assert errors == []
+
+
+# --- answers that are not a page to boost (#227) ---------------------------------------
+
+
+@pytest.fixture
+def files():
+    from testproj.historyprobe.urls import FILES
+
+    FILES.clear()
+    return FILES
+
+
+def still_live(page, traffic: Traffic, built: int, length: int) -> None:
+    """The page on screen is the one it was, under its own URL and entries, and
+    its components still answer."""
+    at(page, "/historyprobe/")
+    assert page.evaluate("history.length") == length
+    assert page.evaluate("window.__samePage === true")
+    screen(page, page_name="box", tab="a", count=0)
+    bump_to(page, 1)
+    assert rendered(page) == built
+    # Its own entries are still patches
+    traffic.fetches.clear()
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    page.go_back()
+    at(page, "/historyprobe/")
+    patched(page, traffic, built)
+
+
+def test_a_download_link_is_the_browsers(box, traffic, files):
+    # `<a download>` saves what it names: boost fetched it and showed the CSV,
+    # parsed as HTML, in place of the page (#227)
+    page = box
+    errors = page_errors(page)
+    built = rendered(page)
+    length = page.evaluate("history.length")
+
+    with page.expect_download(timeout=WAIT_TIMEOUT * 1000) as download:
+        by(page, "download").click()
+    assert download.value.suggested_filename == "report.csv"
+
+    assert files == ["GET /historyprobe/report/"], "the browser's request only"
+    assert not [url for url in traffic.fetches if "/report/" in url], "boost did not fetch it"
+    still_live(page, traffic, built, length)
+    assert errors == []
+
+
+@pytest.mark.parametrize("testid", ["to-report", "get-file-send"], ids=["link", "get-form"])
+def test_an_attachment_is_handed_to_the_browser(box, traffic, files, testid):
+    # Nothing on the link says it is a file: the answer does. Boost leaves the
+    # screen and history as they were and the browser asks again (#227)
+    page = box
+    errors = page_errors(page)
+    built = rendered(page)
+    length = page.evaluate("history.length")
+
+    with page.expect_download(timeout=WAIT_TIMEOUT * 1000) as download:
+        by(page, testid).click()
+    assert download.value.suggested_filename == "report.csv"
+
+    assert files == ["GET /historyprobe/report/"] * 2, "boost's fetch, then the browser's"
+    # The entry the move made cannot be taken back: a download prunes no
+    # entries, and it stays as Forward's. Forward to it is the file again,
+    # with the page on screen, under its own entry.
+    at(page, "/historyprobe/")
+    assert page.evaluate("history.length") == length + 1
+    with page.expect_download(timeout=WAIT_TIMEOUT * 1000):
+        page.go_forward()
+    assert files == ["GET /historyprobe/report/"] * 3, "the browser's request only"
+    still_live(page, traffic, built, length + 1)
+    assert errors == []
+
+
+def test_an_answer_that_is_not_a_document_is_shown_by_the_browser(box, files):
+    page = box
+    errors = page_errors(page)
+    length = page.evaluate("history.length")
+
+    with page.expect_event("load", timeout=WAIT_TIMEOUT * 1000):
+        by(page, "to-notes").click()
+    at(page, "/historyprobe/notes/")
+    expect_text(page.locator("body"), "plain notes")
+    assert page.evaluate("history.length") == length + 1, "one entry, the browser's"
+    assert files == ["GET /historyprobe/notes/"] * 2
+    page.go_back()
+    at(page, "/historyprobe/")
+    wait_live(page)
+    expect_text(by(page, "page"), "box")
+    assert errors == []
+
+
+def test_a_link_under_wire_boost_false_is_the_browsers(box, traffic):
+    page = box
+    with page.expect_event("load", timeout=WAIT_TIMEOUT * 1000):
+        by(page, "unboosted").click()
+    wait_live(page)
+    at(page, "/historyprobe/other/")
+    expect_text(by(page, "page"), "other")
+    assert not page.evaluate("window.__samePage === true"), "a page load"
+    assert traffic.fetches == []
+
+
+def test_the_nearest_wire_boost_decides(box):
+    page = box
+    by(page, "reboosted").click()
+    at(page, "/historyprobe/other/")
+    expect_text(by(page, "page"), "other")
+    assert page.evaluate("window.__samePage === true"), "boosted again inside the opted-out block"
+
+
+def test_a_form_post_answered_with_an_attachment_saves_it_and_is_not_sent_again(box, traffic, files):
+    # The form is sent once: the browser cannot be asked to send it again, so
+    # the answer boost already holds is saved as the browser would save it (#227)
+    page = box
+    errors = page_errors(page)
+    built = rendered(page)
+    length = page.evaluate("history.length")
+    page.evaluate(
+        "window.__failed = null;"
+        "document.addEventListener('wireview:navigation-failed', (e) => { window.__failed = e.detail; })"
+    )
+
+    with page.expect_download(timeout=WAIT_TIMEOUT * 1000) as download:
+        by(page, "post-file-send").click()
+    assert download.value.suggested_filename == "report.csv"
+    path = download.value.path()
+    assert path is not None
+    with open(path, encoding="utf-8") as saved:
+        assert saved.read() == "name,count\nbox,1\n"
+
+    assert files == ["POST /historyprobe/report/"]
+    assert page.evaluate("window.__failed") is None
+    still_live(page, traffic, built, length)
+    assert errors == []

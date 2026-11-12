@@ -7,12 +7,16 @@ import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import {
   BEFORE_NAVIGATE_EVENT,
+  FILE_KEY,
   NAVIGATION_FAILED_EVENT,
   arrivesOnRestore,
+  attachmentName,
   beforeNavigateDetail,
+  boostsLink,
   fetchOutcome,
   formMethod,
   formRequest,
+  isAttachment,
   isFragmentLink,
   isSameUrl,
   newPageId,
@@ -383,8 +387,10 @@ window.addEventListener("beforeunload", () => {
 /**
  * A stopped push going back to the entry it left (`HistoryCache.push`): the
  * popstate its `history.back()` brings is that, not a traversal to arrive
- * at -- unless another navigation began first.
- * @type {{token: number, entry: any, left: string|null} | null}
+ * at -- unless another navigation began first. `then`: what follows once it
+ * is back -- for a file, the browser asking for it there (#227).
+ * `entry` undefined: the entry it returns to keeps its state.
+ * @type {{token: number, entry: any, left: string|null, then: (() => void) | null} | null}
  */
 let undoing = null;
 
@@ -400,6 +406,26 @@ let undoing = null;
 function loadInstead(url, error) {
   if (error !== undefined) console.warn("wireview: could not fetch %s; loading it without boost", url, error);
   document.location.replace(url);
+}
+
+/**
+ * Saves an answer a boosted form submission brought that asks to be saved
+ * (`Content-Disposition: attachment`, #227), as the browser would have saved
+ * it: the form was sent once, and is not sent again to let the browser have
+ * it. Under the name the answer gives, or one the browser picks.
+ * @param {Response} response
+ */
+async function saveAnswer(response) {
+  const href = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = attachmentName(response.headers.get("content-disposition"));
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Long enough for the browser to have read it
+  window.setTimeout(() => URL.revokeObjectURL(href), 60_000);
 }
 
 /**
@@ -432,7 +458,9 @@ if (BOOST_PAGES) {
       !e.metaKey && // open in new tab (mac)
       !e.ctrlKey && // open in new tab (win & linux)
       !e.altKey && // download
-      !e.shiftKey
+      !e.shiftKey &&
+      // `download`, `wire-boost="false"`: the browser's (#227)
+      boostsLink(link)
     ) {
       // `<a href="#section">` too: `load` hands a jump inside the document
       // back to the browser (#170)
@@ -610,13 +638,20 @@ class HistoryCache {
       path,
       undefined,
       "current",
-      (outcome, error) => {
-        if (outcome !== "aborted") return loadInstead(path, error);
+      (outcome, error, response) => {
+        if (outcome !== "aborted" && outcome !== "file") return loadInstead(path, error);
         // Stopped, as the browser's stop button stops a load: the page that was
         // on screen is still there, so the address bar goes back to it, through
-        // the entry it had (#170)
+        // the entry it had (#170). A file is the browser's (#227): back on that
+        // entry, the browser asks for it again -- and saves it with the page
+        // still on screen, or shows it as a page of its own.
+        const file = outcome === "file";
+        if (file) response?.body?.cancel().catch(() => {});
         if (leavingDocument) return;
-        undoing = { token: navGate.token, entry, left };
+        // The entry stays, as Forward's: it says what it is for when Forward
+        // comes back to it (FILE_KEY)
+        if (file) replaceEntry({ [FILE_KEY]: true }, path);
+        undoing = { token: navGate.token, entry, left, then: file ? () => document.location.assign(path) : null };
         history.back();
       },
       kind
@@ -665,11 +700,22 @@ class HistoryCache {
       action,
       formRequest(verb, data),
       "push",
-      (outcome, error) => {
+      (outcome, error, response) => {
         // Still the page that sent it, under its own entry
         page.id = left;
         replaceEntry(entry, document.location.href);
         if (outcome === "aborted") return;
+        // The answer is a file (#227). One to save is saved from what came
+        // back; one to show in place cannot be: the browser would have to send
+        // the form again for it. That is told as an answer that brought no page.
+        if (outcome === "file" && response) {
+          if (isAttachment(response.headers.get("content-disposition"))) {
+            saveAnswer(response).catch((e) => console.warn("wireview: could not save the answer to %s", action, e));
+            return;
+          }
+          response.body?.cancel().catch(() => {});
+          console.warn("wireview: %s answered with something other than a page, which a boosted form cannot show", action);
+        }
         if (outcome === "unanswered") {
           console.warn(
             "wireview: could not submit to %s; the page stays as it was and the form is not sent again",
@@ -706,12 +752,17 @@ class HistoryCache {
       path,
       undefined,
       "current",
-      (outcome, error) => {
-        if (outcome !== "aborted") return loadInstead(path, error);
+      (outcome, error, response) => {
+        if (outcome !== "aborted" && outcome !== "file") return loadInstead(path, error);
         // Stopped: the page on screen is still the one it was leaving, and its
         // entry gets back its URL (#170)
         page.id = left;
         replaceEntry(entry, from);
+        // A file is the browser's (#227), asked for again in place of the entry
+        if (outcome === "file") {
+          response?.body?.cancel().catch(() => {});
+          document.location.replace(path);
+        }
       },
       kind
     );
@@ -734,11 +785,13 @@ class HistoryCache {
    * @param {"current"|"push"} [entry] - "current": the caller made the history
    *   entry, and a redirect only corrects its URL; "push": the entry is made
    *   here, for where the response ended, when it moved
-   * @param {(outcome: "elsewhere" | "aborted" | "unanswered", error: unknown) => void} failed -
+   * @param {(outcome: "file" | "elsewhere" | "aborted" | "unanswered", error: unknown, response: Response | undefined) => void} failed -
    *   what a request that brought no page to show does instead
    *   (navigation.mjs `fetchOutcome`, #170): `loadInstead`, or for a stopped
    *   one, what the browser's stop would leave. A stop abandons nothing the
-   *   navigation queued: a cached page a popstate painted is the caller's
+   *   navigation queued: a cached page a popstate painted is the caller's.
+   *   Nor does a file (#227), its body unread: the page on screen stays while
+   *   the browser saves it, unless the caller gives the page up
    * @param {import("./navigation.mjs").NavigationKind} kind - what started the
    *   navigation, for `wireview:navigated` (#154)
    * @returns {Promise<boolean>} False when the boundary was crossed or the
@@ -772,8 +825,8 @@ class HistoryCache {
       }
       // Nothing queued for this navigation paints or joins any more -- but for
       // a stopped one, what it already painted is the caller's to keep
-      if (outcome !== "aborted") navGate.abandon();
-      failed(outcome, error);
+      if (outcome !== "aborted" && outcome !== "file") navGate.abandon();
+      failed(outcome, error, response);
       return false;
     }
     let doc = new DOMParser().parseFromString(content, "text/html");
@@ -918,6 +971,14 @@ function arrive(state, { restored = false, left = null } = {}) {
   // to tell, as Phoenix ignores such a popstate (#170). The entry needs no
   // page stamp of its own: a patch away from it stamps it first.
   if (!restored && onlyFragmentMoved(from, here)) return;
+  // An entry a file left, as Forward's (#227): the browser has the file again,
+  // and the page on screen goes back to the entry before it, its own
+  if (state?.[FILE_KEY] === true) {
+    const url = here;
+    undoing = { token: navGate.token, entry: undefined, left: page.id, then: () => document.location.assign(url) };
+    history.back();
+    return;
+  }
   const patch = returnsToPatch(state, document.location.href, page);
   // Back or Forward is the page's to stop as well (#154). The address bar has
   // moved already: a cancelled traversal returns to the entry it left, and
@@ -964,7 +1025,12 @@ function arrive(state, { restored = false, left = null } = {}) {
     url,
     undefined,
     "current",
-    (outcome, error) => {
+    (outcome, error, response) => {
+      if (outcome === "file") {
+        // The entry is history's already: the browser loads it (#227)
+        response?.body?.cancel().catch(() => {});
+        navGate.abandon();
+      }
       if (outcome !== "aborted") return loadInstead(url, error);
       // Stopped. The traversal is history's already, and the address bar
       // stays (#170). The cached copy it painted is that entry's page: it
@@ -1000,7 +1066,12 @@ window.addEventListener("popstate", (event) => {
   if (undo && navGate.accepts(undo.token)) {
     // Back on the entry the stopped push left, where the page on screen was
     page.id = undo.left;
-    replaceEntry(undo.entry, document.location.href);
+    if (undo.entry === undefined) {
+      here = document.location.href;
+    } else {
+      replaceEntry(undo.entry, document.location.href);
+    }
+    undo.then?.();
     return;
   }
   arrive(event.state, { left });

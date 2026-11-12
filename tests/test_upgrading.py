@@ -121,6 +121,10 @@ UPGRADE_NOTE = {
         "1 MiB보다 큰 WebSocket 메시지는 연결을 닫는다",
         "INBOUND_MAX_BYTES",
     ),
+    "Boost leaves files to the browser (#227)": (
+        "조용히 달라짐: boost는 파일을 브라우저에 맡긴다",
+        "GET이 두 번 간다",
+    ),
     "A connection whose app ended without a disconnect is ended all the same": (
         "연결이 끝날 때의 `leaving()`은 모두 합쳐 5초 안에 끝나야 한다",
         "프레임워크가 대신 떠난다",

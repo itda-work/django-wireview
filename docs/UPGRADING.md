@@ -348,6 +348,17 @@ dependencies = ["django-wireview>=1.5,<2"]
   `stream()`을 핸들러 끝에 둔다. 그동안 잡힌 프레임이 1,000개(`QUEUE_LIMIT`)를 넘으면 연결이 닫히고(1013) 페이지가
   다시 join한다([Broadcast — 순서와 유실](./features/broadcast.md#순서와-유실)).
 
+### boost 이동
+
+- **조용히 달라짐: boost는 파일을 브라우저에 맡긴다(#227).** `download` 속성이 있는 링크와 `wire-boost="false"` 안의 링크는
+  boost하지 않고, 답이 HTML 문서가 아니면(`Content-Type`이 `text/html`·`application/xhtml+xml`이 아니거나 없음,
+  `Content-Disposition: attachment`) 화면과 history를 바꾸지 않는다. 1.5에서는 그 답을 HTML로 파싱해 화면을 바꿨다.
+  - 파일로 가는 링크는 그 주소에 GET이 두 번 간다 — boost의 가져오기와 브라우저의 것. 내려받기를 세는 뷰처럼 두 번 가면
+    안 되는 주소의 링크에는 `download`를 단다. 페이지를 `text/html` 아닌 타입으로 내던 뷰(타입 없는 `HttpResponse`는
+    `text/html`이다)는 이제 전체 로드다.
+  - boost한 POST 폼의 `attachment` 답은 다시 보내지 않고 받은 것을 저장한다. 그 밖의 파일 답(JSON 등)은 페이지가 남고
+    `wireview:navigation-failed`가 `answered: true`로 간다. 자세한 것은 [boost](./features/boost.md#boost하지-않는-링크와-응답).
+
 ### 템플릿
 
 - **고쳐짐: 컴포넌트 템플릿의 `{% querystring %}`이 동작한다(#210).** 1.5까지는 첫 HTTP 렌더에서도 라이브 렌더에서도
