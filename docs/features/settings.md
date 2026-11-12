@@ -24,7 +24,7 @@ WIREVIEW = {
 | `CHECK_ORIGIN` | `True` | `Origin`이 `ALLOWED_HOSTS`에 없는 소켓을 거절한다 ([배포](../DEPLOYMENT.md#websocket의-origin)) |
 | `COLLECT_HOOKS` | `True` | 각 앱의 `static/<app_label>/hooks/*.js`를 `{% wireview_header %}`가 싣는다 ([hooks](./hooks.md)). 페이지가 쓰는 것만이 아니라 **모든 페이지가 모든 앱의 훅을** 싣는다 — boost 이동은 새 페이지의 `<head>` 스크립트를 실행하지 않기 때문이다. 스위치는 렌더 때 읽지만 파일 목록은 처음 쓸 때 한 번 모으므로, 실행 중에 더한 훅 파일은 재시작해야 실린다. 끄면 `wireview.W011`(등록되지 않은 훅)도 꺼진다 |
 | `PATCH_UVICORN_SHUTDOWN` | `True` | uvicorn의 WebSocket `shutdown()`을 감싼다. 페이지가 닫는 중인 연결이 있으면 그 메서드가 예외를 던져 종료 절차가 끊긴다 — 남은 연결이 1012로 닫히지 않고 `leaving()`을 기다리지 않는다. 그 결함 코드일 때만, 첫 연결 때 한 번 적용한다 ([배포](../DEPLOYMENT.md#권장-uvicorn--uvloop)) |
-| `RECONNECT_MIN_DELAY_MS` | `1000` | 연결이 끊긴 뒤 첫 재시도까지의 최소 대기(밀리초) ([배포](../DEPLOYMENT.md#롤링-배포와-재연결)) |
+| `RECONNECT_MIN_DELAY_MS` | `1000` | 연결이 끊긴 뒤 첫 재시도까지의 최소 대기(밀리초) ([배포](../DEPLOYMENT.md#롤링-배포와-재연결)). 탭이 다시 보이거나 네트워크가 돌아오면 이 대기들을 기다리지 않고 바로 연결한다(#228) |
 | `RECONNECT_JITTER_MS` | `4000` | 첫 대기에 더하는 무작위 폭(밀리초). 페이지마다 한 번 뽑아 같은 순간 끊긴 페이지들을 흩는다 |
 | `RECONNECT_MAX_DELAY_MS` | `10000` | 재시도 대기의 상한(밀리초) |
 | `RECONNECT_GROW_FACTOR` | `1.3` | 재시도마다 대기에 곱하는 수. 1보다 작으면 클라이언트가 기본값을 쓴다. 쓸 수 없는 값과, 대기가 0이거나 첫 대기(`MIN_DELAY` + `JITTER`)가 `MAX_DELAY`를 넘는 조합은 `wireview.W016`이 알린다 |

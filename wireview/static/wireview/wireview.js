@@ -20,7 +20,14 @@ import { Replies } from "./replies.mjs";
 import { ISLAND_HOOK, Island, Islands } from "./islands.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
-import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
+import {
+  Backoff,
+  PROBE_TIMEOUT_MS,
+  Revival,
+  onReturn,
+  readReconnectSettings,
+  reconnectOptions,
+} from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
 import { newTab, socketUrl } from "./tab.mjs";
@@ -109,6 +116,10 @@ class ServerConnection {
     this.messageQueue = [];
     /** @type {ReconnectingWebSocket|null} */
     this.socket = null;
+    /** @type {Backoff|null} the wait before the next attempt, which the user's return ends (#228) */
+    this.backoff = null;
+    /** @type {Revival} whether the socket that looks open still answers (#228) */
+    this.revival = new Revival();
     /** @type {boolean} Track if we've been connected before (for reconnection detection) */
     this.wasConnected = false;
     /** @type {number} The protocol version this socket's server announced (0 until a join is answered) */
@@ -155,22 +166,39 @@ class ServerConnection {
    * @param {string} [path="__wireview__"] - WebSocket endpoint path
    */
   open(path = "__wireview__") {
+    // The diff forms this client applies. Without it the server assumes
+    // the oldest, so an older bundle never receives a form it cannot read.
+    // The same URL, tab and all, for every reconnect.
+    const url = socketUrl(location, path, PROTOCOL_VERSION, this.tab);
+    // The backoff WIREVIEW["RECONNECT_*"] sets (#124): what a rolling deploy's
+    // crowd of reconnecting pages does to the servers left. The page waits it
+    // out itself, before handing the library the URL, so that the user coming
+    // back can end it (#228); the library's own wait could not be cut short.
+    const backoff = new Backoff(reconnectOptions(readReconnectSettings(document)), {
+      set: (callback, ms) => window.setTimeout(callback, ms),
+      clear: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
+    });
+    this.backoff = backoff;
     this.socket = new ReconnectingWebSocket(
-      // The diff forms this client applies. Without it the server assumes
-      // the oldest, so an older bundle never receives a form it cannot read.
-      // The same URL, tab and all, for every reconnect.
-      socketUrl(location, path, PROTOCOL_VERSION, this.tab),
+      // Called for each attempt, after the library counted it
+      () => backoff.wait(url, this.socket?.retryCount ?? 0),
       [],
       {
         maxEnqueuedMessages: 0,
-        // The backoff WIREVIEW["RECONNECT_*"] sets (#124): what a rolling
-        // deploy's crowd of reconnecting pages does to the servers left
-        ...reconnectOptions(readReconnectSettings(document)),
+        minReconnectionDelay: 0,
+        maxReconnectionDelay: 0,
+        reconnectionDelayGrowFactor: 1,
       }
     );
 
+    // The user is back: a tab shown again, or the network back (#228)
+    const returned = () => this.userReturned();
+    document.addEventListener("visibilitychange", returned);
+    window.addEventListener("online", returned);
+
     this.socket.addEventListener("open", () => {
       debugLog("ws", "Connected to server");
+      this.revival.heard(performance.now());
 
       const reconnecting = this.wasConnected;
       this.wasConnected = true;
@@ -202,9 +230,11 @@ class ServerConnection {
       });
     });
 
-    this.socket.addEventListener("message", (event) =>
-      this._processMessage(event)
-    );
+    this.socket.addEventListener("message", (event) => {
+      // Whatever it is, the socket carries: a probe waiting is answered
+      this.revival.heard(performance.now());
+      this._processMessage(event);
+    });
 
     this.socket.addEventListener("close", () => {
       // The next socket may reach another server; it announces itself again.
@@ -214,6 +244,7 @@ class ServerConnection {
       this.loading.clear().forEach(unmarkLoading);
       debugLog("ws", "Disconnected from server");
       this.replies.fail(() => true, "disconnected");
+      this.revival.closed();
 
       // Notify hooks of disconnection before clearing components
       for (const component of Object.values(this.components)) {
@@ -254,6 +285,49 @@ class ServerConnection {
       this.joinAllComponents({ navigated: token !== undefined, stuck });
       if (landed) this.announceNavigation(token, kind);
     });
+  }
+
+  /**
+   * The user came back to the page (#228): a socket waiting out its backoff
+   * opens now, and one that looks open but has been quiet is asked whether it
+   * still answers. A hidden tab does nothing, and a second signal on the heels
+   * of the first finds the attempt or the probe already under way.
+   */
+  userReturned() {
+    if (!this.socket || !this.backoff) return;
+    const now = performance.now();
+    const action = onReturn({
+      visible: document.visibilityState === "visible",
+      waiting: this.backoff.waiting,
+      readyState: this.socket.readyState,
+      probing: this.revival.probing,
+      serverVsn: this.serverVsn,
+      quietFor: this.revival.quietFor(now),
+    });
+    if (action === "connect") {
+      debugLog("ws", "Back: connecting now");
+      this.backoff.skip();
+    } else if (action === "probe") {
+      this.probe();
+    }
+  }
+
+  /**
+   * Asks the socket that looks open whether it still answers, with the round
+   * trip a rejoin uses (`sync`, answered by `synced` behind everything sent
+   * before it). Anything heard back answers it; nothing within
+   * `PROBE_TIMEOUT_MS` and the page opens another socket.
+   */
+  probe() {
+    const ref = ++this.lastRef;
+    this.revival.probed(ref, this.epoch);
+    debugLog("ws", "Back: asking the socket whether it still answers");
+    this._send("sync", { ref });
+    window.setTimeout(() => {
+      if (!this.revival.expired(ref, this.epoch)) return;
+      debugLog("ws", "No answer: opening another socket");
+      this.socket?.reconnect();
+    }, PROBE_TIMEOUT_MS);
   }
 
   /**

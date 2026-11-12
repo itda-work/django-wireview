@@ -248,6 +248,7 @@ NO_UPGRADE_NOTE = {
     "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",
     "`docs/features/react-islands.md`": "문서만 더해졌다",
+    "A page whose tab is shown again": "클라이언트만 바뀌고 설정·서버·앱 코드에 할 일이 없다",
     "A hook a morph handed to another component": "마운트되지 않던 훅이 마운트될 뿐이다",
     "`manage.py wireview_lsp --skip-checks`": "편집기 메타데이터가 빠뜨리던 컴포넌트를 실을 뿐이다",
     '`{% island "Map" props=... %}` puts an element': "새 태그라 할 일이 없다",

@@ -22,7 +22,7 @@ import re
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import OFFLINE_SHIM, expect_text, open_live, wait_live
+from testproj.e2e_browser import OFFLINE_SHIM, VISIBILITY_SHIM, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -212,3 +212,136 @@ def test_the_page_retries_at_the_pace_the_settings_give(quick_reconnect, link):
     # five attempts inside two seconds can only come from the settings.
     page.wait_for_function(f"window.__link.sockets.length >= {before + 5}", timeout=2000)
     link.restore()
+
+
+# --- the user coming back does not wait out the backoff (#228) --------------------------
+
+#: The page's probe deadline (reconnect.mjs PROBE_TIMEOUT_MS) and how long a socket
+#: has to be quiet before a return asks it (HEARD_RECENTLY_MS), in milliseconds.
+PROBE_TIMEOUT_MS = 4000
+HEARD_RECENTLY_MS = 1000
+
+
+@pytest.fixture
+def slow_reconnect(settings):
+    """A minute before each retry: far past every wait here, so a page back inside
+    one can only have skipped it. Listed before ``link`` so the page is served with it."""
+    settings.WIREVIEW = {
+        **getattr(settings, "WIREVIEW", {}),
+        "RECONNECT_MIN_DELAY_MS": 60000,
+        "RECONNECT_JITTER_MS": 0,
+        "RECONNECT_MAX_DELAY_MS": 60000,
+        "RECONNECT_GROW_FACTOR": 1,
+    }
+
+
+@pytest.fixture
+def visibility(page):
+    """Lets the test hide and show the tab. Listed before ``link``."""
+    page.add_init_script(VISIBILITY_SHIM)
+
+
+def sockets(page) -> int:
+    return page.evaluate("window.__link.sockets.length")
+
+
+def wait_quiet(page) -> None:
+    """Until the socket has heard nothing for longer than a return lets pass unasked:
+    the time measured is the page's own rule, not a guess at the machine's speed."""
+    page.evaluate("window.__quietFrom = performance.now()")
+    page.wait_for_function(f"performance.now() - window.__quietFrom > {HEARD_RECENTLY_MS + 100}")
+
+
+def test_a_tab_shown_again_connects_without_waiting_out_the_backoff(slow_reconnect, visibility, link):
+    page = link.page
+    page.evaluate("window.__visibility('hidden')")
+    link.cut()
+    before = sockets(page)
+    # The network is back while nobody looks: the page waits on, as it always did
+    page.evaluate("window.__link.offline = false")
+
+    page.evaluate("window.__visibility('visible')")
+
+    # Inside the harness's budget, a quarter of the minute the backoff would take
+    wait_live(page, LIVE)
+    assert sockets(page) == before + 1
+    by(page, "item").fill("back")
+    by(page, "item").press("Enter")
+    expect_text(by(page, "added"), "back")
+
+
+def test_the_network_coming_back_connects_without_waiting_out_the_backoff(slow_reconnect, link):
+    page = link.page
+    link.cut()
+    page.evaluate("window.__link.offline = false")
+
+    page.context.set_offline(True)
+    page.context.set_offline(False)  # the browser fires `online`
+
+    wait_live(page, LIVE)
+
+
+def test_shown_and_online_at_once_open_one_socket(slow_reconnect, visibility, link):
+    page = link.page
+    page.evaluate("window.__visibility('hidden')")
+    link.cut()
+    before = sockets(page)
+    page.evaluate("window.__link.offline = false")
+
+    page.evaluate("() => { window.__visibility('visible'); window.dispatchEvent(new Event('online')); }")
+
+    wait_live(page, LIVE)
+    by(page, "item").fill("once")
+    by(page, "item").press("Enter")
+    expect_text(by(page, "added"), "once")
+    # The second signal neither opened another nor closed the one just opened
+    assert sockets(page) == before + 1
+
+
+def test_a_socket_that_looks_open_but_is_dead_is_replaced_when_the_tab_comes_back(visibility, link):
+    """A phone tab frozen in the background: its socket is still OPEN to the page,
+    but the connection under it is gone, and the first click got no answer."""
+    page = link.page
+    page.evaluate("window.__visibility('hidden')")
+    page.evaluate("window.__link.deafen()")
+    before = sockets(page)
+    wait_quiet(page)
+
+    page.evaluate("window.__visibility('visible')")
+
+    # Asked with sync; no answer within the deadline, so another socket opens
+    page.wait_for_function(f"window.__link.sockets.length > {before}", timeout=PROBE_TIMEOUT_MS + 10000)
+    assert "sync" in page.evaluate("window.__link.sent")
+    wait_live(page, LIVE)
+    by(page, "bump").click()
+    expect_text(by(page, "count"), "1")
+    assert sockets(page) == before + 1
+
+
+def test_a_socket_that_still_answers_is_kept_when_the_tab_comes_back(visibility, link):
+    page = link.page
+    before = sockets(page)
+    page.evaluate("window.__visibility('hidden')")
+    wait_quiet(page)
+
+    page.evaluate("window.__visibility('visible')")
+    page.evaluate("window.__shownAt = performance.now()")
+    assert page.evaluate("window.__link.sent").count("sync") == 1
+    # Past the probe's deadline: the answer came, so nothing was replaced
+    page.wait_for_function(f"performance.now() - window.__shownAt > {PROBE_TIMEOUT_MS + 500}")
+
+    assert sockets(page) == before
+    wait_live(page, LIVE)
+    by(page, "bump").click()
+    expect_text(by(page, "count"), "1")
+
+
+def test_a_tab_shown_again_right_after_its_socket_opened_is_not_asked(visibility, link):
+    """A socket heard from a moment ago is alive; asking would only race its traffic."""
+    page = link.page
+    by(page, "bump").click()
+    expect_text(by(page, "count"), "1")
+
+    page.evaluate("() => { window.__visibility('hidden'); window.__visibility('visible'); }")
+
+    assert "sync" not in page.evaluate("window.__link.sent")

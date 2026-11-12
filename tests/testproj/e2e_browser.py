@@ -34,6 +34,7 @@ __all__ = [
     "WAIT_TIMEOUT",
     "LIVE_SELECTOR",
     "OFFLINE_SHIM",
+    "VISIBILITY_SHIM",
     "INBOX_SHIM",
     "open_live",
     "wait_live",
@@ -55,10 +56,15 @@ LIVE_SELECTOR = '[data-is-live="true"]'
 #: ``window.__link.sockets`` lists every socket the page opened.
 #: ``window.__link.port = n`` sends every new socket to port ``n`` on the same host
 #: instead -- another worker behind the same address, as a load balancer would.
+#: ``window.__link.deafen()`` leaves every socket open now OPEN but dead, as a
+#: connection a frozen phone tab or a sleeping laptop lost without a close: what
+#: the page sends on it goes nowhere and nothing it would receive arrives.
+#: ``window.__link.sent`` lists the commands the page sent, in order.
 OFFLINE_SHIM = """
 (() => {
   const Native = window.WebSocket;
-  window.__link = { offline: false, port: null, sockets: [] };
+  window.__link = { offline: false, port: null, sockets: [], sent: [] };
+  window.__link.deafen = () => window.__link.sockets.forEach((s) => { s.__deaf = true; });
   window.WebSocket = class extends Native {
     constructor(url, protocols) {
       let target = url;
@@ -72,6 +78,32 @@ OFFLINE_SHIM = """
       super(target, protocols);
       window.__link.sockets.push(this);
     }
+    send(data) {
+      try { window.__link.sent.push(JSON.parse(data).command); } catch (e) {}
+      if (!this.__deaf) super.send(data);
+    }
+    addEventListener(type, listener, options) {
+      if (type !== "message") return super.addEventListener(type, listener, options);
+      return super.addEventListener(type, (event) => {
+        if (!this.__deaf) listener.call(this, event);
+      }, options);
+    }
+  };
+})();
+"""
+
+#: An init script that lets a test hide and show the tab: headless Chromium keeps
+#: every page visible whatever is in front, minimised or not, so the page's
+#: ``document.visibilityState`` is the script's, and ``window.__visibility(state)``
+#: sets it and fires ``visibilitychange`` as the browser would.
+VISIBILITY_SHIM = """
+(() => {
+  let state = "visible";
+  Object.defineProperty(Document.prototype, "visibilityState", { configurable: true, get: () => state });
+  Object.defineProperty(Document.prototype, "hidden", { configurable: true, get: () => state === "hidden" });
+  window.__visibility = (next) => {
+    state = next;
+    document.dispatchEvent(new Event("visibilitychange"));
   };
 })();
 """

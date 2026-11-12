@@ -224,7 +224,8 @@ wireview/
                            bfcache가 되살린 문서가 주소창에 다시 도착해야 하나(arrivesOnRestore).
                            wireview:before-navigate의 detail과 이동 종류(kind). 취소한 뒤로·앞으로 가기는 Navigation API가
                            알려 준 떠난 항목으로 traverseTo로 돌아가고, 그 사이의 popstate를 TraversalUndo가 가른다, #154),
-                           reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
+                           reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*. 대기는 라이브러리가 아니라 페이지가 한다(Backoff, URL 공급 함수의 Promise) — 탭이 다시 보이거나 online이면 끝낸다.
+                           열려 보이는 조용한 소켓은 sync로 묻고 4초 안에 아무것도 안 오면 새로 연다(Revival·onReturn). 숨은 탭은 아무것도 하지 않는다, #228),
                            tab.mjs (페이지 로드의 이름. 소켓 URL의 tab으로 재연결마다 같은 값을 보낸다 — presence가 탭을 가른다, #202),
                            renew.mjs (서버의 renew에 새 소켓을 소켓마다 한 번 연다. 그 소켓의 첫 join 바퀴만 renewed를 싣는다 — 서버는 그 join에 다시 renew하지 않고 로그인이 다르면 reload. 이어지는 renew는 재연결 백오프만큼 기다린다, #209),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와

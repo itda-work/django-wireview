@@ -31,7 +31,7 @@ import re
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import OFFLINE_SHIM, expect_text, open_live, wait_live
+from testproj.e2e_browser import OFFLINE_SHIM, VISIBILITY_SHIM, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 from testproj.server_process import free_port, launch_uvicorn, start_uvicorn, stop_process, wait_until_serving
 
@@ -48,7 +48,7 @@ def _db(transactional_db):
     pass
 
 
-def quick_reconnect(page) -> None:
+def quick_reconnect(page, delay: int = 100) -> None:
     """Retry every 100 ms instead of the 1 to 5 seconds a page waits by default.
 
     Rewritten in the page as it arrives, because a server in another process
@@ -58,7 +58,12 @@ def quick_reconnect(page) -> None:
     def fulfil(route):
         response = route.fetch()
         body = response.text()
-        for name, value in (("min-delay", "100"), ("jitter", "0"), ("max-delay", "100"), ("grow-factor", "1")):
+        for name, value in (
+            ("min-delay", str(delay)),
+            ("jitter", "0"),
+            ("max-delay", str(delay)),
+            ("grow-factor", "1"),
+        ):
             body = re.sub(rf'data-{name}="[^"]*"', f'data-{name}="{value}"', body)
         route.fulfill(response=response, body=body)
 
@@ -68,10 +73,10 @@ def quick_reconnect(page) -> None:
 class Link:
     """The page's WebSocket, cut, restored and moved on demand."""
 
-    def __init__(self, page) -> None:
+    def __init__(self, page, delay: int = 100) -> None:
         self.page = page
         page.add_init_script(OFFLINE_SHIM)
-        quick_reconnect(page)
+        quick_reconnect(page, delay)
 
     def cut(self) -> None:
         self.page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
@@ -304,3 +309,32 @@ def test_a_deploy_that_adds_a_required_field_reloads_the_page_once(page, workers
     # The reloaded page's state is the new class's: it joins, and nothing reloads again
     bump_to(page, 1)
     assert len(loads) == 1, f"one reload, not a loop: {len(loads)}"
+
+
+# --- a restart while the tab is in the background (#228) --------------------------------
+
+
+def test_a_tab_shown_again_after_a_restart_does_not_wait_out_the_backoff(page, workers, tmp_path):
+    """A deploy with a long backoff (#228): the server restarts while the tab is in the
+    background, and the user comes back to it. The page connects then, not when the
+    minute it was waiting runs out."""
+    port = next(iter(workers))
+    page.add_init_script(VISIBILITY_SHIM)
+    link = Link(page, delay=60000)
+    link.open(f"http://127.0.0.1:{port}/reconnectprobe/")
+    bump_to(page, 1)
+    first_pid = by(page, "pid").inner_text()
+    page.evaluate("window.__visibility('hidden')")
+
+    stop_process(workers[port])
+    expect(page.locator("#rbox")).to_have_class(re.compile("wireview-disconnected"))
+    proc, log = launch_uvicorn(port, tmp_path)
+    workers[port] = proc
+    wait_until_serving(port, proc, log, READY_TIMEOUT)
+
+    page.evaluate("window.__visibility('visible')")
+
+    wait_live(page, LIVE)
+    expect(by(page, "pid")).not_to_have_text(first_pid)
+    expect_text(by(page, "count"), "1")
+    assert link.same_page
