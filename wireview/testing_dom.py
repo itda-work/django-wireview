@@ -1066,6 +1066,31 @@ class Page:
             form = form_of(el, self.root)
             assert form is not None
             self._submit(action, form)
+        if not prevented and (control := self._labelled_by_click(el)) is not None:
+            # The label's activation: a click of its own on the field, which ticks and submits as one does
+            self._click(action, control, {})
+
+    def _labelled_by_click(self, el: Element) -> Element | None:
+        """The field a click on ``el`` goes on to through a ``<label>``: none when ``el`` is the field, or is
+        inside something interactive in the label (a link, a button, another field)."""
+        label = None
+        for node in [el, *el.ancestors()]:
+            if node.tag == "label":
+                label = node
+                break
+            if is_interactive(node):
+                return None
+        if label is None:
+            return None
+        if (target := label.get("for")) is not None:
+            control = next((d for d in self.root.descendants() if d.get("id") == target), None)
+            if control is None or not is_labelable(control):
+                return None
+        else:
+            control = next((d for d in label.descendants() if is_labelable(d)), None)
+        if control is None or control is el or disabled_by(control) is not None:
+            return None
+        return control
 
     def key(self, el: Element, type_: str, event: t.Mapping[str, t.Any]) -> list[ServerEvent]:
         """``keydown`` or ``keyup`` at ``el``, and Enter's implicit submission of a form after a keydown."""
@@ -1255,6 +1280,24 @@ class Page:
 _IMPLICIT_SUBMISSION_TYPES = frozenset(
     {"text", "search", "url", "tel", "email", "password", "date", "month", "week", "time", "datetime-local", "number"}
 )
+
+
+def is_labelable(el: Element) -> bool:
+    """What a ``<label>`` can name: a form control, not a hidden input."""
+    if el.tag == "input":
+        return input_type(el) != "hidden"
+    return el.tag in ("button", "meter", "output", "progress", "select", "textarea")
+
+
+def is_interactive(el: Element) -> bool:
+    """HTML's interactive content, which takes a click in a label for itself."""
+    if el.tag == "input":
+        return input_type(el) != "hidden"
+    if el.tag == "a":
+        return el.has("href")
+    return el.tag in ("button", "select", "textarea", "details", "embed", "iframe", "label") or (
+        el.tag in ("audio", "video") and el.has("controls")
+    )
 
 
 def is_focusable(el: Element) -> bool:

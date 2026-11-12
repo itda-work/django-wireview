@@ -281,6 +281,36 @@ SCENARIOS += [
 ]
 
 
+SCENARIOS += [
+    # A label's click goes on to its field: for= names it, or the label holds it
+    Scenario(
+        "label-for",
+        DomForm,
+        "heard-form",
+        lambda v: v.click("[data-testid=agree-label]"),
+        _click("agree-label"),
+        [("changed", {**FORM, "agree": "on"})],
+    ),
+    Scenario(
+        "label-wraps",
+        DomForm,
+        "heard-form",
+        lambda v: v.click("[data-testid=pro-text]"),
+        _click("pro-text"),
+        [("changed", {**FORM, "plan": "pro"})],
+    ),
+    # A label of a submit button submits its form
+    Scenario(
+        "label-button",
+        DomForm,
+        "heard-form",
+        lambda v: v.click("[data-testid=save-label]"),
+        _click("save-label"),
+        [("saved", FORM)],
+    ),
+]
+
+
 def heard(component: type, expected: list[tuple[str, dict[str, t.Any]]], log: list[t.Any]) -> list[t.Any]:
     """What ``component``'s handlers named in ``expected`` heard, in order."""
     names = {name for name, _ in expected}

@@ -40,6 +40,10 @@ The django-reactor era changelog (2.x) is preserved in
   a streamed item's binding instead of failing with "it matches a stream item". `clear_messages()` keeps them, as
   the page does. A browser test sends random runs of operations to the page's client and compares each container
   with the helpers' copy.
+- `MountedComponent.click()` on a `<label>` goes on to its field as a browser's click does (GAP-056, #252): the
+  field its `for` names, or the first one inside it, gets a click of its own -- a checkbox or radio is ticked and
+  sends `input` and `change`, a submit button submits. A click on the field itself, or on a button or link inside the
+  label, goes no further. Before, a click on a label reached no handler.
 - Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
   6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
   (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's

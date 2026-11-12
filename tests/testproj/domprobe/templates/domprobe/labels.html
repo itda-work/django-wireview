@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form {% on "change" "changed" %}>
+    <input type="checkbox" name="a" id="a-box">
+    <label for="a-bx" data-testid="typo">A</label>
+    <input type="checkbox" name="b" id="b-box" disabled>
+    <label for="b-box" data-testid="off">B</label>
+    <label data-testid="holds-button">
+      <button type="button" data-testid="inner-button" {% on "click" "pressed" %}>x</button>
+      <input type="checkbox" name="c">
+    </label>
+  </form>
+</div>

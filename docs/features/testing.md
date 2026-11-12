@@ -85,7 +85,7 @@ async def test_remove_button_deletes_the_row(item):
 
 | 헬퍼 | 하는 일 |
 |------|---------|
-| `await view.click(selector, *, text=None, ctrl=False, alt=False, shift=False, meta=False)` | 클릭. checkbox·radio는 클릭 동안 체크가 바뀌고, 막히지 않으면 `input`·`change`가 뒤따른다. 폼의 제출 버튼이면 click 바인딩 뒤 그 폼에 `submit`이 간다. `ctrl=True` 등은 그 키를 누른 채 클릭한다(`.ctrl` 같은 수정자) |
+| `await view.click(selector, *, text=None, ctrl=False, alt=False, shift=False, meta=False)` | 클릭. checkbox·radio는 클릭 동안 체크가 바뀌고, 막히지 않으면 `input`·`change`가 뒤따른다. 폼의 제출 버튼이면 click 바인딩 뒤 그 폼에 `submit`이 간다. `<label>`이면 그 칸으로 클릭이 이어진다. `ctrl=True` 등은 그 키를 누른 채 클릭한다(`.ctrl` 같은 수정자) |
 | `await view.change(selector, value, *, text=None)` | 칸에 `value`를 넣고 `change`. 텍스트 칸을 떠날 때·select·checkbox가 보내는 것 |
 | `await view.input(selector, value, *, text=None)` | 같은 값 규칙으로 `input`. 키를 누를 때마다 보내는 것 |
 | `await view.submit(selector="form", *, values=None, submitter=None, text=None)` | 폼 제출. `values`는 이름 → 사용자가 넣은 값, `submitter`는 누른 제출 버튼의 선택자 |
@@ -144,6 +144,9 @@ async def test_remove_button_deletes_the_row(item):
 - `focus`·`blur`는 올라가지 않는다: 그 요소의 바인딩만 돈다. 조상에서 받으려면 `focusin`·`focusout`에 건다.
   헬퍼는 포커스를 기억하지 않으므로 `focus(b)`가 앞의 칸에 `blur`를 보내지 않는다. 입력한 칸을 떠나는 것은 브라우저에서
   `change` 뒤 `blur`다 — `change()` 다음 `blur()`로 한다.
+- `<label>`을 누르면(막히지 않았으면) 브라우저처럼 그 label의 칸에 클릭이 한 번 더 간다: `for`가 있으면 그 id의 칸,
+  없으면 label 안의 첫 칸. checkbox·radio는 체크와 `input`·`change`, 제출 버튼은 제출이다. label 안의 칸 자신이나
+  버튼·링크를 누르면 이어지지 않는다. `for`가 없는 id를 가리키거나 칸이 disabled면 아무 데도 가지 않는다.
 - 키의 기본 동작은 하나만 따른다: 폼의 텍스트 칸에서 막히지 않은 Enter `keydown`은 폼의 첫 제출 버튼을 누른다(그 버튼이
   disabled면 아무것도 하지 않는다). 제출 버튼이 없으면 텍스트 칸이 하나뿐인 폼만 제출한다(HTML의 암묵적 제출).
   글자를 치면 칸에 들어가는 것, 버튼에서 Enter·Space가 클릭이 되는 것은 하지 않는다 — 값은 `input()`·`change()`로, 클릭은
@@ -163,7 +166,7 @@ async def test_remove_button_deletes_the_row(item):
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
 
 **하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅, 로딩 클래스, `wire-disabled-with`는
-없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. `<label>`을 눌러 칸을 누르는 것, 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
+없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
 
 ## 내비게이션 단언
 

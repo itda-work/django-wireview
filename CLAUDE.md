@@ -174,7 +174,7 @@ wireview/
 │                          CSS 선택자의 부분집합으로 고른다. 바인딩 해석(parse_binding·bindings_for·run_steps)은 events.mjs의 사본이고
 │                          tests/js/bindings.mjs 가 같은 입력에 클라이언트 함수를 돌려 맞춘다. 위임·소유 컴포넌트·필드 직렬화는 wireview.js의
 │                          EventBindings.run·wireview.send·Component.serialize를 따른다 — 클라이언트를 바꾸면 이것과 tests/test_dom_events_e2e.py 도.
-│                          키·포커스(keydown·keyup·focus·blur, 수정 키, Enter의 암묵적 제출)도 같은 규칙이다.
+│                          키·포커스(keydown·keyup·focus·blur, 수정 키, Enter의 암묵적 제출)와 <label>의 클릭 이어 주기도 같은 규칙이다.
 │                          스트림 연산을 컨테이너에 넣는 것(apply_stream_ops)은 wireview.js의 _streamContainer·_applyStreamOp와 streams.mjs의 사본이고,
 │                          tests/test_dom_events_e2e.py 가 같은 연산 열을 페이지의 클라이언트에 보내 맞춘다. 기록은 MockWireviewMeta.sent_messages(_SentMessages)가 따로 지닌다
 │                          핸들러는 MountedComponent._handle(call()과 같은 길)로 부른다. JavaScript는 돌지 않는다

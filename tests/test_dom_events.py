@@ -393,6 +393,39 @@ async def test_the_legend_of_a_disabled_fieldset_is_not_disabled():
     assert [name for _, name, _ in HEARD] == ["hit"]
 
 
+class DomLabels(Component):
+    class Meta:
+        template_name = "domprobe/labels.html"
+
+    async def changed(self, **kwargs) -> None:
+        HEARD.append(("DomLabels", "changed", kwargs))
+
+    async def pressed(self, **kwargs) -> None:
+        HEARD.append(("DomLabels", "pressed", {}))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_label_whose_for_names_no_field_clicks_nothing():
+    view = await mount(DomLabels)
+    await view.call("changed", a="on")
+    HEARD.clear()
+    await _fails(view, lambda v: v.click("[data-testid=typo]"), r"The click on <label for=\"a-bx\".*reaches no handler")
+    await _fails(view, lambda v: v.click("[data-testid=off]"), r"reaches no handler")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_click_on_a_button_in_a_label_stays_the_buttons():
+    view = await mount(DomLabels)
+    await view.click("[data-testid=inner-button]")
+    assert [name for _, name, _ in HEARD] == ["pressed"]
+    HEARD.clear()
+    # On the label itself, the click goes on to its first field: the button
+    await view.click("[data-testid=holds-button]")
+    assert [name for _, name, _ in HEARD] == ["pressed"]
+
+
 class DomStreamed(Component):
     class Meta:
         template_name = "domprobe/streamed.html"

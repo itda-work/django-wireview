@@ -19,8 +19,10 @@ b0</textarea>
     </select>
     <input type="checkbox"
            name="agree"
+           id="agree-box"
            data-testid="agree"
            {% if agree %}checked{% endif %}>
+    <label for="agree-box" data-testid="agree-label">I agree</label>
     <input type="checkbox"
            name="opts"
            value="x"
@@ -36,15 +38,19 @@ b0</textarea>
            value="free"
            data-testid="plan-free"
            {% if plan == "free" %}checked{% endif %}>
-    <input type="radio"
-           name="plan"
-           value="pro"
-           data-testid="plan-pro"
-           {% if plan == "pro" %}checked{% endif %}>
+    <label data-testid="pro-label">
+      <span data-testid="pro-text">Pro plan</span>
+      <input type="radio"
+             name="plan"
+             value="pro"
+             data-testid="plan-pro"
+             {% if plan == "pro" %}checked{% endif %}>
+    </label>
     <input name="locked" value="L" disabled>
     <input type="hidden" name="secret" value="h">
     <input name="query" data-testid="query" {% on "input" "typed" %}>
-    <button name="action" value="save" data-testid="save">Save</button>
+    <button name="action" value="save" id="save-button" data-testid="save">Save</button>
+    <label for="save-button" data-testid="save-label">Save it</label>
     <button name="action" value="delete" data-testid="delete">Delete</button>
   </form>
   <input name="outside" value="o">
