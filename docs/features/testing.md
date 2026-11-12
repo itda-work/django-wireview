@@ -43,7 +43,8 @@ async def test_increment():
 
 | 무엇 | 설명 |
 |------|------|
-| `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로 |
+| `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로. 템플릿의 바인딩은 보지 않는다 — 그것까지 보려면 아래 행 |
+| `await view.click(selector, *, text=None)` 외 `change`·`input`·`submit` | 렌더의 요소를 골라 그 이벤트를 보낸다. 요소의 `wire-on-*` 바인딩대로 핸들러가 불린다 — 아래 "페이지의 요소로 이벤트 보내기" |
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
 | `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. **약속하는 것은 `None`인지 아닌지뿐이고**, diff의 모양은 와이어 프로토콜이라 공개가 아니다. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 단 컴포넌트가 알림을 받으면 그 렌더도 기준선을 옮긴다 — 페이지가 이미 받은 것이므로 알림이 그린 것은 `sent_messages`의 `render`에 있고, 그 뒤의 `render_diff()`는 알림 뒤의 변화만 본다(바뀐 것이 없으면 `None`, 아래 "알림 받기"). `render_diff()`로 기준선을 잡은 뒤 `call()`한 이벤트가 있으면, 다음 알림이 그 이벤트의 렌더를 먼저 해 `render`로 남긴다(세션이 이벤트마다 렌더하듯. `skip_render()`했으면 남기지 않는다). 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다. `Meta.shared_render`를 선언한 컴포넌트는 `DEBUG`와 상관없이 검사한다 — 렌더가 `user`·`session`·`request` 등을 읽으면 `SharedRenderError`다(`VERIFY_SHARED_RENDER = False`로 끈다, [shared-render](./shared-render.md#틀린-선언-잡기)) |
@@ -62,6 +63,87 @@ async def test_increment():
 
 `wireview.testing`을 import한 프로세스는 렌더 쿼리를 편집기용 파일에 쓰지 않는다. 테스트가 별도 프로세스로 띄우는
 서버도 쓰지 않게 하려면 환경 변수 `WIREVIEW_RENDER_QUERIES_DIR=off`를 둔다([render-queries](./render-queries.md#켜기와-끄기)).
+
+## 페이지의 요소로 이벤트 보내기
+
+`call("remove", id=3)`은 템플릿에서 그 버튼의 `{% on %}`을 지우거나 다른 핸들러에 걸어도 통과한다 — 브라우저에서는 아무
+버튼도 `remove`를 부르지 않는데도. 아래 넷은 사용자가 하는 일을 한다: 지금 렌더(`view.render()`)에서 요소를 고르고 그
+요소에 DOM 이벤트를 보낸다. 핸들러와 인자는 이벤트가 만나는 `wire-on-*` 바인딩에서 읽으므로, 바인딩이 없으면 실패한다.
+
+```python
+from wireview import mount
+
+
+async def test_remove_button_deletes_the_row(item):
+    view = await mount(XTodoItem, item=item)
+
+    await view.click("input.toggle")                   # 체크 → {% on "change" "completed" %}
+    html = await view.click("button.destroy")          # {% on "click" "delete" %}
+
+    assert not await Item.objects.filter(pk=item.pk).aexists()
+```
+
+| 헬퍼 | 하는 일 |
+|------|---------|
+| `await view.click(selector, *, text=None)` | 클릭. checkbox·radio는 클릭 동안 체크가 바뀌고, 막히지 않으면 `input`·`change`가 뒤따른다. 폼의 제출 버튼이면 click 바인딩 뒤 그 폼에 `submit`이 간다 |
+| `await view.change(selector, value, *, text=None)` | 칸에 `value`를 넣고 `change`. 텍스트 칸을 떠날 때·select·checkbox가 보내는 것 |
+| `await view.input(selector, value, *, text=None)` | 같은 값 규칙으로 `input`. 키를 누를 때마다 보내는 것 |
+| `await view.submit(selector="form", *, values=None, submitter=None, text=None)` | 폼 제출. `values`는 이름 → 사용자가 넣은 값, `submitter`는 누른 제출 버튼의 선택자 |
+
+넷 다 이벤트를 보낸 뒤의 `view.render()`를 돌려준다(Phoenix의 `render_click`처럼). 핸들러는 `call()`과 같은 길로
+돈다 — `handle_event` 훅, 클라이언트가 부를 수 있는 메서드인지의 검사, `validate_call`, 그 뒤의 `sent_messages`와
+내비게이션 단언까지.
+
+**요소 고르기.** `selector`는 CSS의 실용적인 부분이다: 태그, `*`, `#id`, `.class`, `[attr]`, `[attr=값]`(`~=`·`^=`·
+`$=`·`*=`·`|=`도), 자손(공백)·자식(`>`) 결합자, 쉼표. `data-testid`는 `[data-testid="save"]`로 고른다. 그 밖의 문법
+(`:nth-child`, `+`, `~` …)은 `ValueError`다. `text=`는 맞은 것 중 텍스트(공백을 하나로 접은 것)에 그 문자열이 든 것만
+남긴다. 정규식(`re.compile(...)`)이면 `search`로 본다. **정확히 하나가 남아야 한다** — 없거나 여럿이면 맞은 요소를
+나열하며 실패한다. 더 좁은 선택자나 `text=`로 고른다.
+
+**값.** `change`·`input`의 `value`와 `submit`의 `values`는 사용자가 칸에 남긴 것이다.
+
+| 칸 | 값 |
+|----|----|
+| 텍스트 칸·textarea | `str` |
+| select | 고를 option의 값 `str`. 없는 option·disabled option은 실패 |
+| select multiple | 고를 값의 `list[str]` |
+| checkbox | 체크는 `True`, 해제는 `False`. `values`에서 같은 이름의 묶음이면 체크할 값의 `list[str]` |
+| radio | `True`(고르기). `values`에서는 고를 값 `str` |
+| 같은 이름의 텍스트 칸 여럿 | `values`에서 페이지 순서대로 `list[str]` |
+
+`value`를 주지 않으면 칸은 렌더의 값 그대로 이벤트만 간다. **헬퍼는 부를 때마다 렌더에서 다시 시작한다** — 앞 호출에서
+넣은 값을 기억하지 않으므로 제출에 필요한 값은 `submit(values=...)`에 모두 준다(브라우저에서도 `change` 바인딩의 답이
+폼을 렌더의 값으로 되돌린다. 값을 상태에 두지 않은 폼은 거기서 이미 잃는다, [입력 중인 값](./html-diff.md#입력-중인-값)).
+
+**클라이언트와 같은 규칙.** 무엇이 가는지는 클라이언트가 정한 그대로다.
+
+- 이벤트는 요소에서 조상으로 올라가며 그 이벤트의 바인딩을 모두 실행한다(위임). `.stop`이 있는 요소에서 멈춘다.
+- 바인딩이 있는 요소가 속한 컴포넌트(가장 가까운 컴포넌트 요소, `myself=True`면 그 LiveComponent)에게 간다.
+- 실린 폼 필드: 바인딩 요소의 폼이 그 컴포넌트 안에 있으면 그 폼, 아니면 컴포넌트 전체의 `name` 있는 요소.
+  중첩 컴포넌트의 것은 빠진다. checkbox·radio는 체크된 것만(값이 없으면 `"on"`), select multiple은 목록,
+  **disabled 칸과 이름 있는 버튼은 모두** 실린다(누른 버튼만이 아니다 — 클라이언트가 지금 그렇게 보낸다,
+  GAP-048, [기능 갭](../FEATURE-GAP.md)). 핸들러는 같은 이름의 마지막 값을 받는다.
+- 수정자: `.prevent`·`.stop`은 그대로 따른다. `.ctrl`·`.enter`처럼 조건인 수정자는 헬퍼의 이벤트(눌린 키 없음)에서
+  성립하지 않으므로 그 바인딩은 건너뛰고 조상으로 계속 간다 — 브라우저의 평범한 클릭과 같다. `.debounce`는 시간이
+  지난 것으로 보고 보낸다(브라우저처럼 같은 이벤트의 다른 바인딩 뒤에), `.throttle`은 매번 창이 지난 것으로 본다.
+  여러 번의 입력이 하나로 합쳐지는 것은 시간의 일이라 브라우저 E2E로 본다.
+
+**실패가 계약이다.** 다음은 아무 일도 하지 않고 통과하는 대신 이유를 말하며 `AssertionError`로 실패한다.
+
+- 선택자에 맞는 요소가 없다, 여럿이다. 스트림 항목에만 있으면 그렇다고 말한다.
+- 이벤트가 만난 바인딩 중 서버 핸들러를 부르는 것이 없다. 수정자 조건 때문에 건너뛴 바인딩은 함께 나열한다.
+- 요소가 disabled다(자신, 감싼 `<button disabled>`, `<fieldset disabled>` — 그 첫 `<legend>` 안은 아니다). readonly·
+  `type=hidden` 칸에 값을 넣으려 했다. 칸이 아닌 요소에 값을 주었다. 값의 타입이 칸과 맞지 않다.
+- 바인딩이 다른 컴포넌트(중첩 `{% component %}`, LiveComponent)의 것이다. `mount()`는 마운트한 컴포넌트의 핸들러만
+  돌리므로, 그 컴포넌트를 따로 `mount()`해 시험한다.
+- `submit`이 막히지 않는다(`.prevent`가 없다). 브라우저는 그 폼을 `action`으로 보내 페이지를 떠난다. 폼 안의
+  `<button>`(기본 type이 submit)에 `{% on "click" %}`만 걸고 `.prevent`를 잊은 경우도 여기서 잡힌다.
+- `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
+
+**하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅, 로딩 클래스, `wire-disabled-with`는
+없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. `<label>`을 눌러 칸을 누르는 것, 키보드(`keyup.enter` 같은
+key 이벤트)·focus·blur, 스트림 항목(렌더에 없다), 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계,
+GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
 
 ## 내비게이션 단언
 
@@ -339,13 +421,15 @@ daphne 서버 자체는 따로 띄운 프로세스에서 돌고 그 프로세스
 ## Phoenix LiveView와 다른 점
 
 [LiveViewTest](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveViewTest.html)의 모든 헬퍼가 있는 것은 아니다.
-`mount`·`call`·렌더·내비게이션 단언·스트림 검사는 지원한다. 다음은 공개 헬퍼가 없다.
+`mount`·`call`·렌더·내비게이션 단언·스트림 검사, 선택자로 고른 요소의 바인딩을 읽는 `click`·`change`·`input`·`submit`
+(Phoenix의 `element`·`render_click`·`render_change`·`render_submit`, submitter 포함)은 지원한다. 다음은 공개 헬퍼가 없다.
 
-- `element`·`form` 선택자로 실제 바인딩을 읽는 `render_click`·change·submit·key·focus·blur와 submitter 검사
+- key·focus·blur 이벤트, `render_hook`, 중첩 컴포넌트에 보내기(`find_live_child`), 폼의 HTTP 제출(`submit_form`)
 - `file_input`·`preflight_upload`·`render_upload`로 업로드 프로토콜을 구동하는 헬퍼
 - `render_async`처럼 관리 중인 비동기 작업이 끝날 때까지 기다리는 헬퍼
 - `assert_push_event`·`assert_reply`·page title 전용 단언, hook 이벤트·자식 탐색·HTTP action 제출 헬퍼
 
-`call`은 DOM에 핸들러가 연결됐는지 검증하지 않는다. `render`는 자식의 라이브 수명주기를 구동하지 않는다.
+`call`은 DOM에 핸들러가 연결됐는지 검증하지 않는다 — 그것은 `click` 등이 한다. 이들은 JavaScript를 돌리지 않으므로
+`JS()` 체인·훅·debounce의 시간은 브라우저 E2E로 본다. `render`는 자식의 라이브 수명주기를 구동하지 않는다.
 이 부분은 컨슈머 통합 테스트와 브라우저 E2E로 확인한다. `sent_messages` 목록은 공개지만 그 메시지 형식은 내부 프로토콜이다.
 Phoenix 1.2의 중복 ID·컴포넌트·복구 폼 ID 누락별 `raise`/`warn`/`ignore` 설정도 제공하지 않는다.

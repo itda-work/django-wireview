@@ -72,6 +72,7 @@ DB를 읽거나 쓰는 컴포넌트는 `joined()`에서 이미 DB에 닿으므�
 |-------------|------|
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.call(handler, **kwargs)` | 이벤트 핸들러 호출 |
+| `view.click(selector)` · `change` · `input` · `submit` | 페이지의 요소로 이벤트 보내기 (아래 참조) |
 | `view.sent_messages` | 전송된 메시지 목록 |
 | `view.redirected_to` | 리다이렉트 URL |
 | `view.is_frozen` | freeze 상태 |
@@ -110,6 +111,43 @@ async def test_set_to():
 인자 이름은 핸들러의 매개변수 이름과 같아야 한다. `view.call()`은 핸들러가 받지 않는 인자를 버린다 —
 폼의 다른 필드가 함께 실려 오는 클라이언트 이벤트와 같게. 그래서 `view.call("increment", amount=5)`처럼
 없는 매개변수를 넘기면 오류 없이 무시되고 `increment()`만 돈다.
+
+### 페이지의 버튼으로
+
+`view.call()`은 템플릿을 보지 않는다. 카운터의 `+` 버튼에서 `{% on "click" "increment" %}`을 지워도 위 테스트는
+통과한다. 사용자가 누르는 버튼을 테스트하려면 `view.click()`을 쓴다 — 렌더에서 요소를 고르고, 그 요소의 바인딩이
+부르는 핸들러를 브라우저와 같은 인자로 부른다.
+
+```python
+@pytest.mark.asyncio
+async def test_the_plus_button_increments():
+    view = await mount(XCounter, count=0)
+
+    await view.click("button", text="+1")
+
+    assert view.component.count == 1
+
+
+@pytest.mark.asyncio
+async def test_the_step_field_sets_the_step():
+    view = await mount(XCounter, count=0)
+
+    await view.change("input[name=step]", "5")   # 칸에 5를 넣고 떠난다: {% on "change" "set_step" %}
+
+    assert view.component.step == 5
+
+
+@pytest.mark.asyncio
+async def test_the_plus_button_is_disabled_at_the_maximum():
+    view = await mount(XCounter, count=10, max_value=10)
+
+    with pytest.raises(AssertionError, match="disabled"):
+        await view.click("button", text="+1")
+```
+
+선택자에 맞는 요소가 없거나 여럿이면, 그 요소와 조상에 그 이벤트의 바인딩이 없으면, 요소가 disabled면 실패한다.
+JavaScript는 돌지 않는다. 폼 제출(`submit()`)과 값 규칙, 실패하는 경우의 전체 목록은
+[기능 레퍼런스](../features/testing.md#페이지의-요소로-이벤트-보내기)에 있다.
 
 ### 여러 호출
 

@@ -1,0 +1,52 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-form">{{ heard }}</output>
+  <form data-testid="form"
+        {% on "submit.prevent" "saved" %}
+        {% on "change" "changed" %}>
+    <input name="title" value="{{ title }}" data-testid="title">
+    <textarea name="body">
+b0</textarea>
+    <select name="size" data-testid="size">
+      <option value="s" {% if size == "s" %}selected{% endif %}>S</option>
+      <option value="m" {% if size == "m" %}selected{% endif %}>M</option>
+    </select>
+    <select name="tags" multiple data-testid="tags">
+      <option {% if "a" in tags %}selected{% endif %}>a</option>
+      <option value="b" {% if "b" in tags %}selected{% endif %}>B</option>
+      <option value="c" {% if "c" in tags %}selected{% endif %}>C</option>
+    </select>
+    <input type="checkbox"
+           name="agree"
+           data-testid="agree"
+           {% if agree %}checked{% endif %}>
+    <input type="checkbox"
+           name="opts"
+           value="x"
+           data-testid="opt-x"
+           {% if "x" in opts %}checked{% endif %}>
+    <input type="checkbox"
+           name="opts"
+           value="y"
+           data-testid="opt-y"
+           {% if "y" in opts %}checked{% endif %}>
+    <input type="radio"
+           name="plan"
+           value="free"
+           data-testid="plan-free"
+           {% if plan == "free" %}checked{% endif %}>
+    <input type="radio"
+           name="plan"
+           value="pro"
+           data-testid="plan-pro"
+           {% if plan == "pro" %}checked{% endif %}>
+    <input name="locked" value="L" disabled>
+    <input type="hidden" name="secret" value="h">
+    <input name="query" data-testid="query" {% on "input" "typed" %}>
+    <button name="action" value="save" data-testid="save">Save</button>
+    <button name="action" value="delete" data-testid="delete">Delete</button>
+  </form>
+  <input name="outside" value="o">
+  <button type="button" data-testid="outside-click" {% on "click" "clicked" %}>outside</button>
+</div>

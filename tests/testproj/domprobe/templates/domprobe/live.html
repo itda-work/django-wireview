@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <output data-testid="heard-live">{{ heard }}</output>
+  <input name="lively" value="v1">
+  <button type="button"
+          data-testid="live-button"
+          {% on "click" "bump" myself=True %}>bump</button>
+</div>

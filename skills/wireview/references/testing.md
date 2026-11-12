@@ -26,7 +26,8 @@ async def test_increment():
 
 | 속성 · 메서드 | 무엇 |
 |---|---|
-| `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로 |
+| `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로. 템플릿의 바인딩은 보지 않는다 |
+| `await view.click(selector, text=...)` · `change(selector, value)` · `input(...)` · `submit("form", values={...})` | 렌더에서 고른 요소에 이벤트를 보낸다. 그 요소의 `{% on %}` 바인딩대로 핸들러가 불리고, 바인딩이 없으면 실패한다 (아래) |
 | `view.component` | 컴포넌트 인스턴스. 상태를 직접 검사한다 |
 | `view.render()` | 렌더된 HTML 문자열 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 |
@@ -42,6 +43,28 @@ async def test_increment():
 | `view.clear_messages()` | 다음 단계 전에 비운다. 필터 전환처럼 `stream()`을 다시 부르는 핸들러를 검사하기 전에 필수 |
 
 `ComponentTestCase`를 상속하면 pytest·unittest 클래스 안에서 같은 유틸을 쓸 수 있다.
+
+## 버튼이 정말 그 핸들러에 걸려 있는지
+
+`call("remove", id=3)`은 템플릿에서 버튼의 `{% on %}`을 지워도 통과한다. 사용자가 누르는 것을 테스트하려면
+`click`·`change`·`input`·`submit`을 쓴다 — 요소를 CSS 선택자(와 `text=`)로 고르고, 그 요소의 바인딩이 부르는
+핸들러에 바인딩의 인자와 폼 필드를 클라이언트처럼 실어 보낸다.
+
+```python
+@pytest.mark.asyncio
+async def test_the_plus_button_increments():
+    view = await mount(XCounter, amount=0)
+    await view.click("button", text="+1")             # <button {% on "click" "inc" %}>+1</button>
+    assert view.component.amount == 1
+
+    await view.submit("form", values={"amount": "5"})  # <form {% on "submit.prevent" "set_to" %}>
+    assert view.component.amount == 5
+```
+
+선택자에 맞는 요소가 없거나 여럿, 바인딩 없음, disabled, 다른 컴포넌트(중첩·LiveComponent)의 바인딩, `.prevent` 없는
+submit은 이유를 말하며 실패한다. JavaScript는 돌지 않는다(`JS()` 체인·훅·debounce의 시간). 부를 때마다 렌더에서
+다시 시작하므로 제출에 필요한 값은 `submit(values=...)`에 모두 준다. 상세는 docs/features/testing.md의
+"페이지의 요소로 이벤트 보내기".
 
 ## 스트림을 테스트할 때
 

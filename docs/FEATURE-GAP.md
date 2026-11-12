@@ -14,8 +14,8 @@
 | 상태 | 행 |
 |------|---:|
 | ✅ 지원 | 115 |
-| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 13 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 17 |
+| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 14 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 16 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟡·🟠 행은 상태 칸에 GAP 번호와
@@ -63,7 +63,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | 2.10 Components | 10 | 0 | 3 | 1 |
 | 2.11 Form Handling | 8 | 4 | 0 | 0 |
 | 2.12 Performance Features | 6 | 1 | 0 | 0 |
-| 2.13 Testing | 7 | 0 | 2 | 0 |
+| 2.13 Testing | 7 | 1 | 1 | 0 |
 | 2.14 Developer Tools | 6 | 0 | 1 | 0 |
 | 2.15 Miscellaneous | 5 | 1 | 1 | 1 |
 
@@ -267,13 +267,13 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
 | render_component | ✅ | `mount()` | ✅ | `tests/test_testing.py::TestMount::test_mount_with_initial_state`<br>`examples/slots/tests.py::test_a_card_renders_without_any_fill` |
-| render_click | ✅ | `call()` | ✅ | `tests/test_testing.py::TestMountedComponent::test_call_handler_with_args`<br>`tests/test_testing.py::TestCallMeetsTheEventChecks::test_a_private_or_framework_method_is_refused` |
-| render_change | ✅ | `call()` | ✅ | `tests/test_testing.py::TestCallMeetsTheEventChecks::test_arguments_the_handler_does_not_take_are_dropped`<br>`examples/search/tests.py::test_a_query_matches_title_or_author` |
+| render_click | ✅ | `click()` · `call()` | ✅ | `tests/test_dom_events.py::test_an_action_sends_what_the_page_would`<br>`tests/test_dom_events_e2e.py::test_a_browser_hears_what_the_helpers_send`<br>`tests/test_testing.py::TestMountedComponent::test_call_handler_with_args`<br>`tests/test_testing.py::TestCallMeetsTheEventChecks::test_a_private_or_framework_method_is_refused` |
+| render_change | ✅ | `change()` · `input()` · `submit()` · `call()` | ✅ | `tests/test_dom_events.py::test_what_no_user_can_do_fails`<br>`tests/test_testing.py::TestCallMeetsTheEventChecks::test_arguments_the_handler_does_not_take_are_dropped`<br>`examples/search/tests.py::test_a_query_matches_title_or_author` |
 | assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestAssertingWhereItNavigated::test_it_does_not_confuse_the_three_commands`<br>`tests/test_navigation_helpers.py::TestFollowingAPush::test_it_runs_params_changed` |
 | follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestFollowingARedirect::test_it_mounts_the_destination`<br>`tests/test_navigation_helpers.py::TestFollowingARedirect::test_a_refusing_destination_refuses_here_too` |
 | 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 | `tests/test_navigation_helpers.py::TestStreamHelpers::test_it_collects_the_html`<br>`tests/test_navigation_helpers.py::TestStreamHelpers::test_it_exposes_the_operations` |
 | MockChannelLayer | - | `mount()`이 채널 레이어를 흉내 내고 `view.broadcasts`에 남긴다 | ✅ 추가 기능 | `tests/test_presence.py::TestPresenceMixin::test_presence_join_broadcasts`<br>`examples/notifications/tests.py::test_marking_read_touches_only_the_users_own_and_tells_their_bell` |
-| DOM 바인딩을 읽는 테스트·test_warnings | `element/3`·`form/3`과 `render_click/change/submit/…`, `render_hook`, `find_live_child`, `submit_form`, `test_warnings` | `call()`은 핸들러 이름으로 바로 부른다(호출 가능 여부와 handle_event 훅만 검사). 바인딩·폼 필드·중복 id 검사 없음 | 🟠 GAP-056 (#252) |  |
+| DOM 바인딩을 읽는 테스트·test_warnings | `element/3`·`form/3`과 `render_click/change/submit/…`, `render_hook`, `find_live_child`, `submit_form`, `test_warnings` | `click()`·`change()`·`input()`·`submit()`이 렌더에서 선택자(와 `text=`)로 고른 요소의 `wire-on-*` 바인딩을 클라이언트와 같은 규칙(위임·수정자·폼 필드 직렬화·submitter·소유 컴포넌트)으로 읽어 보낸다. 남은 것: key·focus·blur, `render_hook`, `find_live_child`(중첩 컴포넌트에 보내기), `submit_form`(HTTP 제출), 스트림 항목, 중복 id 등 테스트 경고 | 🟡 GAP-056 (#252) |  |
 | 비동기·업로드 테스트와 메시지 단언 | `render_async/2`, `file_input/4`·`render_upload/3`·`preflight_upload/1`, `assert_push_event`, `assert_reply`, `page_title/1` | `call()`이 핸들러 반환값을 돌려준다. 그 밖은 `sent_messages`의 내부 형식을 직접 읽는다 | 🟠 GAP-057 (#253) |  |
 
 ### 2.14 Developer Tools 🟠

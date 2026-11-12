@@ -166,6 +166,11 @@ wireview/
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          mount는 CSRF 쿠키를 가진 페이지다(_PageCsrf, #206): {% csrf_token %}이 mount마다 새 시크릿의 토큰을 그린다
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
+├── testing_dom.py         click()·change()·input()·submit()이 읽는 페이지(GAP-056, #252). 렌더를 표준 라이브러리 HTML 파서로 트리로 만들고
+│                          CSS 선택자의 부분집합으로 고른다. 바인딩 해석(parse_binding·bindings_for·run_steps)은 events.mjs의 사본이고
+│                          tests/js/bindings.mjs 가 같은 입력에 클라이언트 함수를 돌려 맞춘다. 위임·소유 컴포넌트·필드 직렬화는 wireview.js의
+│                          EventBindings.run·wireview.send·Component.serialize를 따른다 — 클라이언트를 바꾸면 이것과 tests/test_dom_events_e2e.py 도.
+│                          핸들러는 MountedComponent._handle(call()과 같은 길)로 부른다. JavaScript는 돌지 않는다
 ├── pytest_plugin.py       pytest 플러그인 wireview(pyproject의 pytest11 진입점, 앱의 스위트에도 실린다). 테스트가 끝나면 그 테스트의 mount가
 │                          듣기를 멈춘다(#201). 테스트보다 넓은 픽스처(모듈·클래스·세션, setUpClass)의 setup 중 만든 mount는 그 픽스처가
 │                          정리될 때(pytest_fixture_setup이 단 finalizer). wireview.testing을 import하지 않는다 — 그쪽이 kept()를 묻고,
@@ -333,6 +338,7 @@ tests/
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
+                           domprobe/ 는 사용자의 클릭·change·input·submit이 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent, DomTrap은 바인딩을 지우거나 잘못 건 템플릿),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
                            endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),

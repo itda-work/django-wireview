@@ -4,6 +4,9 @@ from playwright.sync_api import expect
 from testproj.e2e_browser import INBOX_SHIM, expect_count, expect_text, wait_live
 from testproj.e2e_server import serve
 
+from wireview import mount
+
+from .live import XTodoItem, XTodoList
 from .models import Item
 
 
@@ -32,6 +35,61 @@ class TestNormalRendering(TestCase):
                 assert response.status_code == 200
                 assert response.context["showing"] == "all"
                 self.assertContains(response, "First task")
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+class TestTodoByItsBindings:
+    """The browser test below, with the test helpers: each step clicks what the user clicks (GAP-056).
+
+    No browser, so it runs with ``make test``; the bindings are still the page's
+    -- a button the template does not wire to a handler fails the step.
+    """
+
+    @pytest.mark.asyncio
+    async def test_an_item_is_completed_and_deleted_from_its_own_controls(self):
+        item = await Item.objects.acreate(text="HI")
+        view = await mount(XTodoItem, item=item)
+
+        await view.click("input.toggle")
+        await item.arefresh_from_db()
+        assert item.completed
+
+        await view.click("input.toggle")
+        await item.arefresh_from_db()
+        assert not item.completed
+
+        await view.click("button.destroy")
+        assert not await Item.objects.filter(pk=item.pk).aexists()
+
+    @pytest.mark.asyncio
+    async def test_the_list_filters_and_clears_from_its_footer(self):
+        await Item.objects.acreate(text="HI")
+        await Item.objects.acreate(text="Second task", completed=True)
+        view = await mount(XTodoList)
+
+        html = await view.click(".filters a", text="Active")
+        assert view.component.showing == "active"
+        assert '<a class="selected"' in html
+
+        await view.click(".filters a", text="Completed")
+        assert view.component.showing == "completed"
+
+        await view.click("button.clear-completed")
+        assert [i.text async for i in Item.objects.all()] == ["HI"]
+
+    @pytest.mark.asyncio
+    async def test_toggle_all_marks_every_item_and_back(self):
+        await Item.objects.acreate(text="HI")
+        await Item.objects.acreate(text="Second task")
+        view = await mount(XTodoList)
+
+        await view.click("#toggle-all")
+        assert await Item.objects.filter(completed=False).acount() == 0
+
+        # Unchecked, the box sends no toggle_all at all: the handler raised before
+        await view.click("#toggle-all")
+        assert await Item.objects.filter(completed=True).acount() == 0
 
 
 @pytest.fixture(scope="function")
@@ -144,6 +202,21 @@ class TestPlaywrightTodo:
 
         # Check no items left
         expect_count(page.locator("[data-name=XTodoItem]"), 0)
+
+    def test_unchecking_toggle_all_marks_every_item_active(self, page, wireview_server):
+        """An unchecked checkbox sends no value: the handler takes that as "uncheck"."""
+        page.goto(f"{wireview_server}/todo")
+        wait_live(page, '[data-name=XTodoList][data-is-live="true"]')
+        page.locator("input.new-todo").fill("HI")
+        page.locator("input.new-todo").press("Enter")
+        expect_count(page.locator("[data-name=XTodoItem]"), 1)
+
+        # The checkbox is styled away; the label beside it is what a user clicks
+        page.locator("label[for=toggle-all]").click()
+        expect_count(page.locator("li.completed"), 1)
+        page.locator("label[for=toggle-all]").click()
+        expect_count(page.locator("li.completed"), 0)
+        expect(page.locator("#toggle-all")).not_to_be_checked()
 
     def test_enter_shows_loading_until_answered(self, page, wireview_server):
         """Enter shows its loading state at once and keeps it until the answer arrives.

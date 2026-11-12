@@ -27,6 +27,7 @@ import collections
 import contextlib
 import itertools
 import json
+import re
 import sys
 import typing as t
 import weakref
@@ -40,6 +41,7 @@ from django.http import HttpRequest
 from django.middleware.csrf import get_token
 from django.urls import Resolver404
 
+from . import testing_dom
 from .core import csrf, notifications, patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
@@ -954,6 +956,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             await view.call("increment", amount=5)
             await view.call("save", text="Updated text")
         """
+        return await self._handle(handler_name, kwargs)
+
+    async def _handle(self, handler_name: str, kwargs: dict[str, t.Any]) -> t.Any:
+        """Run an event's handler as a session does: ``call()`` and the DOM helpers' one way in."""
         from .repository import ComponentRepository
         from .utils import filter_parameters
 
@@ -991,6 +997,108 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             # Inside the event, as a session subscribes before it reads the next message
             await self._update_subscriptions()
         return result
+
+    # The page's elements (GAP-056)
+
+    async def click(self, selector: str, /, *, text: str | re.Pattern[str] | None = None) -> str | None:
+        """Click the element ``selector`` picks in the render, as a user does, and send what the page would.
+
+        The click bubbles from the element through its ancestors, and every
+        ``{% on "click" %}`` binding it meets runs with its arguments and the
+        fields the client serializes -- a binding the template does not have is
+        not called. As in a browser, a checkbox or radio is ticked during the
+        click and is followed by ``input`` and ``change`` unless the click is
+        prevented, and a form's submit button then submits its form.
+
+        Returns what :meth:`render` returns afterwards. Fails, saying why, when
+        no element or more than one matches (narrow with a selector or
+        ``text=``), when the element is disabled, when no binding of a server
+        handler fires, when the binding is another component's, or when a
+        ``JS()`` chain would push an event (no JavaScript runs here).
+
+        Example:
+            html = await view.click("button.remove", text="Delete")
+        """
+        return await self._act(lambda page: page.click(page.find(selector, text)))
+
+    async def change(
+        self, selector: str, /, value: t.Any = testing_dom._UNSET, *, text: str | re.Pattern[str] | None = None
+    ) -> str | None:
+        """Give the field ``selector`` picks a ``value`` and dispatch ``change`` at it, as leaving a typed field does.
+
+        ``value`` is what the user leaves in it: a ``str`` for a text field, a
+        textarea or a select (the option's value), a ``list[str]`` for a select
+        multiple, ``True``/``False`` for a checkbox, ``True`` for a radio. Without
+        it the field keeps the value the render gave it. Only ``change`` is
+        dispatched; a browser also sends ``input`` while the user types.
+        See :meth:`click` for what is sent and when it fails.
+
+        Example:
+            await view.change("select[name=sort]", "price")
+        """
+        return await self._act(lambda page: page.change(page.find(selector, text), value, "change"))
+
+    async def input(
+        self, selector: str, /, value: t.Any = testing_dom._UNSET, *, text: str | re.Pattern[str] | None = None
+    ) -> str | None:
+        """As :meth:`change`, dispatching ``input``: what each keystroke sends.
+
+        Example:
+            await view.input("input[name=query]", "wire")
+        """
+        return await self._act(lambda page: page.change(page.find(selector, text), value, "input"))
+
+    async def submit(
+        self,
+        selector: str = "form",
+        /,
+        *,
+        values: dict[str, t.Any] | None = None,
+        submitter: str | None = None,
+        text: str | re.Pattern[str] | None = None,
+    ) -> str | None:
+        """Submit the form ``selector`` picks, with ``values`` in its fields, and send what the page would.
+
+        ``values`` maps a field's name to what the user put in it (the types
+        :meth:`change` takes; a group of checkboxes takes the values to check as a
+        list, a group of radio buttons the value to choose). A name the form does
+        not have fails. ``submitter`` picks the submit button pressed, which must
+        be the form's. The helpers keep nothing typed between calls: give every
+        value the submit needs here. The submit must be prevented
+        (``{% on "submit.prevent" %}``): one that is not would also load the
+        form's action in a browser, and fails here.
+
+        Example:
+            await view.submit("form#signup", values={"email": "a@example.com"})
+        """
+
+        def act(page: testing_dom.Page) -> list[testing_dom.ServerEvent]:
+            form = page.find(selector, text, what="form")
+            button = page.find(submitter, what="submit button") if submitter is not None else None
+            return page.submit(form, values, button)
+
+        return await self._act(act)
+
+    async def _act(self, action: t.Callable[[testing_dom.Page], list[testing_dom.ServerEvent]]) -> str | None:
+        """Do ``action`` on the page as it is now, send its events in order, and render."""
+        from django.utils.datastructures import MultiValueDict
+
+        from .utils import parse_request_data
+
+        # Off the loop, as a page's render is: a template may await an async property
+        html = await sync_to_async(self.render)()
+        if html is None:
+            raise testing_dom.DomError(
+                f"{self._component._name} is frozen and draws nothing: there is no page to act on"
+            )
+        page = testing_dom.Page(html, self._component.id, self.stream_items())
+        # Every event of one action is read from the page before any answer, as
+        # the browser dispatches them all before the server's render comes back
+        for event in action(page):
+            # What the session does with a user_event's two halves (command_user_event)
+            kwargs = dict(parse_request_data(MultiValueDict(event.implicit_args)), **event.explicit_args)
+            await self._handle(event.handler, kwargs)
+        return await sync_to_async(self.render)()
 
     def render(self) -> str | None:
         """

@@ -1,0 +1,16 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-bubble">{{ heard }}</output>
+  <input name="note" value="n1">
+  <section data-testid="wrap" {% on "click" "wrapped" where="section" %}>
+    <button type="button" data-testid="inner" {% on "click" "inner" n=1 %}>inner</button>
+    <button type="button" data-testid="stopper" {% on "click.stop" "inner" n=2 %}>stop</button>
+    <span data-testid="bare">bare</span>
+    <button type="button" data-testid="ctrl" {% on "click.ctrl" "inner" n=3 %}>ctrl</button>
+    <button type="button"
+            data-testid="slow"
+            {% on "click.debounce.50" "inner" n=4 %}>slow</button>
+    <button type="button" data-testid="js" {% on "click" this.mark %}>js</button>
+  </section>
+</div>

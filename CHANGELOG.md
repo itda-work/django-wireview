@@ -14,6 +14,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `MountedComponent.click()`, `change()`, `input()` and `submit()` act on the page a mounted component draws
+  (GAP-056, #252): they pick one element of its render by a CSS selector (tags, `#id`, `.class`, attribute
+  selectors, descendant and child combinators) and an optional `text=`, dispatch the event at it, and send what the
+  client would -- the handler and arguments of the `wire-on-*` bindings the event meets on its way up, with the
+  fields the client serializes. `view.call("remove", id=3)` passed with the template's binding deleted or pointed
+  at another handler; these fail. They also fail, saying why, on no match or several, a disabled element, a binding
+  of a nested component or LiveComponent, a submit nothing prevents, and a `JS()` chain that pushes. A click ticks a
+  checkbox or radio and follows with `input` and `change`, and a submit button submits its form. No JavaScript
+  runs: `.debounce` fires as if its time had passed, `.throttle` lets each event through, a key modifier does not
+  hold for these events. They return what `render()` returns afterwards. `tests/js/bindings.mjs` runs the client's
+  `events.mjs` on the inputs the helpers get, and `tests/test_dom_events_e2e.py` does each action of the probe in a
+  browser and compares what the handlers heard.
 - Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
   6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
   (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's
@@ -245,6 +257,9 @@ The django-reactor era changelog (2.x) is preserved in
   the render that answers a submit writes the server's value into each input, and the example drew none. It keeps
   the form's own fields in a `values` field and draws `value=` from it, as `tests/testproj/formprobe/` does; the
   first example no longer keeps the password in state, which the browser can read.
+- `examples/todo`: unchecking "Mark all as complete" raised, the component joined again and nothing changed (#252).
+  An unchecked checkbox sends no value, and `toggle_all()` required one; it defaults to `False` now. `click()` found
+  it.
 - `manage.py wireview_lsp` died with `tokenize.TokenError` when a source file had been saved since its module was
   loaded and its lines no longer tokenized where the loaded tag, filter or component had been (#265). That entry is
   now described without a location (`file_path` "", `line_number` 0), as one with no source file was.

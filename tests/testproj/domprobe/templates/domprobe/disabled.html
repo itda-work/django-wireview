@@ -1,0 +1,24 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="off" disabled {% on "click" "hit" %}>off</button>
+  <button type="button" disabled {% on "click" "hit" %}>
+    <span data-testid="in-off">in</span>
+  </button>
+  <fieldset disabled>
+    <legend>
+      <button type="button" data-testid="in-legend" {% on "click" "hit" %}>legend</button>
+    </legend>
+    <button type="button" data-testid="in-fieldset" {% on "click" "hit" %}>fieldset</button>
+  </fieldset>
+  <button type="button" data-testid="pusher" {% on "click" this.push_chain %}>push</button>
+  <form {% on "submit" "hit" %}>
+    <button data-testid="unprevented">go</button>
+  </form>
+  <form>
+    <button data-testid="plain-submit" {% on "click" "hit" %}>go</button>
+  </form>
+</div>
+<p>
+  <button type="button" data-testid="no-component" {% on "click" "hit" %}>outside</button>
+</p>

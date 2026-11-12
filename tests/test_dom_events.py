@@ -1,0 +1,388 @@
+"""The test helpers that read the page's bindings: click(), change(), input(), submit() (GAP-056, #252).
+
+``view.call("remove", id=3)`` passes whether or not any button on the page calls
+``remove``. These helpers find the element, dispatch the event at it and send
+what the client would -- so the binding is what is tested.
+
+Three kinds of check:
+
+- the client's binding rules (``events.mjs``) and the helpers' copy agree on
+  every input: ``tests/js/bindings.mjs`` runs the client's functions on the
+  same random cases;
+- the actions on ``testproj.domprobe`` hear what ``SCENARIOS`` says, which
+  ``tests/test_dom_events_e2e.py`` checks a browser hears too;
+- each way a test can ask for what no user can do fails, saying why.
+"""
+
+from __future__ import annotations
+
+import json
+import random
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+from testproj.domprobe.live import HEARD, DomBubble, DomForm, DomNest, DomTrap
+from testproj.domprobe.scenarios import SCENARIOS, heard
+
+from wireview import JS, Component, mount
+from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
+from wireview.testing_dom import Element, Selector, _Dispatch, parse
+
+DRIVER = Path(__file__).parent / "js" / "bindings.mjs"
+
+
+@pytest.fixture(autouse=True)
+def _clear_heard():
+    HEARD.clear()
+    yield
+    HEARD.clear()
+
+
+# ============================================================================
+# The client's rules, on the same inputs
+# ============================================================================
+
+EVENT_TYPES = ["click", "change", "input", "submit", "keyup"]
+TOKENS = [*MODIFIERS, "Enter", "ESC", "away", ""]
+
+
+def _binding_name(rng: random.Random) -> str:
+    """A binding attribute, valid or not: the client reads whatever a page carries."""
+    tokens = [rng.choice(EVENT_TYPES)]
+    for _ in range(rng.choice([0, 1, 1, 2, 3, 4])):
+        token = rng.choice(TOKENS)
+        tokens.append(token)
+        if token in MODIFIER_ARGUMENTS and rng.random() < 0.9:
+            tokens.append(rng.choice(["0", "30", "300", "enter", "a", "13", "x1"]))
+    return "wire-on-" + ".".join(tokens)
+
+
+def _event(rng: random.Random) -> dict:
+    if rng.random() < 0.5:
+        # What the helpers dispatch: no keys held
+        return {}
+    return {
+        "key": rng.choice(["Enter", "a", "Escape", " ", "ArrowUp"]),
+        "keyCode": rng.choice([13, 65, 27]),
+        "isComposing": rng.random() < 0.2,
+        "ctrlKey": rng.random() < 0.5,
+        "altKey": rng.random() < 0.3,
+        "shiftKey": rng.random() < 0.3,
+        "metaKey": rng.random() < 0.3,
+    }
+
+
+def _case(rng: random.Random) -> dict:
+    chain = [
+        [_binding_name(rng) for _ in range(rng.choice([0, 0, 1, 1, 2, 3]))] for _ in range(rng.choice([1, 2, 3, 4]))
+    ]
+    # An element carries an attribute once
+    chain = [list(dict.fromkeys(names)) for names in chain]
+    return {"chain": chain, "type": rng.choice(EVENT_TYPES), "event": _event(rng)}
+
+
+class _Recorder:
+    """A page whose every binding is recorded where it fired, in place of being sent."""
+
+    def __init__(self, elements: list[Element]) -> None:
+        self.elements = elements
+        self.fired: list[list] = []
+
+    def server_event(self, el, handler, args, target, type_):
+        self.fired.append([self.elements.index(el), handler])
+        return None
+
+
+def _helpers_dispatch(case: dict) -> dict:
+    # The chain as elements, target first; each binding names itself as its handler
+    elements: list[Element] = []
+    parent = None
+    for names in reversed(case["chain"]):
+        el = Element("div", [(name, json.dumps({"h": name})) for name in names], parent)
+        if parent is not None:
+            parent.children.append(el)
+        parent = el
+        elements.insert(0, el)
+    recorder = _Recorder(elements)
+    action = _Dispatch(recorder)  # type: ignore[arg-type]
+    prevented = action.dispatch(elements[0], case["type"], case["event"])
+    action.run_timers()
+    return {"fired": recorder.fired, "prevented": prevented}
+
+
+@pytest.mark.integration
+def test_the_helpers_run_bindings_as_the_client_does():
+    rng = random.Random(252)
+    cases = [_case(rng) for _ in range(3000)]
+    node = shutil.which("node")
+    # Not a skip: this is what holds the helpers to the client, and node builds the bundle
+    assert node, "node is required: tests/js/bindings.mjs runs events.mjs"
+    out = subprocess.run(
+        [node, str(DRIVER)], input=json.dumps(cases), capture_output=True, text=True, encoding="utf-8", check=True
+    )
+    client = json.loads(out.stdout)
+    fired = 0
+    for case, theirs in zip(cases, client, strict=True):
+        ours = _helpers_dispatch(case)
+        assert ours == theirs, f"the helpers and events.mjs part on {case}"
+        fired += len(ours["fired"])
+    # The cases exercise firing, not only skipping
+    assert fired > 400
+
+
+# ============================================================================
+# The probe: the same actions a browser does (tests/test_dom_events_e2e.py)
+# ============================================================================
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", SCENARIOS, ids=[s.name for s in SCENARIOS])
+async def test_an_action_sends_what_the_page_would(scenario):
+    view = await mount(scenario.component)
+    await scenario.helper(view)
+    assert heard(scenario.component, scenario.expected, HEARD) == scenario.expected
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_it_returns_the_render_after_the_events():
+    view = await mount(DomBubble)
+    html = await view.click("[data-testid=bare]")
+    assert html == view.render()
+    assert '<output data-testid="heard-bubble">wrapped</output>' in html
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_text_picks_among_the_matches():
+    view = await mount(DomBubble)
+    await view.click("section button", text="stop")
+    assert [name for _, name, _ in HEARD] == ["inner"]
+    HEARD.clear()
+    await view.click("button", text=re.compile(r"^in"))
+    assert [name for _, name, _ in HEARD] == ["inner", "wrapped"]
+
+
+# ============================================================================
+# The mistake they are for
+# ============================================================================
+
+
+class DomTrapUnbound(DomTrap):
+    class Meta:
+        template_name = "domprobe/trap_unbound.html"
+
+
+class DomTrapMiswired(DomTrap):
+    class Meta:
+        template_name = "domprobe/trap_miswired.html"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_button_wired_to_the_handler_passes_both():
+    view = await mount(DomTrap)
+    await view.click("[data-testid=remove]")
+    await view.call("remove", id=3)
+    assert [(name, kwargs) for _, name, kwargs in HEARD] == [("remove", {"id": 3}), ("remove", {"id": 3})]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_deleted_binding_fails_the_click_and_not_the_call():
+    view = await mount(DomTrapUnbound)
+    await view.call("remove", id=3)
+    with pytest.raises(AssertionError, match=r"reaches no handler"):
+        await view.click("[data-testid=remove]")
+    assert [name for _, name, _ in HEARD] == ["remove"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_miswired_button_calls_what_it_is_wired_to():
+    view = await mount(DomTrapMiswired)
+    await view.call("remove", id=3)
+    await view.click("[data-testid=remove]")
+    # The click ran archive: a test that asserts remove's effect fails, as the page does
+    assert [name for _, name, _ in HEARD] == ["remove", "archive"]
+
+
+# ============================================================================
+# What fails, and says why
+# ============================================================================
+
+
+async def _fails(view, action, match: str) -> None:
+    with pytest.raises(AssertionError, match=match):
+        await action(view)
+    assert HEARD == [], "a failed action sends nothing"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("component", "action", "match"),
+    [
+        (DomBubble, lambda v: v.click("[data-testid=nope]"), r"No element matches '\[data-testid=nope\]'"),
+        (DomBubble, lambda v: v.click("button"), r"5 elements match 'button'.*\n  <button"),
+        (DomBubble, lambda v: v.click("button", text="nothing"), r"No element matches 'button' with text 'nothing'"),
+        # Nothing on the way up from the output binds a click
+        (DomBubble, lambda v: v.click("output"), r"reaches no handler"),
+        (DomForm, lambda v: v.click("[data-testid=plan-free]"), r"reaches no handler"),
+        # A disabled field is not the user's
+        (DomForm, lambda v: v.change("input[name=locked]", "x"), r"it is disabled"),
+        (DomForm, lambda v: v.change("input[name=secret]", "x"), r"hidden input"),
+        (DomForm, lambda v: v.change("[data-testid=size]", "xl"), r"no option 'xl'"),
+        (DomForm, lambda v: v.change("[data-testid=tags]", "a"), r"give the values to choose as a list"),
+        (DomForm, lambda v: v.change("[data-testid=agree]", "yes"), r"give True to check it"),
+        (DomForm, lambda v: v.change("[data-testid=title]", 3), r"give the value as a str"),
+        (DomForm, lambda v: v.change("[data-testid=save]", "x"), r"is not a field"),
+        (DomForm, lambda v: v.submit("form", values={"nope": "x"}), r"has no field called 'nope'"),
+        (DomForm, lambda v: v.submit("form", values={"locked": "x"}), r"it is disabled"),
+        (DomForm, lambda v: v.submit("form", values={"plan": "gold"}), r"No radio button 'plan'.*'gold'"),
+        (DomForm, lambda v: v.submit("form", submitter="[data-testid=title]"), r"is not a submit button"),
+        (DomForm, lambda v: v.submit("[data-testid=title]"), r"is not a form"),
+        # The binding belongs to a nested component, which mount() does not run
+        (DomNest, lambda v: v.click("[data-testid=leaf-button]"), r"calls 'leaf' on DomLeaf 'leaf'.*Mount DomLeaf"),
+        (DomNest, lambda v: v.click("[data-testid=live-button]"), r"calls 'bump' on DomLive 'live'"),
+    ],
+)
+async def test_what_no_user_can_do_fails(component, action, match):
+    view = await mount(component)
+    await _fails(view, action, match)
+
+
+class DomDisabled(Component):
+    class Meta:
+        template_name = "domprobe/disabled.html"
+
+    @property
+    def push_chain(self) -> JS:
+        return JS().push("pushed")
+
+    async def hit(self, **kwargs) -> None:
+        HEARD.append(("DomDisabled", "hit", kwargs))
+
+    async def pushed(self) -> None:
+        HEARD.append(("DomDisabled", "pushed", {}))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("selector", "match"),
+    [
+        ("[data-testid=off]", r"Cannot click .*: it is disabled"),
+        ("[data-testid=in-off]", r"inside the disabled <button"),
+        ("[data-testid=in-fieldset]", r"inside the disabled <fieldset"),
+        ("[data-testid=pusher]", r"JS\(\) chain .* pushes 'pushed'"),
+        ("[data-testid=unprevented]", r"Nothing prevents the submit"),
+        ("[data-testid=plain-submit]", r"Nothing prevents the submit"),
+        ("[data-testid=no-component]", r"is in no component's element"),
+    ],
+)
+async def test_a_click_no_user_can_make_fails(selector, match):
+    view = await mount(DomDisabled)
+    await _fails(view, lambda v: v.click(selector), match)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_legend_of_a_disabled_fieldset_is_not_disabled():
+    view = await mount(DomDisabled)
+    await view.click("[data-testid=in-legend]")
+    assert [name for _, name, _ in HEARD] == ["hit"]
+
+
+class DomStreamed(Component):
+    class Meta:
+        template_name = "domprobe/streamed.html"
+
+    async def joined(self) -> None:
+        await self.stream("rows", [{"id": 1, "label": "one"}], dom_id=lambda row: f"row-{row['id']}")
+
+    async def remove(self, id: int) -> None:
+        HEARD.append(("DomStreamed", "remove", {"id": id}))
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.asyncio
+async def test_a_stream_item_is_named_as_one():
+    view = await mount(DomStreamed)
+    await _fails(view, lambda v: v.click("[data-testid=row-remove]"), r"matches a stream item")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_frozen_component_has_no_page():
+    view = await mount(DomBubble)
+    view.wire.freeze()
+    await _fails(view, lambda v: v.click("button"), r"is frozen")
+
+
+# ============================================================================
+# The parts
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("selector", "expected"),
+    [
+        ("li", ["a", "b", "c"]),
+        ("#second", ["b"]),
+        (".odd", ["a", "c"]),
+        ("li.odd.last", ["c"]),
+        ("[data-testid=x]", ["a"]),
+        ("[data-testid='x']", ["a"]),
+        ('[data-testid="x"]', ["a"]),
+        ("[data-k]", ["a", "b"]),
+        ("[data-k^=pre]", ["a"]),
+        ("[data-k$=fix]", ["b"]),
+        ("[data-k*=e-f]", ["b"]),
+        ("[class~=last]", ["c"]),
+        ("ul > li", ["a", "b", "c"]),
+        ("div > li", []),
+        ("div li", ["a", "b", "c"]),
+        ("div  >  ul   li.odd", ["a", "c"]),
+        ("#second, .last", ["b", "c"]),
+        ("*[data-k]", ["a", "b"]),
+        ("LI#second", ["b"]),
+    ],
+)
+def test_selectors(selector, expected):
+    root = parse(
+        "<div><ul>"
+        '<li class="odd" data-testid="x" data-k="prelude">a</li>'
+        '<li id="second" data-k="the-fix">b</li>'
+        '<li class="odd last">c</li>'
+        "</ul></div>"
+    )
+    assert [el.text for el in Selector(selector).select(root)] == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("selector", ["", "li:first-child", "a + b", "a ~ b", "> a", "a >", "a,", "[x"])
+def test_a_selector_the_helpers_do_not_read_says_so(selector):
+    with pytest.raises(ValueError):
+        Selector(selector)
+
+
+@pytest.mark.unit
+def test_the_parser_closes_what_a_browser_closes():
+    root = parse("<ul><li>a<li>b</ul><p>x<input name=q value=1><br>y</p></span>z<textarea>\nkeep</textarea>")
+    assert [el.text for el in Selector("li").select(root)] == ["a", "b"]
+    assert Selector("p").select(root)[0].text == "xy"
+    assert Selector("textarea").select(root)[0].text == "keep"
+
+
+@pytest.mark.unit
+def test_a_selector_names_a_non_ascii_class_and_id():
+    root = parse('<p class="강조" id="머리">a</p><p>b</p>')
+    assert [el.text for el in Selector("p.강조").select(root)] == ["a"]
+    assert [el.text for el in Selector("#머리").select(root)] == ["a"]

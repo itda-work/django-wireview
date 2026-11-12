@@ -90,8 +90,12 @@ class XTodoList(Component):
         """Async property for checking completion state."""
         return (await self.items.acount()) == (await self.items.completed().acount())
 
-    async def toggle_all(self, toggle_all: bool):
-        """Mark all items as completed or active."""
+    async def toggle_all(self, toggle_all: bool = False):
+        """Mark all items as completed or active.
+
+        An unchecked checkbox sends nothing, so unchecking it arrives without
+        ``toggle_all``: the default is what makes that "mark all active".
+        """
         await self.items.aupdate(completed=toggle_all)
 
     async def add(self, new_item: str):

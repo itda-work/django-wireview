@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>dom probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component 'DomBubble' id="bubble" %}
+    {% component 'DomForm' id="form" %}
+    {% component 'DomNest' id="nest" %}
+  </body>
+</html>

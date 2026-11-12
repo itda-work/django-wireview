@@ -1,0 +1,10 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-nest">{{ heard }}</output>
+  <input name="mine" value="m1">
+  <div data-testid="nest-wrap" {% on "click" "wrapped" %}>
+    {% component 'DomLeaf' id="leaf" %}
+    {% live_component 'DomLive' id="live" %}
+  </div>
+</div>

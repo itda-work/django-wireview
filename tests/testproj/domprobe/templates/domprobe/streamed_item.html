@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<li id="{{ dom_id }}">
+  <button type="button"
+          data-testid="row-remove"
+          {% on "click" "remove" id=item.id %}>{{ item.label }}</button>
+</li>
