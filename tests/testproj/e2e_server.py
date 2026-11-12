@@ -112,6 +112,8 @@ class UvicornThread(threading.Thread):
         loop = None
         try:
             loop = asyncio.new_event_loop()
+            # Every task of this loop is held until it ends, so the teardown finds it (#269)
+            loop.set_task_factory(_held_until_done(set()))
             self.loop = loop
             # log_config=None: Uvicorn's own dictConfig sets its loggers not to
             # propagate, and an exception in the application is logged there -- so
@@ -244,6 +246,28 @@ def _collecting_errors() -> t.Iterator[None]:
         _collector = previous
         for logger in loggers:
             logger.removeHandler(handler)
+
+
+def _held_until_done(held: set[asyncio.Task[t.Any]]) -> t.Callable[..., asyncio.Task[t.Any]]:
+    """A task factory that keeps a strong reference to each task until it is done (#269).
+
+    A loop holds its tasks weakly. One that nothing else refers to -- created and
+    let go, as ``ensure_future`` from a ``finally`` does -- is a cycle with the
+    future it waits on, and the cyclic collector may take it on any thread at any
+    time: gone from ``all_tasks()`` before the teardown looks, never cancelled,
+    its ``finally`` run later by the collector on whatever thread it ran on, with
+    the loop closed. A test that started such a task between two of them failed
+    "Task was destroyed but it is pending!" once in a while on a busy machine.
+    Held here, it is one of the tasks the teardown cancels and waits for.
+    """
+
+    def factory(loop: asyncio.AbstractEventLoop, coro: t.Any, **kwargs: t.Any) -> asyncio.Task[t.Any]:
+        task = asyncio.Task(coro, loop=loop, **kwargs)
+        held.add(task)
+        task.add_done_callback(held.discard)
+        return task
+
+    return factory
 
 
 async def _cancel_what_is_left() -> None:

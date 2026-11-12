@@ -221,8 +221,14 @@ def test_a_task_a_cancelled_task_starts_ends_before_the_loop_closes(started_thre
     backup cleaner, the one that releases the lock every channel of the process
     shares. Neither was there when the harness looked, once: the cleaner was
     pending when the loop closed, and the next servers' pages heard nothing.
+
+    Nothing refers to the task the test starts, as nothing refers to many a task
+    a library starts and lets go. The collector comes round before the teardown
+    here, as a busy machine's allocations once made it do (#269): the loop holds
+    its tasks weakly, and the harness has to hold them itself.
     """
     import asyncio
+    import gc
 
     started, ended = threading.Event(), threading.Event()
 
@@ -244,6 +250,7 @@ def test_a_task_a_cancelled_task_starts_ends_before_the_loop_closes(started_thre
         assert loop is not None
         loop.call_soon_threadsafe(lambda: loop.create_task(ends_in_a_task_of_its_own()))
         assert started.wait(timeout=5)
+        gc.collect()
 
     assert ended.is_set()
 
