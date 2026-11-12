@@ -120,9 +120,9 @@ channels_redis는 가득 찬 수신 버퍼에서 가장 오래된 것으로 말�
 
 | command | kwargs | 처리 |
 |---------|--------|------|
-| `dispatch_event` | `id`, `command`, `args`, `kwargs` | 세션 안에서 핸들러를 다시 호출하고 render |
-| `send_render` | `id` | 강제 render |
-| `crashed` | `id` | 컴포넌트의 백그라운드 작업(`start_async`의 `handle_async`)이 던졌다. 핸들러가 던진 것과 같이 복구한다(outbound `error`, #94) |
+| `dispatch_event` | `id`, `command`, `args`, `kwargs`, `instance` | 세션 안에서 핸들러를 다시 호출하고 render. `wire.defer`는 자기 인스턴스를, LiveComponent의 `send_to_parent`는 자기를 그린 부모의 인스턴스를 싣는다. 그 사이 같은 id로 다시 join한 다른 인스턴스면 아무것도 하지 않는다(#233) |
+| `send_render` | `id`, `instance` | 강제 render. 그 인스턴스가 아직 그 id에 있을 때만(#233) |
+| `crashed` | `id`, `instance` | 컴포넌트의 백그라운드 작업(`start_async`의 `handle_async`)이 던졌다. 핸들러가 던진 것과 같이 복구한다(outbound `error`, #94). 그 인스턴스의 것일 때만 — 같은 id로 다시 join한 새 인스턴스는 던지지 않았다(#233) |
 | `update_live_component` | `parent_id`, `live_component_id`, `assigns` | LiveComponent `update()` 후 render |
 | `template_changed` | 없음 | 개발 서버에서 템플릿이 바뀌었다(#180). 리로더 스레드가 넘긴 알림을 세션이 자기 채널로 보낸 것이라 컴포넌트가 보내지 않는다. 처리 순서를 지키려고 메일로 간다 — 처리 중인 메시지의 답 뒤에 outbound `rejoin`을 쓴다. 그 사이 연결이 닫혔으면 아무것도 보내지 않는다 |
 | `release_patches` | `id`, `instance` | 이 인스턴스가 `joined()` 전부터 잡아 둔 `Broadcast` 패치를 쓴다(5절의 `wireview.patch`). `joined()`가 쌓아 둔 작업 뒤, `joined` 앞에 보낸다. 브라우저에는 아무것도 보내지 않는다 — 잡아 둔 프레임만 나간다 |

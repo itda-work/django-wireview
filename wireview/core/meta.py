@@ -177,6 +177,9 @@ class WireviewMeta:
         # integer in JavaScript, where the page compares it with ``===``.
         self.instance: int = secrets.randbits(53)
         self.instance_announced: bool = False
+        # A LiveComponent's: the instance of the parent that drew it, which its
+        # send_to_parent() mail names (#233). Set by the repository that builds it.
+        self.parent_instance: int | None = None
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
         self.broker: Broker = broker
@@ -742,8 +745,12 @@ class WireviewMeta:
         await self.send("scroll_into_view", id=id, behavior=behavior, block=block, inline=inline)
 
     async def defer(self, _id: str, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
-        """Defer a function call to be executed later."""
-        await self.send("dispatch_event", command=_f.__name__, id=_id, args=args, kwargs=kwargs)
+        """Defer a call of this wire's component's handler (``_id``) to be executed later.
+
+        The mail names this instance: one a join has replaced under the id since
+        runs nothing on the new one (#233).
+        """
+        await self.send("dispatch_event", command=_f.__name__, id=_id, args=args, kwargs=kwargs, instance=self.instance)
 
     async def send(self, _command: str, **kwargs: t.Any) -> bool:
         """Send a command to the current channel.
@@ -803,6 +810,8 @@ class WireviewMeta:
             command=event,
             args=[],
             kwargs=kwargs,
+            # The parent this one was drawn by: a new one under its id hears nothing of it (#233)
+            instance=self.parent_instance,
         )
 
     # Pydantic v2 class-level attributes that should not be accessed on instances

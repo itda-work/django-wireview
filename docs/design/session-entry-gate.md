@@ -298,6 +298,11 @@ def test_every_entry_point_has_a_row():
 `transport.Mailbox`로, 아니면 레이어로 가지만(`core/transport.py:451`) 받는 쪽은 언제나 보낸 쪽과 같은 프로세스·같은 코드다.
 배포로 프로세스가 바뀌면 그 연결이 끝나고, 다시 연결한 페이지는 새 채널 이름을 받는다. 그래서 받는 쪽은 번호가 없는 메일을
 받아들일 이유가 없다 — 번호를 필수 인자로 둔다. (`utils.send_to`·`asend_to`는 이름이 비슷하지만 그룹으로 발행하는 알림이고 메일이 아니다.)
+남는 길은 둘이고 어느 것도 지금 쓰이지 않는다. `WireviewMeta.send_to(channel, ...)`는 다른 세션의 채널로도 보낼 수 있지만
+`self.wire`의 멤버는 비공개이고(`docs/COMPATIBILITY.md` "공개 API") 패키지 안에서 그것을 부르는 곳은 자기 채널로 보내는 `_do_send`
+하나다. 그리고 GAP-027의 2단계(세션 export/import, [session-extraction.md](./session-extraction.md) §4)가 열리면 세션이 다른
+프로세스로 옮겨 갈 수 있다 — `wire.instance`가 카운터가 아니라 난수인 것도 그 때문이다(`core/meta.py`의 주석, #141). 그 설계는
+옮기는 동안 채널에 남은 메일을 어떻게 할지 정해야 하고, 그때 번호가 없는 메일은 여전히 없다(#233 뒤로는 모든 메일이 번호를 싣는다).
 
 #### 결정 (2026-11-12)
 

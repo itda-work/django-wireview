@@ -84,7 +84,7 @@ class GoneProbe(Component):
 
     async def mail_a_render(self, **_rest):
         # Its render comes as a mail, answered while the next receive waits
-        await self.wire.send("send_render", id=self.id)
+        await self.wire.send("send_render", id=self.id, instance=self.wire.instance)
 
     async def leaving(self):
         CALLS.append(f"leaving {self.id}")

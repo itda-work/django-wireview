@@ -173,23 +173,17 @@ def _joined(session: WireviewConsumer, id: str, cls: str = "GateProbe", **fields
 def _leaf(session: WireviewConsumer, parent: Component) -> GateLeaf:
     leaf = t.cast(GateLeaf, _joined(session, "gate-leaf", "GateLeaf"))
     leaf._parent_id = parent.id
-    if "_parent_instance" in type(leaf).__private_attributes__:
-        # Which instance of its parent the leaf's mail is for (#233)
-        leaf._parent_instance = parent.wire.instance
+    leaf.wire.parent_instance = parent.wire.instance
     return leaf
 
 
 # --- how each way in is called --------------------------------------------------------------------
 
 
-def _takes_instance(method: t.Callable[..., t.Any]) -> bool:
-    return "instance" in inspect.signature(method).parameters
-
-
 def _with_instance(method: t.Callable[..., t.Any], instance: int, **kwargs: t.Any) -> t.Any:
-    # Before #233 these mails named their component by id alone: called without the
-    # number, the probe of a stale mail fails as the bug did rather than with a TypeError
-    if _takes_instance(method):
+    # component_update_live_component names its LiveComponent by id alone (out of #233's
+    # scope): called without the number, its probe of a stale mail fails as the gap does
+    if "instance" in inspect.signature(method).parameters:
         kwargs["instance"] = instance
     return method(**kwargs)
 
@@ -426,16 +420,6 @@ MISSING: dict[tuple[str, str], str] = {
     },
     ("component_update_live_component", "instance"): "#233: out of its scope, reported",
     ("component_update_live_component", "chores"): "#233: out of its scope, reported",
-    # Fixed by #233
-    **{
-        (name, "recovers"): "#233: the render is outside any recovery"
-        for name in ("command_upload_register", "command_upload_complete", "upload_progress", "upload_error")
-    },
-    ("command_upload_complete", "chores"): "#233: what on_upload_complete changed is not settled",
-    **{
-        (name, "instance"): "#233: the mail names its component by id alone"
-        for name in ("component_dispatch_event", "component_send_render", "component_crashed")
-    },
 }
 
 
@@ -533,6 +517,14 @@ async def test_the_mail_is_sent_with_its_instance(command):
     for node, path in sends:
         keywords = {keyword.arg for keyword in node.keywords}
         assert "instance" in keywords, f'{path.name}:{node.lineno} sends "{command}" without its instance'
+
+
+async def test_a_live_components_mail_names_the_parent_that_drew_it():
+    # send_to_parent() mails dispatch_event under the parent's id: with the parent's instance
+    session, _ = _session()
+    parent = _joined(session, "gate-root")
+    leaf = session.repo.build_live_component("GateLeaf", {"id": "gate-leaf"}, parent.id)
+    assert leaf.wire.parent_instance == parent.wire.instance
 
 
 async def test_model_mutation_is_delivered_as_a_notification(monkeypatch):

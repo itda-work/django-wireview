@@ -288,6 +288,11 @@ class ComponentRepository:
     def get(self, component_id: str) -> Component | None:
         return self.components.get(component_id)
 
+    def _instance_of(self, component_id: str) -> int | None:
+        """The instance under ``component_id``, which a LiveComponent's mail to its parent names (#233)."""
+        component = self.components.get(component_id)
+        return component.wire.instance if component is not None else None
+
     def build(
         self,
         name: str,
@@ -432,6 +437,7 @@ class ComponentRepository:
                 if existing._parent_id != parent_id:
                     log.debug("LiveComponent %s moved from %s to %s", component_id, existing._parent_id, parent_id)
                     existing._parent_id = parent_id
+                    existing.wire.parent_instance = self._instance_of(parent_id)
                 # update() only for props whose value differs from what the
                 # parent passed last time. Comparing against the child's current
                 # state would reset whatever the child changed on its own.
@@ -471,6 +477,7 @@ class ComponentRepository:
 
         # Set parent reference
         live_component._parent_id = parent_id
+        live_component.wire.parent_instance = self._instance_of(parent_id)
         live_component._last_props = props
         live_component._last_slot_key = slot_key
         if slots is not None:

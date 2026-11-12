@@ -281,6 +281,10 @@ NO_UPGRADE_NOTE = {
     "A visitor who is not logged in no longer closes every anonymous connection": (
         "닫히지 말아야 할 연결이 남을 뿐 할 일이 없다"
     ),
+    "A render on the upload paths": "닫히던 연결 대신 그 컴포넌트만 다시 join할 뿐 할 일이 없다",
+    "The `crashed`, `send_render` and `dispatch_event` session mails carry the instance": (
+        "세션 내부 메일의 형태만 바뀌었다 — `self.wire`의 멤버는 공개 API가 아니다"
+    ),
 }
 
 PREVIOUS = "1.5.1"

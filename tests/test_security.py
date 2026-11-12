@@ -604,6 +604,8 @@ class TestUploadCompletionCallback:
         consumer.repo.reachable = MagicMock(return_value=view.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
+        # The subscriptions settled after on_upload_complete (#233)
+        consumer.after_mutation_chores = AsyncMock()
 
         entry = UploadEntry(
             ref="upload-1",

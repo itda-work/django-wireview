@@ -1196,6 +1196,8 @@ class TestConsumerUploadHandlers:
         consumer.repo.reachable = MagicMock(return_value=component.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
+        # The subscriptions settled after on_upload_complete (#233)
+        consumer.after_mutation_chores = AsyncMock()
 
         # Add an uploading entry whose bytes are all there: the client saying an
         # upload finished is a claim the server checks against the file (#83).

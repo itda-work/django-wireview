@@ -250,6 +250,8 @@ tests/
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
 │                          컴포넌트가 생기는 경로 11개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다
+│                          test_session_entry_contract.py 는 세션에 들어오는 길(공개 coroutine 전부 — Channels가 type으로 부른다)마다
+│                          의무(recovers·chores·instance·refuses)를 대조군과 함께 돈다. 길을 더하고 행을 넣지 않으면 실패한다(#233)
 │                          test_feature_gap.py 는 docs/FEATURE-GAP.md 의 ✅ 행마다 근거 칸의 테스트가
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
 │                          test_doc_links.py 는 추적되는 모든 .md 의 상대 링크가 파일에, 앵커가 그 파일의 제목에 닿는지 본다.
@@ -506,6 +508,12 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   떠난 페이지의 소켓에 쓴 프레임의 거절은 예외가 아니다: `ChannelsOutbound`가 `ConnectionGone`으로 바꾸고, `_crashed`와 join은 그것을
   다시 던져 어댑터의 `dispatch`가 DEBUG로 받는다(#216). 송신을 감싸는 새 `except Exception`은 `ConnectionGone`을 먼저 통과시킨다
   — 아니면 정상 이탈이 `Could not join`·`joining it again` ERROR가 된다(tests/test_join_disconnect.py).
+  렌더만 하는 길(업로드 메시지)은 `_render_or_crash`로. 컴포넌트를 id로 부르는 메일은 보낸 인스턴스의 `instance`를 싣고
+  받는 쪽이 비교한다(`_target`) — 같은 id로 다시 join한 새 인스턴스를 낡은 메일이 건드리지 않게(#233).
+  새 길은 tests/test_session_entry_contract.py 의 표에 행을 넣는다. 설계는 docs/design/session-entry-gate.md
+- **새 의무는 진입점이 아니라 싱크에 단다.** 모든 길이 지나는 곳(`send_render`, `render_diff`, `register_component`,
+  어댑터의 `dispatch`, `stream()`)이 없으면 먼저 그것을 만든다. 진입점마다 손으로 거는 의무는 그것을 부른 문맥이
+  있어야 하는 것(답할 ref, 회복할 컴포넌트, 메일의 인스턴스)만 남긴다(#232).
 - **join이 실패한 컴포넌트는 서버가 막는다.** 연결이 그 id를 기억하고(`repo.join_failed`), 부모의 패스가 그 id로
   다시 만든 인스턴스와 그것이 소유한 LiveComponent는 `repo.refused`가 참이다 — 이벤트는 빈 render로 답하고, 훅·업로드·
   브로드캐스트·`params_changed`·`wire.defer`·`update_live_component`는 버리며, 따로 렌더하지 않는다(그 렌더가 소유

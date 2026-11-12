@@ -232,7 +232,7 @@ class SaLeaver(Component):
     async def _op(self) -> int:
         await asyncio.sleep(0)
         # Delivered at once by LoopbackBroker: the component leaves inside this task
-        await self.wire.send("crashed", id=self.id)
+        await self.wire.send("crashed", id=self.id, instance=self.wire.instance)
         self._log.append("went on after leaving")
         await asyncio.sleep(0)
         self._log.append("past an await after leaving")

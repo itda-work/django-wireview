@@ -1604,7 +1604,7 @@ class WireviewSession:
                 )
 
         # Re-render to update uploads property
-        await self.send_render(component)
+        await self._render_or_crash(component)
 
     async def command_upload_cancel(self, id: str, name: str, ref: str):
         """Handle upload cancellation from client."""
@@ -1654,7 +1654,7 @@ class WireviewSession:
                     data={"errors": ["Upload did not finish on the server"]},
                 ).to_payload(),
             )
-            await self.send_render(component)
+            await self._render_or_crash(component)
             return
 
         # Notify client
@@ -1674,6 +1674,9 @@ class WireviewSession:
             await self.send_render(component)
         except Exception:
             await self._crashed(component)
+            return
+        # What on_upload_complete chose to hear -- the job that processes the file -- is heard from here
+        await self.after_mutation_chores()
 
     # Component commands
 
@@ -1752,10 +1755,22 @@ class WireviewSession:
             return
         await handler(**data["kwargs"])
 
-    async def component_dispatch_event(self, id, command, args, kwargs):
+    async def component_dispatch_event(self, id, command, args, kwargs, instance):
+        """``wire.defer`` and ``send_to_parent``: a handler of the instance ``instance`` under ``id``.
+
+        Mail from before a join replaced that instance under the id runs nothing
+        on the new one (#233): the deferred call, or the event of a LiveComponent
+        that went with the old one, was for the old one.
+        """
         log.debug(f"<<< EVENT {id} {command} {args} {kwargs}")
         target = self.repo.get(id)
+        if target is not None and target.wire.instance != instance:
+            log.debug("Dropping %s for %s: mail from an instance a join has replaced", command, id)
+            return
         if target is None and (buried := self.repo.buried(id)) is not None:
+            if buried.wire.instance != instance:
+                log.debug("Dropping %s for %s: mail from an instance a join has replaced", command, id)
+                return
             # A LiveComponent a tombstone keeps sent it to its parent, kept with
             # it: the handler runs there, as an event of the page's does (#204)
             await self._run_on_tombstone(buried, command, args, kwargs)
@@ -1850,9 +1865,10 @@ class WireviewSession:
         log.debug(f">>> REMOVE {id}")
         await self.send_command("remove", _with_ref({"id": id}, ref))
 
-    async def component_send_render(self, id):
+    async def component_send_render(self, id, instance):
+        """``Component.send_render()``, a task's render: of the instance that asked, if still here (#233)."""
         log.debug(f">>> SEND-RENDER {id}")
-        if component := self.repo.get(id):
+        if component := self._target(id, instance):
             try:
                 await self.send_render(component)
             except Exception:
@@ -1933,13 +1949,15 @@ class WireviewSession:
         payload.update(data)
         await self.send_command("upload_op", payload)
 
-    async def component_crashed(self, id: str):
+    async def component_crashed(self, id: str, instance: int):
         """A component's own background task raised (``start_async``'s ``handle_async``).
 
         The task logged the exception where it happened; the recovery is the same
-        as for a handler that raised (#94).
+        as for a handler that raised (#94). Only for the instance whose task it
+        was: a join may have replaced it under the id since the mail was sent,
+        and the new one did not raise (#233).
         """
-        component = self.repo.get(id)
+        component = self._target(id, instance)
         if component is not None:
             await self._join_again(component)
 
@@ -2054,7 +2072,9 @@ class WireviewSession:
             entry.progress = event["progress"]
             if entry.status is UploadStatus.PENDING:
                 entry.status = UploadStatus.UPLOADING
-            await self._render_upload_owner(event)
+            if not await self._render_upload_owner(event):
+                # It is joined again, and its uploads ended with it
+                return
         await self.send_command(
             "upload_op",
             {
@@ -2089,7 +2109,9 @@ class WireviewSession:
         if entry is not None:
             entry.status = UploadStatus.ERROR
             entry.errors.extend(e for e in errors if e not in entry.errors)
-            await self._render_upload_owner(event)
+            if not await self._render_upload_owner(event):
+                # It is joined again, and its uploads ended with it
+                return
         await self.send_command(
             "upload_op",
             {
@@ -2100,16 +2122,40 @@ class WireviewSession:
             },
         )
 
-    async def _render_upload_owner(self, event: dict[str, t.Any]) -> None:
-        """Render the component an upload message changed.
+    async def _render_upload_owner(self, event: dict[str, t.Any]) -> bool:
+        """Render the component an upload message changed; False when that render raised.
 
         Templates show ``entry.progress`` and ``entry.errors`` (the upload guide
         does); without a render they stayed as they were until something else
         rendered the component, typically the upload's completion (#110).
         """
         component = self.repo.get(event.get("component", ""))
-        if component is not None:
+        if component is None:
+            return True
+        return await self._render_or_crash(component)
+
+    async def _render_or_crash(self, component: Component) -> bool:
+        """Render ``component``; if that raises, recover as for a handler (``_crashed``) and return False.
+
+        A render on the upload paths raised out of the session and closed the
+        socket, so one progress message joined every component on the page
+        again (#233). ``ConnectionGone`` goes on up, as from ``_crashed``.
+        """
+        try:
             await self.send_render(component)
+        except Exception:
+            await self._crashed(component)
+            return False
+        return True
+
+    def _target(self, id: str, instance: int | None) -> Component | None:
+        """The instance mail names: reachable under ``id`` and still ``instance`` (#233).
+
+        A join under the id replaces the instance; what the old one mailed
+        before it left is not the new one's.
+        """
+        component = self.repo.reachable(id)
+        return component if component is not None and component.wire.instance == instance else None
 
     def _find_upload_entry(self, event: dict[str, t.Any]):
         """The entry a broker message is about, or None if it is not ours.

@@ -892,7 +892,8 @@ class Component(BaseModel):
 
     async def send_render(self) -> None:
         """Request a re-render of this component."""
-        await self.wire.send("send_render", id=self.id)
+        # This instance's: one a join has replaced since is not rendered for it (#233)
+        await self.wire.send("send_render", id=self.id, instance=self.wire.instance)
 
     async def focus_on(self, selector: str) -> None:
         """Focus on an element matching the selector."""
@@ -1133,7 +1134,8 @@ class Component(BaseModel):
                     if self._async_tasks.get(name) is task:
                         del self._async_tasks[name]
                     self._assign_tasks.discard(task)
-                    await self.wire.send("crashed", id=self.id)
+                    # This instance's: one a join has replaced since is left be (#233)
+                    await self.wire.send("crashed", id=self.id, instance=self.wire.instance)
                     return
                 await self.send_render()
             finally:

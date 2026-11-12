@@ -215,6 +215,7 @@ class FakeConsumer:
         self.upload_error = WireviewConsumer.upload_error.__get__(self)
         self._find_upload_entry = WireviewConsumer._find_upload_entry.__get__(self)
         self._render_upload_owner = WireviewConsumer._render_upload_owner.__get__(self)
+        self._render_or_crash = WireviewConsumer._render_or_crash.__get__(self)
         self.rendered: list[t.Any] = []
         self._promote_completed = WireviewConsumer._promote_completed
 
