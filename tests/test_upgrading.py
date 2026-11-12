@@ -283,6 +283,9 @@ NO_UPGRADE_NOTE = {
         "끊기던 종료가 끝까지 갈 뿐 할 일이 없다"
     ),
     "A logout closes a busy connection on the login that ended": "닫혀야 할 연결이 닫힐 뿐 할 일이 없다",
+    "A file chosen for an upload allowed with `auto_upload=False` never went up": (
+        "올라가지 않던 파일이 폼을 제출할 때 올라갈 뿐 할 일이 없다"
+    ),
     "A visitor who is not logged in no longer closes every anonymous connection": (
         "닫히지 말아야 할 연결이 남을 뿐 할 일이 없다"
     ),

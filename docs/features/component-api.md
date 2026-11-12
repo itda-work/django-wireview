@@ -77,7 +77,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await assign_async(coro, *, on_error=None)` | 결과를 `AsyncResult` 필드로 받는다 |
 | `await stream(name, items, *, template=None, dom_id=None, limit=0, at=-1, reset=True)` | 스트림을 채우거나 다시 채운다 ([Streams API 심화 튜토리얼](../tutorials/06-streams-api.md)). `reset=False`면 화면의 것을 두고 항목들을 `at` 자리에 주어진 순서대로 연산 하나로 넣는다([배치 삽입](../tutorials/06-streams-api.md#1-배치-삽입)) |
 | `await stream_insert(name, item, *, at=-1, template=None, dom_id=None, limit=0, update_only=False)` / `await stream_delete(name, dom_id)` | 스트림 항목. `update_only=True`는 그 id가 화면에 있을 때만 제자리에서 바꾸고, 없으면 아무것도 넣지 않는다([Streams 튜토리얼](../tutorials/06-streams-api.md#이미-화면에-있는-항목이면-제자리-갱신)). 셋 다 첫 HTTP 렌더에서는 아무것도 하지 않는다 — 받을 소켓이 없다([dead view](./dead-view.md#약속하지-않는-것)) |
-| `allow_upload(name, *, accept=None, max_entries=1, max_file_size=None, chunk_size=None, auto_upload=True, external=None)` | 업로드를 받는다 ([chunked-uploads](./chunked-uploads.md)) |
+| `allow_upload(name, *, accept=None, max_entries=1, max_file_size=None, chunk_size=None, auto_upload=True, external=None)` | 업로드를 받는다 ([chunked-uploads](./chunked-uploads.md)). `auto_upload=False`면 고른 파일은 그 입력이 든 폼을 제출할 때 올라가고, 다 올라간 뒤 제출 이벤트가 간다 ([폼을 제출할 때 올린다](./chunked-uploads.md#auto_uploadfalse-폼을-제출할-때-올린다)) |
 | `consume_uploads(name)` / `await cancel_upload(name, ref)` | 완료된 업로드를 꺼낸다 / 취소한다 |
 | `attach_hook(name, stage, callback)` / `detach_hook(name, stage=None)` | 이 인스턴스에 수명주기 훅을 단다 ([lifecycle-hooks](./lifecycle-hooks.md)) |
 | `await send_update(live_component_id, **assigns)` | 자식 LiveComponent에 값을 준다 |

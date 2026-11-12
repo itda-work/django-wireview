@@ -32,6 +32,7 @@ import {
 } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
+import { SubmitUploads } from "./submits.mjs";
 import { newTab, socketUrl } from "./tab.mjs";
 import { Renewal } from "./renew.mjs";
 import boost from "./wireview-boost";
@@ -267,6 +268,9 @@ class ServerConnection {
       // runs again for each reconnect that fails; a file chosen since, or before
       // the first connection, belongs to no instance yet and waits for the next.
       uploadManagers.connectionClosed();
+      // A submit waiting for its uploads is not sent: they stopped with the
+      // connection, and its loading marks ended with it above (#264)
+      submitUploads.clear();
       this.joins.clear();
       this.rejoins.clear();
       document.querySelectorAll("[wireview-component]").forEach((el) => {
@@ -1671,6 +1675,37 @@ class WireviewComponent {
    * @param {{elements: HTMLElement[], eventType?: string}} [loading] - what markLoading marked
    */
   dispatch(command, args, formScope, commitFrom = null, loading = undefined) {
+    // A form's submit uploads the form's auto_upload=False files first, and is
+    // sent once the server has them all (submits.mjs, #264)
+    const form = loading?.eventType === "submit" ? loading.elements[0] : null;
+    if (form instanceof HTMLFormElement) {
+      // A second submit while the first one's uploads go is not another save
+      if (submitUploads.has(form)) return;
+      /** @type {HeldSubmit} */
+      const held = {
+        component: this,
+        mark: null,
+        send: (mark) => this.sendNow(command, args, formScope, commitFrom, { ...loading, mark }),
+      };
+      if (submitUploads.begin(form, uploadSlotsOf(form), uploadView, held)) {
+        held.mark = connection.loading.hold(this.id, loading.elements, loading.eventType);
+        scheduleSubmits();
+        return;
+      }
+    }
+    this.sendNow(command, args, formScope, commitFrom, loading);
+  }
+
+  /**
+   * Sends an event `dispatch` let go.
+   * @param {string} command
+   * @param {Object} args
+   * @param {HTMLElement} formScope
+   * @param {Element|null} commitFrom
+   * @param {{elements: HTMLElement[], eventType?: string, mark?: import("./loading.mjs").Mark<HTMLElement> | null}} [loading] -
+   *   `mark` is the one a submit that waited for its uploads holds
+   */
+  sendNow(command, args, formScope, commitFrom, loading) {
     const fields = commitFrom ? commitScope(commitFrom, formScope) : new Map();
     // Paired with its answer by ref when this server echoes refs: the answer
     // may reset the fields a committing action sends (#92), and ends the
@@ -1679,7 +1714,8 @@ class WireviewComponent {
     const ref =
       (fields.size || loading?.elements.length) && connection.serverVsn >= REFS_SINCE ? ++connection.lastRef : undefined;
     if (fields.size) boost.valueGuard.record(ref ?? null, fields);
-    if (loading) connection.loading.track(ref ?? null, this.id, loading.elements, loading.eventType);
+    if (loading?.mark) connection.loading.send(loading.mark, ref ?? null);
+    else if (loading) connection.loading.track(ref ?? null, this.id, loading.elements, loading.eventType);
     connection.sendUserEvent(this.id, command, this.serialize(formScope), args, ref);
   }
 
@@ -2503,10 +2539,124 @@ class ViewportObserver {
  * @property {string[]} errors - Error messages
  * @property {string|null} token - Upload token (from server)
  * @property {AbortController|null} controller - For cancellation
+ * @property {boolean} [confirmed] - The server said the upload is complete (#264)
  */
 
 /** @type {UploadManagers<UploadManager>} */
 const uploadManagers = new UploadManagers((id) => new UploadManager(id));
+
+/**
+ * A form's submit waiting for its uploads (#264).
+ * @typedef {{
+ *   component: WireviewComponent,
+ *   mark: import("./loading.mjs").Mark<HTMLElement> | null,
+ *   send: (mark: import("./loading.mjs").Mark<HTMLElement> | null) => void,
+ * }} HeldSubmit
+ */
+
+/** @type {SubmitUploads<HTMLFormElement, HeldSubmit>} */
+const submitUploads = new SubmitUploads();
+
+/**
+ * What the upload managers hold now, as submits.mjs reads it.
+ * @type {import("./submits.mjs").UploadView}
+ */
+const uploadView = {
+  config: (id, name) => uploadManagers.find(id)?.configs[name],
+  entries: (id, name) => uploadManagers.find(id)?.getEntries(name) ?? [],
+  waiting: (id, name) => uploadManagers.find(id)?.waiting[name]?.length ?? 0,
+  alive: (id) => uploadManagers.find(id) !== undefined,
+};
+
+/** The attributes the upload tags put on the elements that take files. */
+const UPLOAD_ATTRIBUTES = ["wire-upload", "wire-upload-drop", "wire-upload-select"];
+
+/**
+ * The uploads a form takes files for: its upload inputs, drop zones and
+ * buttons that belong to the form's own component -- not to a component
+ * inside the form, whose uploads are that component's.
+ * @param {HTMLFormElement} form
+ * @returns {import("./submits.mjs").Slot[]}
+ */
+function uploadSlotsOf(form) {
+  const owner = form.closest("[wireview-component]");
+  /** @type {Map<string, import("./submits.mjs").Slot>} */
+  const slots = new Map();
+  if (!owner) return [];
+  for (const el of form.querySelectorAll(UPLOAD_ATTRIBUTES.map((name) => `[${name}]`).join(","))) {
+    if (el.closest("[wireview-component]") !== owner) continue;
+    for (const attribute of UPLOAD_ATTRIBUTES) {
+      const name = el.getAttribute(attribute);
+      if (name) slots.set(name, { id: owner.id, name });
+    }
+  }
+  return [...slots.values()];
+}
+
+/** @type {boolean} */
+let submitsScheduled = false;
+
+/**
+ * Judges the waiting submits again once the current change is done: an
+ * upload moved on, a config came, a manager ended.
+ */
+function scheduleSubmits() {
+  if (submitsScheduled) return;
+  submitsScheduled = true;
+  queueMicrotask(() => {
+    submitsScheduled = false;
+    const { starts, decided } = submitUploads.advance(uploadView);
+    for (const { id, name, ref } of starts) {
+      const manager = uploadManagers.find(id);
+      const entry = manager?.entries[name]?.[ref];
+      if (!manager || entry?.status !== "registered") continue;
+      if (entry.external) manager.startExternalUpload(name, ref);
+      else manager.startUpload(name, ref);
+    }
+    for (const { data, outcome } of decided) {
+      const { component, mark } = data;
+      // Sent only to the instance it was made for, while it is live
+      if (outcome === "send" && connection.isOpen && connection.components[component.id] === component) {
+        data.send(mark);
+      } else if (mark) {
+        // Not sent: the form can be submitted again, and the entries show why
+        connection.loading.drop(mark).forEach(unmarkLoading);
+      }
+    }
+  });
+}
+
+/** @type {Set<string>} */
+const unstartableWarned = new Set();
+
+/**
+ * Says once that an auto_upload=False upload has no form to start it: its
+ * files go up only when the form they are chosen in is submitted (#264).
+ * @param {string} componentId
+ * @param {string} name
+ */
+function warnIfUnstartable(componentId, name) {
+  const key = JSON.stringify([componentId, name]);
+  if (unstartableWarned.has(key)) return;
+  const owner = document.getElementById(componentId);
+  if (!owner) return;
+  const selector = UPLOAD_ATTRIBUTES.map((attribute) => `[${attribute}="${CSS.escape(name)}"]`).join(",");
+  const startable = Array.from(owner.querySelectorAll(selector)).some((el) => {
+    if (el.closest("[wireview-component]") !== owner) return false;
+    const form = el.closest("form");
+    return Boolean(
+      form &&
+        form.closest("[wireview-component]") === owner &&
+        bindingsFor(form.getAttributeNames(), "submit").length > 0
+    );
+  });
+  if (startable) return;
+  unstartableWarned.add(key);
+  console.warn(
+    `[wireview] Upload "${name}" of ${componentId} has auto_upload=False but is not in a form with a ` +
+      `{% on "submit" %} binding: its files go up when that form is submitted, so nothing will start these.`
+  );
+}
 
 /**
  * The ids of the LiveComponents inside a component's element.
@@ -2601,6 +2751,8 @@ class UploadManager {
     this.previewUrls.forEach((url) => URL.revokeObjectURL(url));
     this.previewUrls.clear();
     debugLog("upload", `Disposed uploads of ${this.componentId}`);
+    // A submit waiting for these entries is given up
+    scheduleSubmits();
   }
 
   /**
@@ -2617,6 +2769,7 @@ class UploadManager {
       delete this.waiting[name];
       this.addFiles(name, waiting);
     }
+    scheduleSubmits();
   }
 
   /**
@@ -2761,6 +2914,10 @@ class UploadManager {
       } else {
         this.startUpload(name, ref);
       }
+    } else {
+      // The submit of the form it was chosen in starts it (#264)
+      warnIfUnstartable(this.componentId, name);
+      scheduleSubmits();
     }
   }
 
@@ -2789,7 +2946,10 @@ class UploadManager {
     if (entry) {
       entry.status = "completed";
       entry.progress = 100;
+      // The server has the file: a submit waiting for it can go (#264)
+      entry.confirmed = true;
       this._dispatchEvent("upload:complete", { upload: name, ref });
+      scheduleSubmits();
     }
   }
 
@@ -2805,6 +2965,7 @@ class UploadManager {
       entry.status = "error";
       entry.errors = errors;
       this._dispatchEvent("upload:error", { upload: name, ref, errors });
+      scheduleSubmits();
     }
   }
 
@@ -2821,6 +2982,7 @@ class UploadManager {
       // Clean up preview blob URL
       this.cleanupPreviews(name, ref);
       this._dispatchEvent("upload:cancel", { upload: name, ref });
+      scheduleSubmits();
     }
   }
 
@@ -2901,6 +3063,7 @@ class UploadManager {
         entry.errors.push(error.message);
         debugLog("upload", `Error: ${name}/${ref}`, error.message);
       }
+      scheduleSubmits();
     }
   }
 
@@ -2988,6 +3151,7 @@ class UploadManager {
         debugLog("upload", `External upload error: ${name}/${ref}`, error.message);
         this._dispatchEvent("upload:error", { upload: name, ref, errors: [error.message] });
       }
+      scheduleSubmits();
     }
   }
 
@@ -3001,6 +3165,7 @@ class UploadManager {
     if (entry) {
       entry.controller?.abort();
       entry.status = "cancelled";
+      scheduleSubmits();
       connection._send("upload_cancel", {
         id: this.componentId,
         name: name,

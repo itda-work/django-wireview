@@ -237,6 +237,16 @@ The django-reactor era changelog (2.x) is preserved in
   to retire the instance a later join had made under the same id. `send_update()`'s mail carries the LiveComponent
   instance the parent drew: one hidden and drawn anew under the id since is left be, and what `update()` changed
   about the subscriptions is heard from then on (#233).
+- A file chosen for an upload allowed with `auto_upload=False` never went up (#264, GAP-050): nothing started it, so
+  the handler of the form it was chosen in found nothing in `consume_uploads()`, with no error and no warning. Now the
+  submit of a `{% on "submit" %}` form uploads the form's own `auto_upload=False` entries first -- every input, drop
+  zone and upload button of the form's component, external uploads too -- and sends the event once the server has
+  confirmed each one, as LiveView does. Meanwhile the form's `wire-disabled-with` and loading classes stay on and a
+  second submit of the form is ignored. An entry that ends in an error or is cancelled, or a connection that closes,
+  keeps the event back and ends the loading state; submitting again waits only for what is left. A form with nothing
+  to upload submits at once, as before. An `auto_upload=False` upload with no such form around it has no way to
+  start, and the page now says so once in the console. No new message: it runs on `upload_register`,
+  `upload_complete` and the `upload_op`s there were.
 - `{% wireview_header %}` left its nonces out under Django 6.0's CSP middleware whenever it was the first thing on the
   page to use the nonce (#224). The middleware's `LazyNonce` is false until something makes it a string, the header
   tested it for truth, and the policy then had no nonce either: under a nonce-only `style-src` the header's `<style>`

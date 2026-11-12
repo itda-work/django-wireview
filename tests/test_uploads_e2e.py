@@ -658,3 +658,193 @@ def test_a_live_component_shown_again_after_a_reconnect_starts_anew(page, server
     expect(page.locator("#box")).to_have_count(0)
     by(page, "show").click()
     expect_text(by(page, "sprig-joins"), "1")
+
+
+# ---------------------------------------------------------------------------
+# auto_upload=False: the form's submit uploads first (#264)
+# ---------------------------------------------------------------------------
+
+FORM_LIVE = "#upform[data-is-live='true']:not(.wireview-disconnected)"
+
+
+@pytest.fixture
+def form(page, server):
+    open_live(page, f"{server}/fileprobe/form/", selector=FORM_LIVE)
+    # The inputs come with the configs, which joined() allows
+    expect(by(page, "photos")).to_have_count(1)
+    return page
+
+
+def entries(page, status: str):
+    return by(page, "entries").locator(f"li[data-status='{status}']")
+
+
+@pytest.fixture
+def held_chunks(monkeypatch):
+    """Hold every chunk at the endpoint until the test sets the returned event."""
+    from wireview.views import UploadView
+
+    release = threading.Event()
+    arrived = threading.Event()
+    post = UploadView.post
+
+    async def held(self, request, *args, **kwargs):
+        arrived.set()
+        await asyncio.to_thread(release.wait, WAIT_TIMEOUT)
+        return await post(self, request, *args, **kwargs)
+
+    monkeypatch.setattr(UploadView, "post", held)
+    release.arrived = arrived  # type: ignore[attr-defined]
+    return release
+
+
+@pytest.fixture
+def user_events(monkeypatch):
+    """The handlers the server ran for user events, in order."""
+    from wireview.session import WireviewSession
+
+    names: list[str] = []
+    handle = WireviewSession.command_user_event
+
+    async def recording(self, id, command, implicit_args, explicit_args, ref=None):
+        names.append(command)
+        return await handle(self, id, command, implicit_args, explicit_args, ref)
+
+    monkeypatch.setattr(WireviewSession, "command_user_event", recording)
+    return names
+
+
+def test_a_manual_upload_goes_up_when_its_form_is_submitted(form):
+    # The bug: the file stayed "pending" and save() found nothing to consume
+    by(form, "photos").set_input_files(text_file("a.txt", "hello"))
+    expect_count(entries(form, "pending"), 1)
+    by(form, "title").fill("first")
+    by(form, "save").click()
+
+    expect(by(form, "saved").locator("li")).to_have_text(["title:first", "photos:a.txt:5"])
+    expect_text(by(form, "saves"), "1")
+
+
+def test_a_submit_with_nothing_to_upload_goes_at_once(form):
+    by(form, "title").fill("plain")
+    by(form, "save").click()
+    expect(by(form, "saved").locator("li")).to_have_text(["title:plain"])
+
+
+def test_every_input_and_the_drop_zone_of_the_form_go_up_before_one_submit(form):
+    from testproj.fileprobe.views import RECEIVED
+
+    RECEIVED.clear()
+    by(form, "photos").set_input_files(text_file("p.txt", "photo"))
+    drop(form, "d.txt", "dropped")
+    by(form, "notes").set_input_files(text_file("n.txt", "note"))
+    by(form, "remote").set_input_files(text_file("r.txt", "remote"))
+    expect_count(entries(form, "pending"), 4)
+    by(form, "save").click()
+
+    expect(by(form, "saved").locator("li")).to_have_text(
+        ["title:", "photos:p.txt:5", "photos:d.txt:7", "notes:n.txt:4", "remote:r.txt"]
+    )
+    expect_text(by(form, "saves"), "1")
+    assert sorted(RECEIVED.values()) == [b"remote"]
+
+
+def test_a_live_components_form_uploads_its_own_files(form):
+    by(form, "child-files").set_input_files(text_file("c.txt", "child"))
+    by(form, "child-save").click()
+    expect_text(by(form, "child-saved").locator("li"), "c.txt:5")
+    expect_text(by(form, "saves"), "0")
+
+
+def test_the_submit_stays_disabled_while_its_uploads_go_and_a_second_submit_is_ignored(held_chunks, user_events, form):
+    by(form, "photos").set_input_files(text_file("slow.txt", "slow"))
+    expect_count(entries(form, "pending"), 1)
+    by(form, "save").click()
+    held_chunks.arrived.wait(WAIT_TIMEOUT)
+
+    expect(by(form, "save")).to_be_disabled()
+    expect(by(form, "save")).to_have_text("Saving...")
+    expect(by(form, "form")).to_have_class(re.compile("wireview-submit-loading"))
+    form.evaluate("() => document.querySelector('[data-testid=form]').requestSubmit()")
+
+    held_chunks.set()
+    expect(by(form, "saved").locator("li")).to_have_text(["title:", "photos:slow.txt:4"])
+    expect(by(form, "save")).to_be_enabled()
+    expect(by(form, "save")).to_have_text("Save")
+    expect_text(by(form, "saves"), "1")
+    assert user_events == ["save"]
+
+
+def test_a_failed_upload_keeps_the_submit_back_and_the_next_submit_sends_what_is_left(user_events, form):
+    # The server refuses a .png that is not one when its last chunk lands
+    by(form, "photos").set_input_files({"name": "fake.png", "mimeType": "image/png", "buffer": b"not a png"})
+    by(form, "notes").set_input_files(text_file("n.txt", "note"))
+    expect_count(entries(form, "pending"), 2)
+    by(form, "save").click()
+
+    expect_text(entries(form, "error"), "photos:fake.png:error:File content doesn't match file type")
+    expect(by(form, "save")).to_be_enabled()
+    expect(by(form, "form")).not_to_have_class(re.compile("wireview-loading"))
+    expect_count(entries(form, "pending"), 0)
+    assert user_events == []
+
+    by(form, "save").click()
+    expect(by(form, "saved").locator("li")).to_have_text(["title:", "notes:n.txt:4"])
+    assert user_events == ["save"]
+
+
+def test_a_cancelled_upload_keeps_the_submit_back(held_chunks, user_events, form):
+    by(form, "photos").set_input_files(text_file("gone.txt", "gone"))
+    expect_count(entries(form, "pending"), 1)
+    by(form, "save").click()
+    held_chunks.arrived.wait(WAIT_TIMEOUT)
+
+    form.evaluate(
+        """() => {
+          const el = document.getElementById("upform");
+          const [entry] = window.wireview.getUploadManager(el).getEntries("photos");
+          window.wireview.cancelUpload(el, "photos", entry.ref);
+        }"""
+    )
+    expect(by(form, "save")).to_be_enabled()
+    held_chunks.set()
+    expect_count(entries(form, "cancelled"), 1)
+    assert user_events == []
+
+
+def test_a_submit_whose_uploads_the_connection_lost_is_not_sent_after_the_reconnect(
+    quick_reconnect, held_chunks, user_events, page, server
+):
+    page.add_init_script(OFFLINE_SHIM)
+    open_live(page, f"{server}/fileprobe/form/", selector=FORM_LIVE)
+    by(page, "photos").set_input_files(text_file("lost.txt", "lost"))
+    expect_count(entries(page, "pending"), 1)
+    by(page, "save").click()
+    held_chunks.arrived.wait(WAIT_TIMEOUT)
+
+    page.evaluate("() => window.__link.sockets.forEach((s) => s.close())")
+    expect(page.locator("#upform")).to_have_class(re.compile("wireview-disconnected"))
+    expect(by(page, "save")).to_be_enabled()
+    held_chunks.set()
+
+    # The new connection's instance has no entries: the file is chosen again
+    wait_live(page, FORM_LIVE)
+    expect_count(entries(page, "pending"), 0)
+    assert user_events == []
+    by(page, "photos").set_input_files(text_file("again.txt", "again"))
+    expect_count(entries(page, "pending"), 1)
+    by(page, "save").click()
+    expect(by(page, "saved").locator("li")).to_have_text(["title:", "photos:again.txt:5"])
+    assert user_events == ["save"]
+
+
+def test_a_manual_input_outside_any_form_says_once_that_nothing_starts_it(form):
+    warnings: list[str] = []
+    form.on("console", lambda message: message.type == "warning" and warnings.append(message.text))
+    by(form, "stray").set_input_files(text_file("s1.txt", "one"))
+    expect_count(entries(form, "pending"), 1)
+    by(form, "stray").set_input_files(text_file("s2.txt", "two"))
+    expect_count(entries(form, "pending"), 2)
+    stray = [text for text in warnings if "stray" in text]
+    assert len(stray) == 1, warnings
+    assert "auto_upload=False" in stray[0]

@@ -10,6 +10,7 @@ urlpatterns = [
     path("nested/", lambda request: render(request, "fileprobe/nested.html"), name="nested"),
     path("shelf/", lambda request: render(request, "fileprobe/shelfpage.html"), name="shelf"),
     path("late/", lambda request: render(request, "fileprobe/latepage.html"), name="late"),
+    path("form/", lambda request: render(request, "fileprobe/formpage.html"), name="form"),
     path("other/", lambda request: render(request, "fileprobe/other.html"), name="other"),
     path("put/<str:ref>/", views.put_target, name="put"),
 ]

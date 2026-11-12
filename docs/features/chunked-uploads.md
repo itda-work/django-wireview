@@ -189,6 +189,42 @@ join을 보내지 않는 LiveComponent도 같은 규칙으로 다뤄진다.
 `accept` 필터가 없고 한 번에 파일 하나만 고를 수 있다. 고른 파일은 다른 입구와 같이 `config`를 기다렸다가
 그 설정으로 검사된다 — 확장자가 맞지 않으면 그때 오류 엔트리가 된다.
 
+## `auto_upload=False`: 폼을 제출할 때 올린다
+
+`allow_upload(..., auto_upload=False)`로 받은 파일은 고른 순간에는 등록만 된다(`entry.status`가 `pending`).
+**그 입력이 든 폼을 제출할 때** 올라가고, 서버가 모두 받은 뒤에 제출 이벤트가 간다([#264](https://github.com/itda-work/django-wireview/issues/264)).
+그래서 제출 핸들러의 `consume_uploads()`가 그 파일을 받는다.
+
+```html
+<form {% on "submit.prevent" "save" %}>
+  {% upload_input "photos" %}
+  <button type="submit" wire-disabled-with="저장 중...">저장</button>
+</form>
+```
+
+- **어느 업로드인가.** `{% on "submit" %}`(수정자 포함)이 붙은 폼 안의 `{% upload_input %}`·`{% upload_drop_zone %}`·
+  `{% upload_button %}` 중 **폼과 같은 컴포넌트**의 것이다. 폼 안에 그린 다른 컴포넌트(LiveComponent 포함)의 업로드는
+  그 컴포넌트의 폼이 올린다. 한 폼에 업로드가 여럿이면 모두 끝나야 보낸다. 외부 업로드(`external`)도 같다.
+- **무엇을 기다리는가.** 제출한 순간 끝나지 않은 항목: 등록 중·등록됨·올리는 중. 이미 끝났거나 앞서 오류로 끝난
+  항목은 기다리지 않는다. `config`가 오기 전에 고른 파일이 있으면 `config`를 기다렸다가 함께 올린다.
+  `auto_upload=True`인 업로드는 지금처럼 고른 순간 올라가고, 제출이 그것을 기다리지 않는다.
+- **올리는 동안.** 제출 버튼의 `wire-disabled-with`와 로딩 클래스(`wireview-loading`, `wireview-submit-loading`)는
+  제출을 누른 순간부터 이벤트의 답이 올 때까지 이어진다. 그 사이 같은 폼의 두 번째 제출은 무시한다.
+- **실패하면 보내지 않는다.** 제출이 기다리던 항목 하나라도 오류로 끝나거나(서버의 등록 거절·확장자·크기·magic bytes·
+  네트워크) 취소되면 제출 이벤트를 보내지 않고 로딩 표시를 거둔다. 오류는 항목의 `entry.errors`로 보인다. 다시 제출하면
+  남은 항목만 기다린다 — 오류로 끝난 항목은 다시 올리지 않으므로 사용자가 파일을 다시 고른다. 제출하기 전에 이미
+  오류였던 항목(고를 때 확장자·크기로 걸린 것)은 기다리지 않으므로 제출은 그 항목 없이 간다. 핸들러가
+  `this.uploads`의 `entry.errors`로 가린다.
+- **연결이 끊기면 보내지 않는다.** 올리던 요청은 위 「브라우저 쪽 수명」대로 중단되고, 재연결 뒤에도 그 제출은
+  보내지 않는다. 새 인스턴스에는 항목이 없으므로 사용자는 파일을 다시 골라 다시 제출한다.
+- **폼 밖의 입력은 시작할 길이 없다.** `{% on "submit" %}` 폼 밖에 둔 `auto_upload=False` 입력은 등록만 되고 끝내
+  올라가지 않는다. 서버는 입력이 폼 안인지 모르므로(템플릿 태그는 둘레의 HTML을 보지 않는다) 브라우저가
+  그 업로드의 첫 등록 때 콘솔에 경고를 한 번 낸다. 폼에 넣거나 `auto_upload=True`로 둔다.
+
+판단은 `wireview/static/wireview/submits.mjs`가 하고, 새 메시지 형태는 없다 — 기존 `upload_register`·`upload_complete`와
+서버의 `upload_op`(`registered`·`complete`·`error`·`cancel`)로 움직인다. "서버가 모두 받았다"는 서버의 `complete`가
+왔다는 뜻이다(브라우저가 마지막 청크를 보낸 것만으로는 아니다 — 서버가 크기·magic bytes로 거절할 수 있다).
+
 ## 함정
 
 - **`ATOMIC_REQUESTS = True`.** Django의 핸들러는 async 뷰를 트랜잭션으로 감쌀 수 없어 뷰를 부르기도
@@ -211,7 +247,8 @@ join을 보내지 않는 LiveComponent도 같은 규칙으로 다뤄진다.
 
 [Phoenix의 업로드 옵션](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveView.html#allow_upload/3) 전체를
 지원하지는 않는다. `accept`는 확장자 목록으로 검사하며 MIME·`image/*` 매칭은 하지 않는다.
-`auto_upload` 기본값은 True이고, False일 때 폼 submit과 업로드 완료를 자동으로 묶는 계약은 없다.
+`auto_upload` 기본값은 True다(Phoenix는 False). False일 때는 Phoenix처럼 폼을 제출할 때 올리고, 다 올린 뒤에 제출 이벤트를 보낸다
+(위 「`auto_upload=False`: 폼을 제출할 때 올린다」). 제출 중 폼의 입력을 readonly로 잠그지는 않는다(GAP-050).
 파일 크기·청크 크기 기본값도 Phoenix와 다르므로 [설정](./settings.md)을 따른다.
 
 진행률 상태와 `on_upload_complete`는 있지만 진행률마다 호출하는 사용자 `progress` 콜백, 업로드 설정을 철회하는

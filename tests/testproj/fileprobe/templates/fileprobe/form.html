@@ -1,0 +1,25 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form data-testid="form" {% on "submit.prevent" "save" %}>
+    <input type="text" name="title" data-testid="title">
+    {% upload_input "photos" data_testid="photos" %}
+    <div data-testid="drop" {% upload_drop_zone "photos" %}>drop here</div>
+    {% upload_input "notes" data_testid="notes" %}
+    {% upload_input "remote" data_testid="remote" %}
+    <button type="submit" data-testid="save" wire-disabled-with="Saving...">Save</button>
+  </form>
+  <ul data-testid="entries">
+    {% for name, entries in this.uploads.items %}
+      {% for entry in entries %}
+        <li data-status="{{ entry.status }}">{{ name }}:{{ entry.client_name }}:{{ entry.status }}{% if entry.errors %}:{{ entry.errors|join:"," }}{% endif %}</li>
+      {% endfor %}
+    {% endfor %}
+  </ul>
+  <span data-testid="saves">{{ this.saves }}</span>
+  <ul data-testid="saved">
+    {% for item in this.saved %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+  {% upload_input "stray" data_testid="stray" %}
+  {% live_component "FileFormChild" id="form-child" %}
+</div>

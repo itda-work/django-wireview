@@ -24,7 +24,7 @@ async def joined(self):
         max_entries=1,               # 동시에 진행할 수 있는 업로드 수
         max_file_size=5*1024*1024,   # 5MB
         chunk_size=64*1024,          # 64KB 청크
-        auto_upload=True,            # 선택 즉시 업로드
+        auto_upload=True,            # 선택 즉시 업로드. False면 폼을 제출할 때
     )
 ```
 
@@ -57,7 +57,7 @@ async def joined(self):
         accept=[".jpg", ".jpeg", ".png"],
         max_entries=20,
         max_file_size=10 * 1024 * 1024,  # 10MB
-        auto_upload=False,  # 수동 업로드
+        auto_upload=False,  # 폼을 제출할 때 업로드
     )
 ```
 
@@ -128,6 +128,61 @@ class XFileUploader(Component):
   <button {% on "click" "upload_files" %}>Save Files</button>
 </div>
 ```
+
+### 폼을 제출할 때 올리기
+
+`auto_upload=False`로 연 필드는 파일을 골라도 바로 올리지 않는다. 그 입력이 든 폼을 제출하면 브라우저가
+먼저 파일을 올리고, 서버가 모두 받은 뒤에 제출 이벤트를 보낸다. 그래서 제출 핸들러에서
+`consume_uploads()`가 파일을 받는다. 제목과 사진을 한 번에 저장하는 갤러리 폼이 그 예다.
+
+```python
+from wireview import Component
+
+
+class XGalleryForm(Component):
+    class Meta:
+        template_name = 'gallery/form.html'
+
+    saved: list[str] = []
+
+    async def joined(self):
+        self.allow_upload(
+            "photos",
+            accept=[".jpg", ".jpeg", ".png"],
+            max_entries=20,
+            auto_upload=False,
+        )
+
+    async def save(self, title: str = ""):
+        """제출 이벤트. 폼의 파일은 이미 다 올라와 있다"""
+        saved = []
+        async for upload in self.consume_uploads("photos"):
+            path = await upload.save_to(f"uploads/gallery/{title or 'untitled'}/")
+            saved.append(str(path))
+        self.saved = saved
+```
+
+```html
+{% load wireview %}
+<div {% tag_header %}>
+  <form {% on "submit.prevent" "save" %}>
+    <input type="text" name="title">
+    {% upload_input "photos" %}
+    <ul>
+      {% for entry in this.uploads.photos %}
+        <li>{{ entry.client_name }} — {{ entry.status }}{% if entry.errors %}: {{ entry.errors|join:", " }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <button type="submit" wire-disabled-with="저장 중...">저장</button>
+  </form>
+</div>
+```
+
+- 올리는 동안 버튼은 `wire-disabled-with`대로 막히고, 두 번째 제출은 무시된다.
+- 파일 하나라도 실패하거나 취소되면 `save`는 불리지 않는다. 오류는 `entry.errors`로 보이고, 다시 제출하면 남은
+  파일만 기다린다.
+- 입력은 `{% on "submit" %}`이 붙은 **폼 안**에 둔다. 폼 밖의 `auto_upload=False` 입력은 시작할 길이 없어
+  브라우저가 콘솔에 경고한다. 규칙 전체는 [청크 업로드의 서버 쪽](../features/chunked-uploads.md#auto_uploadfalse-폼을-제출할-때-올린다)에 있다.
 
 ## 진행률 추적
 

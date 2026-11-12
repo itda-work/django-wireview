@@ -232,6 +232,8 @@ wireview/
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
+                           submits.mjs (auto_upload=False 업로드를 기다리는 폼 제출. 폼과 같은 컴포넌트의 끝나지 않은 항목을 올리고 서버의 complete가 모두 오면 send,
+                           오류·취소면 fail, manager가 끝나면 abandon. 로딩 표시는 loading.mjs의 hold로 이벤트 전부터 잡는다, #264),
                            joins.mjs (같은 id로 다시 보낸 join의 응답을 기다리는 동안 어느 render·error·remove·reload·joined가
                            지금 join의 것인가. LiveComponent의 render는 루트의 join으로 가른다(#146). join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다. settledEvent가 join의 ref를
                            이벤트 정산(로딩·valueGuard)에서 뺀다. rejoinable은 rejoin(#180)이 다시 join할 컴포넌트를 고른다.
@@ -338,7 +340,7 @@ tests/
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
-                           fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지를 보는 E2E(test_uploads_e2e.py)의 픽스처,
+                           fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지, form/ 에서 auto_upload=False 파일이 폼 제출 때 올라가고 실패·취소·끊김에는 제출이 가지 않는지(#264)를 보는 E2E(test_uploads_e2e.py)의 픽스처,
                            inheritprobe/ 는 다중 테이블 상속 모델들이다(3단, pk를 따로 둔 자식, 키 타입이 다른 부모). mutation()이 받은 자식 인스턴스가 부모 컬럼을 덮지 않고 제 부모 행에 붙어 있는지 본다(test_mutation_instance.py, 마이그레이션 없음),
                            streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*(재연결 뒤 포함)와 같은 이름의 스트림을 쓰는 두 컴포넌트(delete 포함), 스트림 연산이 지운 포커스 항목의 blur를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지, ?pair=1 은 둘째 probe, ?nest=1 은 probe 목록 앞의 LiveComponent. seed 버튼은 joined()에서 push_js와 스트림을 보내고 자기 wire-viewport-bottom을 가진 LiveComponent를 새로 그린다(?seeded=1 은 처음부터, ?fill=1 은 그 첫 페이지가 창을 채운다, reseed 링크는 boost 이동으로 probe를 같은 id로 다시 join한다, strip 은 부모와 그것을 한 패치로 바꾼다), reveal 은 목록들 앞에 빈 스트림 컨테이너를 드러낸다)
 

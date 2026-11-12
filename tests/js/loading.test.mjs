@@ -73,3 +73,39 @@ test("an event that marks nothing is not tracked", () => {
 
   assert.equal(ledger.pending().length, 0);
 });
+
+test("a submit held for its uploads is ended by no answer until its event is sent (#264)", () => {
+  const ledger = new LoadingLedger();
+  const mark = ledger.hold("a", ["form", "button"], "submit");
+  ledger.track(5, "a", ["other"]);
+
+  // Answers to events sent meanwhile, paired or not, leave it marked
+  assert.deepEqual(ledger.answer(5), ["other"]);
+  assert.deepEqual(ledger.answerUnpaired("a"), []);
+  assert.equal(ledger.pending().length, 1);
+
+  assert.equal(ledger.send(mark, 6), true);
+  assert.deepEqual(ledger.answer(6), ["form", "button"]);
+});
+
+test("a held submit that is not sent is dropped alone", () => {
+  const ledger = new LoadingLedger();
+  const mark = ledger.hold("a", ["form"], "submit");
+  ledger.track(1, "a", ["form"]);
+
+  // The form still waits for the other event's answer
+  assert.deepEqual(ledger.drop(mark), []);
+  assert.deepEqual(ledger.answer(1), ["form"]);
+});
+
+test("a held submit ends with its component or the connection, and cannot be sent after", () => {
+  const ledger = new LoadingLedger();
+  const mark = ledger.hold("a", ["form"], "submit");
+  assert.deepEqual(ledger.abandon("a"), ["form"]);
+  assert.equal(ledger.send(mark, 1), false);
+  assert.deepEqual(ledger.drop(mark), []);
+
+  const other = ledger.hold("b", ["form"], "submit");
+  assert.deepEqual(ledger.clear(), ["form"]);
+  assert.equal(ledger.send(other, 2), false);
+});

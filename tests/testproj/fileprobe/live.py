@@ -11,6 +11,8 @@ ordinary component that uploads, holding a LiveComponent that uploads, only
 from an event: a live render brings both in. ``FileLateShelf`` draws the same
 box only once the work its ``joined()`` starts has landed, which waits for
 ``FileLateShelf.gate``: a test holds it closed across a reconnect.
+``FileForm`` and the ``FileFormChild`` in it take ``auto_upload=False`` files,
+which go up when their form is submitted (#264).
 """
 
 import asyncio
@@ -144,3 +146,56 @@ class FileLateShelf(Component):
         while not FileLateShelf.gate.is_set():
             await asyncio.sleep(0.01)
         return "ok"
+
+
+class FileForm(Component):
+    """A form whose uploads wait for its submit: ``auto_upload=False`` (#264).
+
+    ``photos`` and ``notes`` are two chunked inputs of the form, ``photos`` with a
+    drop zone; ``remote`` goes to the external target. The ``save`` handler takes
+    what came up; ``saves`` counts how many submits reached it. ``stray`` is a
+    manual input outside any form: nothing can start it, and the page says so.
+    """
+
+    class Meta:
+        template_name = "fileprobe/form.html"
+
+    title: str = ""
+    saved: list[str] = []
+    saves: int = 0
+
+    async def joined(self):
+        self.allow_upload("photos", accept=[".txt", ".png"], max_entries=2, auto_upload=False)
+        self.allow_upload("notes", accept=[".txt"], max_entries=1, auto_upload=False)
+        self.allow_upload("remote", accept=[".txt"], external=self._presign, auto_upload=False)
+        self.allow_upload("stray", accept=[".txt"], max_entries=2, auto_upload=False)
+
+    def _presign(self, entry, component) -> ExternalUploadMeta:
+        return ExternalUploadMeta(uploader="Plain", url=reverse("fileprobe:put", args=[entry.ref]))
+
+    async def save(self, title: str = ""):
+        self.saves += 1
+        saved = [f"title:{title}"]
+        for name in ("photos", "notes"):
+            async for upload in self.consume_uploads(name):
+                saved.append(f"{name}:{upload.name}:{len(upload.read())}")
+        saved.extend(f"remote:{entry.client_name}" for entry in self.uploads["remote"] if entry.status == "completed")
+        self.saved = saved
+
+
+class FileFormChild(LiveComponent):
+    """The same form inside a LiveComponent: its uploads are its own."""
+
+    class Meta:
+        template_name = "fileprobe/form_child.html"
+
+    saved: list[str] = []
+
+    async def joined(self):
+        self.allow_upload("files", accept=[".txt"], max_entries=1, auto_upload=False)
+
+    async def save(self):
+        saved = []
+        async for upload in self.consume_uploads("files"):
+            saved.append(f"{upload.name}:{len(upload.read())}")
+        self.saved = saved

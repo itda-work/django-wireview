@@ -14,12 +14,18 @@
  * gets `null`, and the next render of its component other than the join's
  * ends it, as before.
  *
+ * A form's submit that waits for its uploads (submits.mjs, #264) is marked
+ * before its event exists: `hold` keeps the mark out of every answer until
+ * `send` gives it the event's ref, or `drop` ends it because the event will
+ * not be sent. A component given up (`abandon`) or a closed connection
+ * (`clear`) ends it too.
+ *
  * Pure bookkeeping; wireview.js applies and removes the marks on the DOM.
  */
 
 /**
  * @template E
- * @typedef {{ ref: number | null, componentId: string, elements: E[], eventType: string | undefined }} Mark
+ * @typedef {{ ref: number | null, componentId: string, elements: E[], eventType: string | undefined, held?: boolean }} Mark
  */
 
 /** @template E */
@@ -40,12 +46,48 @@ export class LoadingLedger {
   }
 
   /**
+   * Marks a submit whose event waits for its uploads: no answer ends it.
+   * @param {string} componentId
+   * @param {E[]} elements
+   * @param {string} [eventType]
+   * @returns {Mark<E>} for `send` or `drop`
+   */
+  hold(componentId, elements, eventType) {
+    /** @type {Mark<E>} */
+    const mark = { ref: null, componentId, elements, eventType, held: true };
+    this.marks.push(mark);
+    return mark;
+  }
+
+  /**
+   * The held submit's event went out: its answer ends the mark from now on.
+   * @param {Mark<E>} mark
+   * @param {number | null} ref - the event's, or null when the server does not echo refs
+   * @returns {boolean} false when the mark had already ended (the component was given up)
+   */
+  send(mark, ref) {
+    if (!this.marks.includes(mark)) return false;
+    mark.held = false;
+    mark.ref = ref;
+    return true;
+  }
+
+  /**
+   * The held submit's event will not be sent.
+   * @param {Mark<E>} mark
+   * @returns {E[]}
+   */
+  drop(mark) {
+    return this.#settle((each) => each === mark);
+  }
+
+  /**
    * The answer to `ref` arrived: it and every earlier ref are settled.
    * @param {number} ref
    * @returns {E[]} the elements no remaining mark holds
    */
   answer(ref) {
-    return this.#settle((mark) => mark.ref !== null && mark.ref <= ref);
+    return this.#settle((mark) => !mark.held && mark.ref !== null && mark.ref <= ref);
   }
 
   /**
@@ -55,7 +97,7 @@ export class LoadingLedger {
    * @returns {E[]}
    */
   answerUnpaired(componentId) {
-    return this.#settle((mark) => mark.ref === null && mark.componentId === componentId);
+    return this.#settle((mark) => !mark.held && mark.ref === null && mark.componentId === componentId);
   }
 
   /**

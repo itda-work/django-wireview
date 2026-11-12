@@ -1,0 +1,11 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <form data-testid="child-form" {% on "submit.prevent" "save" %}>
+    {% upload_input "files" data_testid="child-files" %}
+    <button type="submit" data-testid="child-save">Save</button>
+  </form>
+  <ul data-testid="child-saved">
+    {% for item in this.saved %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</div>

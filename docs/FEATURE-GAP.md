@@ -14,8 +14,8 @@
 | 상태 | 행 |
 |------|---:|
 | ✅ 지원 | 115 |
-| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 12 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 18 |
+| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 13 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 17 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟡·🟠 행은 상태 칸에 GAP 번호와
@@ -61,7 +61,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | 2.8 Navigation | 7 | 1 | 1 | 0 |
 | 2.9 JavaScript Interoperability | 13 | 1 | 5 | 0 |
 | 2.10 Components | 10 | 0 | 3 | 1 |
-| 2.11 Form Handling | 8 | 3 | 1 | 0 |
+| 2.11 Form Handling | 8 | 4 | 0 | 0 |
 | 2.12 Performance Features | 6 | 1 | 0 | 0 |
 | 2.13 Testing | 7 | 0 | 2 | 0 |
 | 2.14 Developer Tools | 6 | 0 | 1 | 0 |
@@ -233,7 +233,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 합성 요구를 받고, 격리 요구는 별도 연결(별도 페이지)로 받는다. 이 선을 옮기려면 GAP-027(#60)의
 세션 분리가 먼저다.
 
-### 2.11 Form Handling 🟠
+### 2.11 Form Handling 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -248,7 +248,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | 이벤트 시간 제어 확장·이벤트 정보 | `phx-debounce="blur"`, 기본 지연, submit 때 대기 중 이벤트 정리, 키별 throttle, keydown의 `key`·metadata | 숫자 `.debounce.N`·`.throttle.N`, `{% on %}`의 고정 인자, 이름 있는 필드 값. 나머지는 없다 | 🟡 GAP-040 (#236) |  |
 | 폼 payload 의미 | disabled·누르지 않은 버튼 제외, submitter, `_target`, `_unused_`·`used_input?/1` | 범위 안 `[name]`을 모두 보낸다. disabled·submitter를 가르지 않고 `form=`으로 연결된 컨트롤은 빠진다. `wire-feedback-for`의 touched는 페이지 전역 이름 단위, reset은 다루지 않는다 | 🟡 GAP-048 (#244) |  |
 | 폼 복구 범위 | 재연결과 crash 재join 모두에서 기본 복구, `phx-auto-recover="ignore"` | 소켓 재연결 때 `wire-auto-recover`를 단 폼만. error 뒤 다시 join에서는 복구하지 않고 끄는 예약값이 없다 | 🟡 GAP-049 (#245) |  |
-| 서버가 지시하는 HTTP 제출·제출 잠금·업로드 뒤 제출 | `phx-trigger-action`, 제출 중 입력 readonly·버튼 disabled, `auto_upload: false` 폼은 submit 때 업로드 | 서버가 HTTP 제출을 지시하는 길이 없다. 제출 중 잠금은 `wire-disabled-with`를 단 submit 버튼만. `auto_upload=False`는 업로드를 시작하는 공개 경로가 없다 | 🟠 GAP-050 (#246) |  |
+| 서버가 지시하는 HTTP 제출·제출 잠금·업로드 뒤 제출 | `phx-trigger-action`, 제출 중 입력 readonly·버튼 disabled, `auto_upload: false` 폼은 submit 때 업로드 | `auto_upload=False`로 받은 파일은 그 입력이 든 폼을 제출할 때 올라가고, 서버가 모두 받은 뒤에 제출 이벤트가 간다. 서버가 HTTP 제출을 지시하는 길은 없다. 제출 중 잠금은 `wire-disabled-with`를 단 submit 버튼과 업로드를 기다리는 동안의 두 번째 제출 무시뿐이다 | 🟡 GAP-050 (#246) |  |
 
 ### 2.12 Performance Features 🟡
 
