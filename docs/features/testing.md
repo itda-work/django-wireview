@@ -160,7 +160,11 @@ async def test_remove_button_deletes_the_row(item):
 - 요소가 disabled다(자신, 감싼 `<button disabled>`, `<fieldset disabled>` — 그 첫 `<legend>` 안은 아니다). readonly·
   `type=hidden` 칸에 값을 넣으려 했다. 칸이 아닌 요소에 값을 주었다. 값의 타입이 칸과 맞지 않다.
 - 바인딩이 다른 컴포넌트(중첩 `{% component %}`, LiveComponent)의 것이다. `mount()`는 마운트한 컴포넌트의 핸들러만
-  돌리므로, 그 컴포넌트를 따로 `mount()`해 시험한다.
+  돌리므로, 그 컴포넌트를 따로 `mount()`해 시험한다. `mount()`의 `render()`는 페이지의 첫 응답처럼 렌더마다 자식을
+  새로 그리고 자식의 `joined()`·`update()`·`leaving()`을 돌리지 않는다 — 자식의 핸들러가 바꾼 상태는 다음 렌더에
+  남지 않고, `send_to_parent()`는 부모에게 가지 않는다. 그래서 부모를 마운트한 채 자식의 요소를 누르는 것은 지원하지
+  않는다(그러려면 `mount()`가 소켓의 세션처럼 저장소를 렌더 사이에 지니고 자식의 수명주기를 돌려야 한다, #252).
+  자식과 부모가 함께 움직이는 것(`send_to_parent`, 부모의 다시 그리기가 자식에 주는 props)은 브라우저 E2E로 본다.
 - `submit`이 막히지 않는다(`.prevent`가 없다). 브라우저는 그 폼을 `action`으로 보내 페이지를 떠난다. 폼 안의
   `<button>`(기본 type이 submit)에 `{% on "click" %}`만 걸고 `.prevent`를 잊은 경우도 여기서 잡힌다.
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
