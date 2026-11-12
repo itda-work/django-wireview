@@ -135,7 +135,7 @@ https://itda.work/wireview/llms.txt 를 참고해 django-wireview를 설치하�
 wireview는 검증된 Django·Channels 위의 얇은 층입니다. 템플릿·폼·ORM·인증·세션은 Django의 것이고, WebSocket과 채널 레이어는 Channels의 것입니다. 그 근거는 이렇습니다.
 
 - 실험적 프로젝트라 다음 릴리스부터 PyPI 분류를 `Development Status :: 3 - Alpha`로 둡니다(1.2.0까지는 `5 - Production/Stable`이었습니다).
-- CI가 Python 3.13·3.14와 Django 5.2·6.0·6.1의 여섯 조합을 모두 돌립니다([지원 범위](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md#지원-범위)).
+- CI가 Python 3.13·3.14와 Django 5.2·6.0·6.1의 여섯 조합, 그리고 Python 3.15와 Django 6.1을 돌립니다([지원 범위](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md#지원-범위)).
 - 1.0부터 공개 API를 마이너·패치 릴리스에서 깨지 않고, 없앨 때는 경고를 거친 뒤 다음 메이저에서 없앱니다([호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md)).
 - `make test`가 5,000개가 넘는 테스트를 돌리고, 릴리스 태그는 이것과 NATS·Redis 위의 브라우저 E2E를 모두 통과해야 PyPI에 올라갑니다.
 

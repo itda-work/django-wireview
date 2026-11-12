@@ -68,11 +68,24 @@ def cells(workflow: Path = WORKFLOW, jobs: list[str] | None = None) -> list[Cell
         if not matrix:
             found.append(Cell(job))
             continue
-        if "include" in matrix or "exclude" in matrix:
-            raise SystemExit(f"{job}: include and exclude are not expanded here; add them to scripts/act_ci.py")
-        keys = list(matrix)
-        for values in itertools.product(*(matrix[key] for key in keys)):
-            found.append(Cell(job, tuple(zip(keys, (str(value) for value in values)))))
+        if "include" in matrix:
+            raise SystemExit(f"{job}: include is not expanded here; add it to scripts/act_ci.py")
+        found.extend(Cell(job, combination) for combination in combinations(matrix))
+    return found
+
+
+def combinations(matrix: dict) -> list[tuple[tuple[str, str], ...]]:
+    """The cells of a matrix as GitHub runs them: every combination of its lists, less those ``exclude`` names.
+
+    An ``exclude`` entry drops every combination it agrees with on the keys it names.
+    """
+    keys = [key for key in matrix if key != "exclude"]
+    excluded = [{key: str(value) for key, value in entry.items()} for entry in matrix.get("exclude") or []]
+    found = []
+    for values in itertools.product(*(matrix[key] for key in keys)):
+        cell = tuple(zip(keys, (str(value) for value in values)))
+        if not any(entry.items() <= dict(cell).items() for entry in excluded):
+            found.append(cell)
     return found
 
 

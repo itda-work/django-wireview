@@ -14,15 +14,30 @@ def test_every_job_and_every_matrix_cell_is_run_once():
     jobs = yaml.safe_load(act_ci.WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     expected = 0
     for spec in jobs.values():
-        matrix = (spec.get("strategy") or {}).get("matrix") or {}
+        matrix = dict((spec.get("strategy") or {}).get("matrix") or {})
+        excluded = matrix.pop("exclude", [])
         size = 1
         for values in matrix.values():
             size *= len(values)
-        expected += size
+        # Each exclude entry in ci.yml names a whole cell, so it removes exactly one.
+        assert all(set(entry) == set(matrix) for entry in excluded), excluded
+        expected += size - len(excluded)
     runs = act_ci.cells()
     assert len(runs) == expected
     assert len({cell.name for cell in runs}) == expected
     assert {cell.job for cell in runs} == set(jobs)
+
+
+def test_an_excluded_cell_is_not_run():
+    """ci.yml leaves Python 3.15 out under the Django releases that do not list it (#265)."""
+    matrix = {"py": ["3.14", "3.15"], "dj": ["5.2", "6.1"], "exclude": [{"py": "3.15", "dj": "5.2"}]}
+
+    assert act_ci.combinations(matrix) == [
+        (("py", "3.14"), ("dj", "5.2")),
+        (("py", "3.14"), ("dj", "6.1")),
+        (("py", "3.15"), ("dj", "6.1")),
+    ]
+    assert act_ci.combinations({"py": ["3.15"], "dj": ["5.2", "6.1"], "exclude": [{"py": 3.15}]}) == []
 
 
 def test_a_cell_is_handed_to_act_as_its_job_and_its_matrix_values():

@@ -112,7 +112,11 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 ## 지원 범위
 
 **Django가 보안 지원하는 Django 버전**과, 그 버전들이 지원하는 Python 중 **3.13 이상**을 지원한다. 지금은
-Django 5.2 LTS·6.0·6.1, Python 3.13·3.14다.
+Django 5.2 LTS·6.0·6.1, Python 3.13·3.14·3.15다.
+Python 3.15는 Django 6.1과만이다 — Django가 3.15를 올린 것은 6.1.3부터이고 5.2·6.0은 아직 올리지 않았다(#265).
+CI 매트릭스는 그 두 칸을 `exclude`로 빼고 `make test-matrix`는 `MATRIX_EXCLUDE`로 뺀다. Django가 올리면 그 칸을 되살린다.
+런타임 의존성(Django·Channels·pydantic)은 3.15용 wheel이 있다. daphne의 의존성 autobahn(26.11.1까지)과 PyYAML(6.0.3까지)은
+3.15용 wheel을 내지 않아 설치할 때 소스에서 빌드된다 — daphne로 띄우는 3.15 환경에는 C 컴파일러가 필요할 수 있다.
 하한이 3.13인 것은 NATS 레이어(`channels-nats`)가 0.7.0부터 3.13 이상을 요구하기 때문이다(#225).
 
 - Django가 한 버전의 지원을 끝내면 그다음 **마이너** 릴리스에서 그 버전을 뺀다. 메이저를 올리지 않는다 —

@@ -14,6 +14,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Python 3.15, with Django 6.1 (#265): the classifiers name it and CI's test matrix runs it. Django lists 3.15 from
+  6.1.3 and not yet for 5.2 or 6.0, so `ci.yml` excludes those two cells and `make test-matrix` skips them
+  (`MATRIX_EXCLUDE`); `make ci-local` expands a matrix's `exclude`. The runtime dependencies ship 3.15 wheels; daphne's
+  autobahn and PyYAML do not yet and build from source (`docs/COMPATIBILITY.md`).
 - A page joining with a state an older version of the component signed now gets one of two answers, decided before
   any of the application's code runs (#231). The deployed class validates it: the page goes on from it (a new field
   with a default, a removed field, `int` to `float`). It does not -- a new field with no default, a value that no

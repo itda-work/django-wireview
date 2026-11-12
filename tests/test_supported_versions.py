@@ -46,6 +46,12 @@ def _matrix(job: str, key: str) -> list[str]:
     return [str(value) for value in matrix[key]]
 
 
+def _excluded(job: str) -> set[tuple[str, str]]:
+    """The (python, django) cells ci.yml's ``exclude`` leaves out of ``job``."""
+    entries = CI_JOBS[job]["strategy"]["matrix"].get("exclude") or []
+    return {(str(entry["python-version"]), str(entry["django-version"])) for entry in entries}
+
+
 def _classifiers(framework: str) -> list[str]:
     prefix = f"{framework} :: "
     found = [c.removeprefix(prefix) for c in PYPROJECT["project"]["classifiers"] if c.startswith(prefix)]
@@ -72,6 +78,25 @@ def test_the_matrix_starts_at_the_dependency_bound():
 def test_the_classifiers_are_the_matrix():
     assert _classifiers("Framework :: Django") == DJANGO
     assert _classifiers("Programming Language :: Python") == PYTHON
+
+
+def _make_variable(name: str) -> list[str]:
+    match = re.search(rf"^{name} \?= (.*)$", (ROOT / "Makefile").read_text(encoding="utf-8"), re.MULTILINE)
+    assert match, f"the Makefile sets no {name}"
+    return match.group(1).split()
+
+
+def test_make_test_matrix_runs_the_ci_grid():
+    """``make test-matrix`` is how the range gets checked between dispatched CI runs (#265)."""
+    assert _make_variable("MATRIX_PYTHON") == PYTHON
+    assert _make_variable("MATRIX_DJANGO") == DJANGO
+    assert {tuple(pair.split("/")) for pair in _make_variable("MATRIX_EXCLUDE")} == _excluded("test")
+
+
+def test_every_python_runs_on_the_newest_django():
+    """A Python the classifiers name is tested with at least one Django; an exclude never empties a row."""
+    newest = max(DJANGO, key=_version)
+    assert not {(python, newest) for python in PYTHON} & _excluded("test")
 
 
 def test_the_compatibility_policy_names_the_matrix():

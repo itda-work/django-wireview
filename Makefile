@@ -235,11 +235,14 @@ ci-check:
 	uv run pyright wireview scripts
 
 # Unit and integration tests on every supported Python x Django pair (docs/COMPATIBILITY.md).
-# CI only runs when dispatched by hand, so this is how the range gets checked.
-MATRIX_PYTHON ?= 3.13 3.14
+# CI only runs when dispatched by hand, so this is how the range gets checked. MATRIX_EXCLUDE
+# names the python/django pairs ci.yml's exclude leaves out (tests/test_supported_versions.py).
+MATRIX_PYTHON ?= 3.13 3.14 3.15
 MATRIX_DJANGO ?= 5.2 6.0 6.1
+MATRIX_EXCLUDE ?= 3.15/5.2 3.15/6.0
 test-matrix: collectstatic
 	@set -e; for py in $(MATRIX_PYTHON); do for dj in $(MATRIX_DJANGO); do \
+		case " $(MATRIX_EXCLUDE) " in *" $$py/$$dj "*) continue;; esac; \
 		echo "== Python $$py, Django $$dj"; \
 		uv run --isolated --python $$py --extra dev --with "django~=$$dj.0" \
 			pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS); \
