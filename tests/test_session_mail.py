@@ -30,6 +30,7 @@ from channels.layers import InMemoryChannelLayer, get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser, User
 from django.template import Template, engines
+from testproj.outbound import RecordingOutbound
 from testproj.waiting import eventually
 
 from wireview import JS, Broadcast, Component
@@ -39,6 +40,7 @@ from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.state import sign_state
 from wireview.core.transport import ChannelsBroker, Mailbox
+from wireview.session import WireviewSession
 from wireview.utils import _message
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
@@ -183,6 +185,24 @@ def _state(cls: type[Component], id: str) -> str:
 
 
 @pytest.fixture
+def a_session_left_behind():
+    """A started session no one stopped, still among those a template change reaches.
+
+    What an earlier test leaves until the cycle collector comes round (#268):
+    registered first, it is what picking "the" session by order used to find.
+    Its loop is closed, as that test's was.
+    """
+    from wireview.core import template_reload
+
+    left = WireviewSession(RecordingOutbound(), user=AnonymousUser(), channel_name="left-behind")
+    loop = asyncio.new_event_loop()
+    loop.close()
+    template_reload._sessions[left] = loop  # type: ignore[attr-defined]
+    yield left
+    template_reload.unregister(left)
+
+
+@pytest.fixture
 def small_channels(settings):
     """Every channel holds CAPACITY messages. Channels drops its cached layer on the change."""
     settings.CHANNEL_LAYERS = {
@@ -196,6 +216,25 @@ async def _connect(user: t.Any = None) -> WebsocketCommunicator:
     connected, _ = await communicator.connect()
     assert connected
     return communicator
+
+
+async def _joined_box(user: t.Any = None) -> tuple[WebsocketCommunicator, WireviewSession]:
+    """A connection that joined ``SmBox`` "box", and its session: on with REJOIN_ON_TEMPLATE_CHANGE.
+
+    The session is the one this connection added among those a template change
+    reaches. The registry may hold others -- one an earlier test started and
+    never stopped lives there until the cycle collector comes round -- and the
+    first of them is not this test's (#268). Read after the join: the socket is
+    accepted before the session starts, and the join is handled after it has.
+    """
+    from wireview.core import template_reload
+
+    before = set(template_reload._sessions)  # type: ignore[attr-defined]
+    communicator = await _connect(user)
+    await _join(communicator, SmBox, "box")
+    added = set(template_reload._sessions) - before  # type: ignore[attr-defined]
+    assert len(added) == 1, f"expected the one session this connection started, the registry gained {added!r}"
+    return communicator, added.pop()
 
 
 async def _until(communicator: WebsocketCommunicator, last: t.Callable[[dict[str, t.Any]], bool]):
@@ -306,17 +345,15 @@ async def test_a_task_that_raises_into_its_full_channel_is_recovered(small_chann
     assert frames[-1]["command"] == "error"
 
 
-async def test_a_template_change_mailed_into_a_full_channel_still_rejoins_the_page(small_channels, settings):
+async def test_a_template_change_mailed_into_a_full_channel_still_rejoins_the_page(
+    small_channels, settings, a_session_left_behind
+):
     """``template_changed`` (#180) is the session's own mail too."""
-    from wireview.core import template_reload
-
     settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "REJOIN_ON_TEMPLATE_CHANGE": True}
-    communicator = await _connect()
+    communicator, session = await _joined_box()
     try:
-        await _join(communicator, SmBox, "box")
         await _event(communicator, "box", "push")
         await _until(communicator, _heard_all)
-        session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]
         HELD["until"] = asyncio.Event()
         await _event(communicator, "box", "hold")
         await eventually(lambda: session.handling)
@@ -536,17 +573,14 @@ async def test_mail_a_held_turn_cannot_take_is_kept_up_to_a_bound_and_then_the_c
     assert probe.seen == [("close", 1013)]
 
 
-async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_channels, settings):
+async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_channels, settings, a_session_left_behind):
     """It waits for the turn of a handler that never ends; the connection ends instead, and the task with it."""
     from wireview.core import template_reload
 
     settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "REJOIN_ON_TEMPLATE_CHANGE": True}
-    communicator = await _connect()
+    communicator, session = await _joined_box()
     HELD["until"] = asyncio.Event()
-    session = None
     try:
-        await _join(communicator, SmBox, "box")
-        session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]
         await _event(communicator, "box", "hold")
         await eventually(lambda: session.handling)
         await _fill(session.channel_name)
@@ -563,7 +597,7 @@ async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_chann
         HELD["until"].set()
 
     assert task.cancelled()
-    assert session is not None and session._mailbox is not None and session._mailbox.closed
+    assert session._mailbox is not None and session._mailbox.closed
     # Cancelled, it never ran disconnect(): the app's end ended the session all the same
     assert not template_reload.registered(session)
 
@@ -572,7 +606,7 @@ async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_chann
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_a_logout_closes_a_connection_whose_channel_is_full(small_channels, settings):
+async def test_a_logout_closes_a_connection_whose_channel_is_full(small_channels, settings, a_session_left_behind):
     """``session_invalidated`` is fan-out, not mail: the logout's process cannot know a full channel dropped it.
 
     It reaches each process's ``PatchHub`` too, whose channel nothing holds up,
@@ -580,16 +614,13 @@ async def test_a_logout_closes_a_connection_whose_channel_is_full(small_channels
     """
     from asgiref.sync import sync_to_async
 
-    from wireview.core import template_reload
     from wireview.core.live_session import invalidate_authentication
 
     settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "REJOIN_ON_TEMPLATE_CHANGE": True}
     # Logged in: an anonymous connection stands on no login a logout could end
     user = await User.objects.acreate(username="sm-logout")
-    communicator = await _connect(user)
+    communicator, session = await _joined_box(user)
     try:
-        await _join(communicator, SmBox, "box")
-        session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]
         await session._subscribe_auth_topic()
         HELD["until"] = asyncio.Event()
         await _event(communicator, "box", "hold")

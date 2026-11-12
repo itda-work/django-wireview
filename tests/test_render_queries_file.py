@@ -28,6 +28,7 @@ import typing as t
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from asgiref.sync import sync_to_async
 from django.db import connection
 from django.template import Context, Engine, Origin, Template, engines
@@ -325,8 +326,14 @@ def run(sql: str = "SELECT 1") -> None:
         cursor.execute(sql)
 
 
-async def _join(cls: type[Component], id: str) -> None:
-    """A real connection's join: the session renders LiveComponents after their parent."""
+@pytest_asyncio.fixture
+async def join(sink: Path) -> t.AsyncIterator[t.Callable[[type[Component], str], t.Awaitable[None]]]:
+    """A real connection's join: the session renders LiveComponents after their parent.
+
+    The sessions end with the test, before the sink does: one started and never
+    stopped stays among the open sessions a template change reaches until the
+    cycle collector comes round, and a later test may pick it for its own (#268).
+    """
     from uuid import uuid4
 
     from django.contrib.auth.models import AnonymousUser
@@ -338,10 +345,18 @@ async def _join(cls: type[Component], id: str) -> None:
     from wireview.core.state import sign_state
     from wireview.session import WireviewSession
 
-    session = WireviewSession(RecordingOutbound(), user=AnonymousUser(), channel_name=f"rqf-{uuid4().hex[:8]}")
-    await session.start(session=SessionView(), vsn=PROTOCOL_VERSION)
-    state = await sync_to_async(sign_state)(cls(id=id, user=AnonymousUser(), wire=WireviewMeta(params={})))
-    await session.handle_message({"command": "join", "payload": {"name": cls._name, "state": state}})
+    sessions: list[WireviewSession] = []
+
+    async def join(cls: type[Component], id: str) -> None:
+        session = WireviewSession(RecordingOutbound(), user=AnonymousUser(), channel_name=f"rqf-{uuid4().hex[:8]}")
+        sessions.append(session)
+        await session.start(session=SessionView(), vsn=PROTOCOL_VERSION)
+        state = await sync_to_async(sign_state)(cls(id=id, user=AnonymousUser(), wire=WireviewMeta(params={})))
+        await session.handle_message({"command": "join", "payload": {"name": cls._name, "state": state}})
+
+    yield join
+    for session in sessions:
+        await session.stop()
 
 
 # -- the line --------------------------------------------------------------------------------
@@ -410,13 +425,13 @@ async def test_a_template_the_cache_still_runs_is_told_with_its_old_source(sink,
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["http", "live"])
 async def test_a_let_slot_a_live_component_draws_later_is_told_with_a_source_only_when_one_is_on_the_stack(
-    sink, quiz, template_dir, path
+    sink, quiz, template_dir, path, join
 ):
     if path == "http":
         view = await mount(RqfFrame, id="frame")
         await sync_to_async(view.render)()
     else:
-        await _join(RqfFrame, "frame")
+        await join(RqfFrame, "frame")
     rows = [row for record in lines(sink) for row in record["rows"] if row.get("template", {}).get("line") == 3]
     assert rows, lines(sink)
     for row in rows:
@@ -585,9 +600,9 @@ async def test_a_component_fixed_alone_clears_what_it_ran_inside_another(sink, q
 
 
 @pytest.mark.asyncio
-async def test_sibling_live_components_are_one_line_and_their_statement_is_repeated(sink, quiz):
+async def test_sibling_live_components_are_one_line_and_their_statement_is_repeated(sink, quiz, join):
     """#189: a render and the LiveComponents it names are one piece of work, so one line."""
-    await _join(RqfRack, "rack")
+    await join(RqfRack, "rack")
     [record] = lines(sink)
     assert record["kind"] == "tree" and record["detail"] == "join"
     assert [(r["name"], r["id"], r["why"]) for r in record["renders"]] == [

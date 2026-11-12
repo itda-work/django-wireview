@@ -199,16 +199,16 @@ async def test_a_file_that_is_not_a_template_asks_nothing(debug, shadow, tmp_pat
 )
 async def test_off_a_connection_does_not_register_and_hears_nothing(shadow, debug_on, setting):
     with override_settings(DEBUG=debug_on, WIREVIEW={"REJOIN_ON_TEMPLATE_CHANGE": setting}):
-        before = len(template_reload._sessions)
+        before = set(template_reload._sessions)
         communicator = await _connect()
         try:
-            registered = len(template_reload._sessions) - before
+            registered = set(template_reload._sessions) - before
             await _changed(shadow.write("v2"))
             assert await communicator.receive_nothing(timeout=0.3)
         finally:
             await communicator.disconnect()
 
-    assert registered == 0
+    assert not registered
 
 
 async def test_turned_on_without_debug_it_works(shadow):
@@ -224,12 +224,15 @@ async def test_turned_on_without_debug_it_works(shadow):
 
 
 async def test_a_closed_connection_is_let_go(debug, shadow):
-    before = len(template_reload._sessions)
+    # Compared by member, not by count: a session an earlier test left the cycle
+    # collector to take may go meanwhile (#268). ``before`` holds those alive.
+    before = set(template_reload._sessions)
     communicator = await _connect()
-    assert len(template_reload._sessions) == before + 1
+    [session] = set(template_reload._sessions) - before
     await communicator.disconnect()
 
-    assert len(template_reload._sessions) == before
+    assert not template_reload.registered(session)
+    assert set(template_reload._sessions) == before
 
 
 async def test_a_page_older_than_rejoin_hears_nothing(debug, shadow):
