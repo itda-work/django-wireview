@@ -2,24 +2,29 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-10-13
+> **최종 업데이트**: 2026-11-12
 
 ---
 
 ## 개요
 
-아래 2절의 비교표 117행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
+아래 2절의 비교표 147행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
 표를 다시 세어 이 숫자와 비교한다.
 
 | 상태 | 행 |
 |------|---:|
 | ✅ 지원 | 115 |
-| 🟡 부분 지원 | 0 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 0 |
+| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 12 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 18 |
 | ⚪ 설계상 제외 | 2 |
 
-✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟠 행은 3절 표에서
-GAP 번호로 추적한다.
+✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟡·🟠 행은 상태 칸에 GAP 번호와
+이슈를 적고 3절 표에서 같은 이슈로 추적한다. 🟡는 Phoenix의 그 기능 중 일부가 되고 일부가 없다는 뜻이고, 되는 부분은
+`django-wireview` 칸에 적는다. 🟡·🟠 행의 근거 칸은 비워 둔다 — 되는 부분의 근거는 같은 카테고리의 ✅ 행에 있다.
+
+LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대조의 기록은
+[phoenix-1.2-gap-codex-2026-10-13.md](./design/phoenix-1.2-gap-codex-2026-10-13.md)와
+[이슈 초안](./design/phoenix-1.2-issue-drafts-codex-2026-10-13.md)이고, 정본은 이 표와 이슈다.
 
 ### ✅의 근거
 
@@ -41,26 +46,26 @@ GAP 번호로 추적한다.
 
 ### 카테고리별 상태
 
-2절의 카테고리마다 행을 센 값이다. 🟡·🟠 행은 없다. `tests/test_feature_gap.py`가 이 표와 2절의 제목 표시를
-2절의 행과 대조한다.
+2절의 카테고리마다 행을 센 값이다. 제목의 표시는 그 카테고리에 🟠 행이 있으면 🟠, 남은 행이 🟡뿐이면 🟡, 없으면 ✅다.
+`tests/test_feature_gap.py`가 이 표와 2절의 제목 표시를 2절의 행과 대조한다.
 
-| 카테고리 | ✅ | ⚪ |
-|----------|---:|---:|
-| 2.1 Core Lifecycle | 7 | 0 |
-| 2.2 Real-time Features | 5 | 0 |
-| 2.3 LiveView.JS (Client Commands) | 12 | 0 |
-| 2.4 Optimistic UI | 5 | 0 |
-| 2.5 Streams | 10 | 0 |
-| 2.6 File Uploads | 9 | 0 |
-| 2.7 Async Operations | 5 | 0 |
-| 2.8 Navigation | 7 | 0 |
-| 2.9 JavaScript Interoperability | 13 | 0 |
-| 2.10 Components | 10 | 1 |
-| 2.11 Form Handling | 8 | 0 |
-| 2.12 Performance Features | 6 | 0 |
-| 2.13 Testing | 7 | 0 |
-| 2.14 Developer Tools | 6 | 0 |
-| 2.15 Miscellaneous | 5 | 1 |
+| 카테고리 | ✅ | 🟡 | 🟠 | ⚪ |
+|----------|---:|---:|---:|---:|
+| 2.1 Core Lifecycle | 7 | 1 | 0 | 0 |
+| 2.2 Real-time Features | 5 | 0 | 0 | 0 |
+| 2.3 LiveView.JS (Client Commands) | 12 | 2 | 2 | 0 |
+| 2.4 Optimistic UI | 5 | 0 | 0 | 0 |
+| 2.5 Streams | 10 | 1 | 0 | 0 |
+| 2.6 File Uploads | 9 | 0 | 2 | 0 |
+| 2.7 Async Operations | 5 | 1 | 0 | 0 |
+| 2.8 Navigation | 7 | 1 | 1 | 0 |
+| 2.9 JavaScript Interoperability | 13 | 1 | 5 | 0 |
+| 2.10 Components | 10 | 0 | 3 | 1 |
+| 2.11 Form Handling | 8 | 3 | 1 | 0 |
+| 2.12 Performance Features | 6 | 1 | 0 | 0 |
+| 2.13 Testing | 7 | 0 | 2 | 0 |
+| 2.14 Developer Tools | 6 | 0 | 1 | 0 |
+| 2.15 Miscellaneous | 5 | 1 | 1 | 1 |
 
 ⚪ 두 행은 Nested LiveViews(프로세스 격리)와 LongPolling 폴백(GAP-012)이다.
 
@@ -68,7 +73,7 @@ GAP 번호로 추적한다.
 
 ## 2. 상세 기능 비교
 
-### 2.1 Core Lifecycle ✅
+### 2.1 Core Lifecycle 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -79,6 +84,7 @@ GAP 번호로 추적한다.
 | terminate | `terminate/2` | `leaving()` | ✅ | `tests/test_leave.py::test_leave_calls_leaving_and_removes_the_component`<br>`tests/test_connections.py::test_closing_the_socket_calls_leaving` |
 | ORM mutation | - | `mutation()` | ✅ 추가 기능 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
 | 세션 접근 | `mount/3`의 session | `self.session` (읽기 전용) | ✅ GAP-029 | `tests/test_session.py::test_connect_snapshots_the_session_so_reads_cost_nothing`<br>`tests/test_session.py::test_the_dead_render_reads_the_request_session` |
+| 지연 기본값·변경 조회·렌더러 선택 | `assign_new`, `changed?`, `render_with` | 렌더마다 지연 계산은 `Meta.lazy_properties`·`cached_property`로 된다. 필드가 바뀌었는지 묻는 API가 없고, 템플릿은 클래스의 `Meta.template_name` 하나 | 🟡 GAP-067 (#GAP067) |  |
 
 ### 2.2 Real-time Features ✅
 
@@ -90,7 +96,7 @@ GAP 번호로 추적한다.
 | Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker`<br>`tests/test_presence.py::TestPresenceMixin::test_typing_auto_timeout` |
 | Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
 
-### 2.3 LiveView.JS (Client Commands) ✅
+### 2.3 LiveView.JS (Client Commands) 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -106,6 +112,10 @@ GAP 번호로 추적한다.
 | navigate | ✅ | `JS().navigate()` | ✅ | `tests/test_js_commands_e2e.py::test_navigate_pushes_a_history_entry`<br>`tests/test_js_commands_e2e.py::test_navigate_with_replace_goes_there_in_place_of_this_entry` |
 | Command chaining | ✅ | ✅ 지원 | ✅ | `tests/test_js_commands_e2e.py::test_a_chain_runs_every_command_in_order` |
 | 패치 뒤에도 남는 명령 (sticky) | ✅ | ✅ 클래스·속성·표시·진행 중인 트랜지션 (GAP-037) | ✅ | `tests/test_js_commands_e2e.py::test_what_commands_change_outlasts_the_next_render`<br>`tests/test_js_commands_e2e.py::test_a_transitions_classes_outlast_a_render_and_go_when_it_ends`<br>`tests/test_streams_e2e.py::test_an_updated_item_keeps_what_commands_changed_on_it` |
+| 속성 토글·체인 재사용·상대 선택자 | `toggle_attribute`, `exec`, `concat`, `to: {:inner, …}`·`{:closest, …}` | 없음. `set_attr`·`remove_attr`와 문서 전체 CSS 선택자만 | 🟠 GAP-041 (#GAP041) |  |
+| 포커스 스택·포커스 가두기 | `push_focus`, `pop_focus`, `focus_wrap`, 숨은·비활성 요소를 거르는 탐색 | 없음. `focus_first`는 input·textarea·select·button·tabindex만 보고 링크·숨은 조상·inert를 거르지 않는다 | 🟠 GAP-042 (#GAP042) |  |
+| 트랜지션 세 단계·blocking | `{transition, start, end}`, `blocking:`, 기본 시간, 트랜지션을 기다리지 않는 push, show/hide 시작·끝 이벤트 | 클래스 하나와 시간. 렌더를 건너 유지된다. 세 단계·blocking·이벤트가 없고, 시간을 생략하면 클래스가 남으며 시간 있는 트랜지션이 뒤의 push를 늦춘다 | 🟡 GAP-043 (#GAP043) |  |
+| push·dispatch 옵션과 창 단위 서버 이벤트 | `push`의 다중 target·`loading`·`page_loading`, `dispatch`의 `blocking`·`done`, `push_event`의 window 이벤트, viewport의 JS 체인 | `push`(value, 첫 컴포넌트 루트가 대상)·`dispatch`(CustomEvent)와 훅이 받는 `push_event`만 | 🟡 GAP-044 (#GAP044) |  |
 
 ### 2.4 Optimistic UI ✅
 
@@ -117,7 +127,7 @@ GAP 번호로 추적한다.
 | phx-disable-with | ✅ | `wire-disabled-with` | ✅ | `tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy`<br>`tests/test_js_commands_e2e.py::test_the_submit_button_of_a_form_is_disabled_with_its_text`<br>`tests/test_js_commands_e2e.py::test_a_chain_that_pushes_is_disabled_with_its_text` |
 | Client-side immediate | ✅ | JS() 명령어 | ✅ | `tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy`<br>`tests/test_js_commands_e2e.py::test_a_chain_that_pushes_is_disabled_with_its_text` |
 
-### 2.5 Streams ✅
+### 2.5 Streams 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -131,8 +141,9 @@ GAP 번호로 추적한다.
 | stream :limit | ✅ | `stream(limit=N)` | ✅ | `tests/test_streams_e2e.py::test_limit_keeps_only_the_newest` |
 | stream :reset | ✅ | `stream()`이 곧 reset이다. `reset=False`면 화면의 것을 두고 `at`에 한 연산으로 넣는다 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream`<br>`tests/testproj/bookmarks/tests.py::test_filter_unread_excludes_read_items`<br>`tests/test_streams.py::TestStreamWithoutReset::test_the_items_go_out_in_one_insert_in_the_order_given` |
 | phx-viewport-top/bottom | ✅ | `wire-viewport-*` ([튜토리얼](./tutorials/06-streams-api.md)) | ✅ | `tests/test_streams_e2e.py::test_scrolling_to_the_bottom_loads_more`<br>`tests/test_streams_e2e.py::test_scrolling_back_to_the_top_calls_the_top_binding` |
+| 부호 limit·stream_configure·항목으로 delete·비스트림 자식 | 음수 limit로 방향, `stream_configure/3`, `stream_delete(socket, name, item)`, reset이 비스트림 자식을 남긴다 | 양수 `limit`만 삽입 반대쪽에서 자른다. `dom_id`는 호출마다, `stream_delete`는 dom id 문자열 또는 pk. reset은 컨테이너를 비운다 | 🟡 GAP-051 (#GAP051) |  |
 
-### 2.6 File Uploads ✅
+### 2.6 File Uploads 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -145,8 +156,10 @@ GAP 번호로 추적한다.
 | consume_uploads | ✅ | `consume_uploads()` | ✅ | `tests/test_uploads_e2e.py::test_one_upload_after_another_past_max_entries`<br>`tests/test_uploads.py::TestComponentUploadMethods::test_an_upload_read_in_the_loop_is_consumed` |
 | External upload (S3) | ✅ | `external=callback` | ✅ | `tests/test_uploads_e2e.py::test_an_external_upload_goes_to_the_presigned_url`<br>`tests/test_upload_render.py::test_an_async_external_callback_is_awaited` |
 | Magic byte validation | ✅ | ✅ | ✅ | `tests/test_uploads.py::TestUploadView::test_content_that_does_not_match_the_extension_is_refused` |
+| 업로드 검증·진행률 콜백·소비 옵션 | `accept`의 MIME·wildcard, `validator`, `max_entries_mode`, `progress` 콜백, `disallow_upload`, `consume_uploaded_entry`·postpone | `accept`는 확장자 목록. 크기·magic byte 검사, 활성 항목 수로 센 `max_entries`, `on_upload_complete`, 완료 항목을 모두 소비하는 `consume_uploads()` | 🟠 GAP-052 (#GAP052) |  |
+| 사용자 uploader·서버 writer·청크 유휴 시한 | `uploaders` 레지스트리(onCancel 포함), `UploadWriter`, `chunk_timeout` | 외부 업로드는 url·method·headers의 XHR 하나. 서버 writer·청크 유휴 시한이 없고, 외부 XHR 실패가 서버의 항목에 닿지 않는다 | 🟠 GAP-053 (#GAP053) |  |
 
-### 2.7 Async Operations ✅
+### 2.7 Async Operations 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -155,8 +168,9 @@ GAP 번호로 추적한다.
 | start_async() | ✅ | `start_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_async_lifetime.py::test_a_replaced_task_leaves_its_replacement_tracked` |
 | cancel_async() | ✅ | `cancel_async()` | ✅ | `tests/test_start_async.py::test_cancel_async_stops_the_operation_before_handle_async` |
 | handle_async() | ✅ | `handle_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_start_async.py::test_a_failed_operation_reaches_handle_async_as_failed`<br>`tests/test_start_async.py::test_a_handle_async_that_raises_joins_the_component_again` |
+| assign_async의 키·reset, 취소 이유, stream_async | `assign_async(socket, keys, fun, reset:)`, `cancel_async(socket, key, reason)`, `stream_async/4` | coroutine 하나가 새 `AsyncResult`. 다시 부르면 이전 ok 값이 사라지고 이전 작업은 취소되지 않는다. `cancel_async(name)`은 `start_async`의 이름만 | 🟡 GAP-054 (#GAP054) |  |
 
-### 2.8 Navigation ✅
+### 2.8 Navigation 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -167,8 +181,10 @@ GAP 번호로 추적한다.
 | live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_link_click_out_of_the_boundary_reloads`<br>`tests/test_live_session.py::TestValidSignaturesDoNotCombine::test_a_state_from_another_boundary_is_refused` |
 | Client-side boost | ✅ | `WIREVIEW["BOOST_PAGES"]`. 폼은 `wire-boost`로 청한다, `wireview.visit()` | ✅ | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_boosted_move_inside_the_boundary_still_morphs`<br>`tests/test_js_commands_e2e.py::test_a_boosted_post_form_lands_where_it_redirected` |
 | phx:before-navigate | ✅ | `wireview:before-navigate` (#154: boost 이동 앞에 `document`로 가는 이벤트, `detail.kind`. 취소할 수 있다 — 단 `redirect_to`는 서버가 컴포넌트를 얼려 알리기만 하고, 뒤로·앞으로 가기는 Navigation API가 있는 브라우저에서만 취소되어 떠난 항목으로 돌아간다. `wireview:navigated`도 `kind`를 단다) | ✅ | `tests/test_before_navigate_e2e.py::test_a_guard_that_asks_the_user`<br>`tests/test_before_navigate_e2e.py::test_a_cancelled_back_returns_to_the_entry_it_left`<br>`tests/test_before_navigate_e2e.py::test_a_cancelled_move_leaves_everything_where_it_was`<br>`tests/test_before_navigate_e2e.py::test_a_redirect_is_told_and_goes`<br>`tests/test_before_navigate_e2e.py::test_without_the_navigation_api_back_is_announced_and_not_cancelable` |
+| 명시적 patch와 이동 유형 | `JS.patch`, `<.link patch>`, 다른 경로로의 patch, 이동 유형 조회 | 서버의 같은 경로 `push_to`·`replace_to`만 patch. `JS().navigate`·링크·`wireview.visit()`은 같은 경로여도 가져온다. `params_changed()`는 이동 유형을 받지 않는다 | 🟡 GAP-062 (#GAP062) |  |
+| 이동 목적지 URL 검증 | 1.2에서 위험 scheme·제어문자 목적지를 거부하도록 고쳤다 | 목적지는 `resolve_url`로 해석할 뿐 scheme·제어문자를 검사하지 않는다(서버·클라이언트 모두). 감사 항목이고 악용은 재현하지 않았다 | 🟠 GAP-066 (#GAP066) |  |
 
-### 2.9 JavaScript Interoperability ✅
+### 2.9 JavaScript Interoperability 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -185,8 +201,14 @@ GAP 번호로 추적한다.
 | push_event (server→client) | ✅ | `push_event()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_the_server_pushes_an_event_the_hook_is_listening_for`<br>`examples/hooks/tests.py::test_highlight_pushes_to_every_hook_of_this_component` |
 | Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) | `tests/test_hook_collection.py::TestWhatTheHeaderEmits::test_every_hook_file_gets_a_deferred_script`<br>`examples/hooks/tests.py::TestHookLifecycle::test_a_slow_hook_file_still_registers_before_the_first_join` |
 | onBeforeElUpdated | ✅ | `wireview.dom.onBeforeElUpdated()` | ✅ | `tests/test_js_commands_e2e.py::test_on_before_el_updated_keeps_it`<br>`tests/test_js_commands_e2e.py::test_a_render_drops_what_javascript_added_to_an_element` |
+| 창 단위·요소 밖 바인딩 | `phx-click-away`, `phx-window-keydown/keyup/focus/blur` | 없음. `{% on %}`은 요소와 그 자손의 이벤트만, `click.away`는 렌더 때 거절된다. 훅에서 직접 리스너를 단다 | 🟠 GAP-038 (#GAP038) |  |
+| 선언적 수명주기 JS | `phx-mounted`, `phx-remove`, `phx-connected`, `phx-disconnected` | 없음. 훅 콜백과 `wireview-disconnected` 클래스로 대신한다. 스트림 delete는 기다리지 않고 지운다 | 🟠 GAP-039 (#GAP039) |  |
+| 속성 단위 패치 제외·포커스 칸 서버 우선 | `JS.ignore_attributes`(wildcard), `phx-patch-focused` | 없음. 요소 전체를 빼는 `wire-update="ignore"`, JS 명령이 바꾼 것의 sticky, `onBeforeElUpdated`로 손으로 보존 | 🟠 GAP-045 (#GAP045) |  |
+| 훅 컨텍스트의 남은 API | `pushEventTo`, `js()`, `upload`·`uploadTo`, 클래스 훅, `beforeUpdate(fromEl, toEl)` | `pushEvent`(콜백·Promise, #222)와 해제 함수를 돌려주는 `handleEvent`. 대상 지정·JS·업로드는 전역 `wireview` API로. 훅은 객체만, `beforeUpdate()`는 인자 없이 컴포넌트 전체에 | 🟡 GAP-046 (#GAP046) |  |
+| 연결 params·metadata·클라이언트 연결 설정 | `LiveSocket`의 `params`·`metadata`·`bindingPrefix`·`dom`, `get_connect_params`·`get_connect_info`, `connect`·`disconnect` | 자동 연결과 `RECONNECT_*` 백오프. 서버는 `self.user`·`self.session`·`self.wire.params`를 읽는다. DOM 콜백은 `wireview.dom.onBeforeElUpdated`만 | 🟠 GAP-047 (#GAP047) |  |
+| 템플릿 안 JS·CSS colocate, 컴포넌트 밖 훅 | ColocatedHook·ColocatedJS·ColocatedCSS, 컴포넌트 밖 정적 훅 | 앱의 `static/<app_label>/hooks/*.js` 수집만. 템플릿 안 자산 추출이 없고 훅은 컴포넌트 안에서만 mount | 🟠 GAP-061 (#GAP061) |  |
 
-### 2.10 Components ✅
+### 2.10 Components 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -201,6 +223,9 @@ GAP 번호로 추적한다.
 | update/2 callback | ✅ | `update()` | ✅ | `tests/test_live_component_render.py::test_a_changed_prop_updates_and_rerenders_only_the_children_it_reaches`<br>`examples/livecomp/tests.py::TestLiveComponentE2E::test_parent_sync_all_updates_children` |
 | update_many/1 | ✅ 배치 최적화 | `update_many()` (classmethod) | ✅ | `tests/test_update_many.py::test_every_changed_row_of_a_class_arrives_in_one_call_and_loads_in_one_query` |
 | Nested LiveViews | ✅ 프로세스 격리 | LiveComponent (같은 프로세스) | ⚪ 설계상 제외 |  |
+| 함수 컴포넌트 attr 선언·global·슬롯 attr | `attr :x, values:, examples:, doc:`, `:global`, `slot :col do attr :label end` | 시그니처의 required·default, int·float·str·bool 변환, 모르는 인자 거부(`**kwargs`면 통과), 슬롯 required. `{% fill %}`은 `let:`만 받는다 | 🟠 GAP-055 (#GAP055) |  |
+| Portal | `<.portal>`이 내용을 다른 컨테이너로 옮기고 이벤트·패치는 원 컴포넌트를 따른다 | 없음. 이벤트·훅·폼의 주인은 DOM 조상이다. `{% island %}`는 자기 요소 안에만 그린다 | 🟠 GAP-064 (#GAP064) |  |
+| async_result·live_title·dynamic_tag | 로딩·실패·성공 슬롯, title의 prefix·suffix·default, 검증된 동적 태그 | `AsyncResult`의 상태를 `{% if %}`로 읽는다. `push_title()`은 제목 전체를 바꾼다. 동적 태그 없음 | 🟠 GAP-065 (#GAP065) |  |
 
 Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 프로세스 격리에서 오는
 성질이다 — 자식이 죽어도 부모가 살고, 자식마다 자기 메일박스와 스케줄링을 가진다. Django·ASGI에는
@@ -208,7 +233,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 합성 요구를 받고, 격리 요구는 별도 연결(별도 페이지)로 받는다. 이 선을 옮기려면 GAP-027(#60)의
 세션 분리가 먼저다.
 
-### 2.11 Form Handling ✅
+### 2.11 Form Handling 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -220,8 +245,12 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | phx-auto-recover | ✅ | `wire-auto-recover` | ✅ (GAP-008) | `tests/test_offline_e2e.py::test_auto_recover_sends_the_forms_values_to_its_handler`<br>`tests/test_offline_e2e.py::test_auto_recover_without_a_handler_replays_the_forms_change_binding` |
 | Form recovery | ✅ 자동 | 재연결 시 폼 상태 복원 | ✅ (GAP-008) | `tests/test_offline_e2e.py::test_auto_recover_sends_the_forms_values_to_its_handler`<br>`tests/test_offline_e2e.py::test_auto_recover_without_a_handler_replays_the_forms_change_binding` |
 | Changeset integration | Ecto | 핸들러에서 Django Form으로 검증 ([문서](./features/form-feedback.md)) | ✅ 다른 접근 | `tests/test_forms_e2e.py::test_a_valid_django_form_saves`<br>`tests/test_forms_e2e.py::test_feedback_waits_for_the_field_to_be_touched` |
+| 이벤트 시간 제어 확장·이벤트 정보 | `phx-debounce="blur"`, 기본 지연, submit 때 대기 중 이벤트 정리, 키별 throttle, keydown의 `key`·metadata | 숫자 `.debounce.N`·`.throttle.N`, `{% on %}`의 고정 인자, 이름 있는 필드 값. 나머지는 없다 | 🟡 GAP-040 (#GAP040) |  |
+| 폼 payload 의미 | disabled·누르지 않은 버튼 제외, submitter, `_target`, `_unused_`·`used_input?/1` | 범위 안 `[name]`을 모두 보낸다. disabled·submitter를 가르지 않고 `form=`으로 연결된 컨트롤은 빠진다. `wire-feedback-for`의 touched는 페이지 전역 이름 단위, reset은 다루지 않는다 | 🟡 GAP-048 (#GAP048) |  |
+| 폼 복구 범위 | 재연결과 crash 재join 모두에서 기본 복구, `phx-auto-recover="ignore"` | 소켓 재연결 때 `wire-auto-recover`를 단 폼만. error 뒤 다시 join에서는 복구하지 않고 끄는 예약값이 없다 | 🟡 GAP-049 (#GAP049) |  |
+| 서버가 지시하는 HTTP 제출·제출 잠금·업로드 뒤 제출 | `phx-trigger-action`, 제출 중 입력 readonly·버튼 disabled, `auto_upload: false` 폼은 submit 때 업로드 | 서버가 HTTP 제출을 지시하는 길이 없다. 제출 중 잠금은 `wire-disabled-with`를 단 submit 버튼만. `auto_upload=False`는 업로드를 시작하는 공개 경로가 없다 | 🟠 GAP-050 (#GAP050) |  |
 
-### 2.12 Performance Features ✅
+### 2.12 Performance Features 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -231,8 +260,9 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | **temporary_assigns** | ✅ | `Meta.temporary_assigns`. 초기화는 변경이 아니다 — 초기화된 필드만 읽은 조각은 다시 보내지 않는다(GAP-006) | ✅ | `tests/test_render_control.py::test_temporary_assigns_are_cleared_after_a_live_render`<br>`tests/test_temporary_assigns_diff.py::test_an_unrelated_render_leaves_the_list_on_the_page`<br>`tests/test_temporary_assigns_e2e.py::test_the_list_stays_on_the_page_after_an_unrelated_event` |
 | Sticky components | ✅ | `Meta.sticky` (같은 live_session 안) | ✅ | `tests/test_sticky_e2e.py::test_the_sticky_component_carries_its_state_and_element_across_a_boosted_move` |
 | Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ | `tests/test_comprehension_moves.py::test_a_client_that_names_the_version_gets_moves`<br>`tests/test_comprehension_moves_e2e.py::test_moving_rows_ends_in_the_same_dom_with_either_form` |
+| 평가 생략과 이동 시 DOM 상태 보존 | 바뀌지 않은 assign에 묶인 표현식은 다시 평가하지 않는다. 이동은 `moveBefore` | 동적 부분은 렌더마다 평가 뒤 diff(`lazy_properties`는 읽지 않은 property만 건너뛴다). id로 짝지은 행은 idiomorph가 `moveBefore`로 옮긴다. 스트림은 같은 id를 새 노드로 바꾸고 reset은 다시 만든다 | 🟡 GAP-060 (#GAP060) |  |
 
-### 2.13 Testing ✅
+### 2.13 Testing 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -243,8 +273,10 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestFollowingARedirect::test_it_mounts_the_destination`<br>`tests/test_navigation_helpers.py::TestFollowingARedirect::test_a_refusing_destination_refuses_here_too` |
 | 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 | `tests/test_navigation_helpers.py::TestStreamHelpers::test_it_collects_the_html`<br>`tests/test_navigation_helpers.py::TestStreamHelpers::test_it_exposes_the_operations` |
 | MockChannelLayer | - | `mount()`이 채널 레이어를 흉내 내고 `view.broadcasts`에 남긴다 | ✅ 추가 기능 | `tests/test_presence.py::TestPresenceMixin::test_presence_join_broadcasts`<br>`examples/notifications/tests.py::test_marking_read_touches_only_the_users_own_and_tells_their_bell` |
+| DOM 바인딩을 읽는 테스트·test_warnings | `element/3`·`form/3`과 `render_click/change/submit/…`, `render_hook`, `find_live_child`, `submit_form`, `test_warnings` | `call()`은 핸들러 이름으로 바로 부른다(호출 가능 여부와 handle_event 훅만 검사). 바인딩·폼 필드·중복 id 검사 없음 | 🟠 GAP-056 (#GAP056) |  |
+| 비동기·업로드 테스트와 메시지 단언 | `render_async/2`, `file_input/4`·`render_upload/3`·`preflight_upload/1`, `assert_push_event`, `assert_reply`, `page_title/1` | `call()`이 핸들러 반환값을 돌려준다. 그 밖은 `sent_messages`의 내부 형식을 직접 읽는다 | 🟠 GAP-057 (#GAP057) |  |
 
-### 2.14 Developer Tools ✅
+### 2.14 Developer Tools 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -254,8 +286,9 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) | `tests/test_telemetry.py::test_event_handling_is_measured`<br>`tests/test_telemetry.py::test_render_and_diff_are_measured_separately`<br>`tests/test_operational_telemetry.py::test_a_session_reports_opening_and_closing`<br>`tests/test_operational_telemetry.py::test_a_full_channel_drops_the_message_and_says_so` |
 | **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 | `tests/test_stubs.py::TestTheCommand::test_it_writes_a_stub_whose_handlers_are_what_a_client_can_call`<br>`tests/test_stubs.py::TestTheCommand::test_check_fails_when_a_stub_is_stale` |
 | **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 | `tests/test_lsp_metadata.py::TestWireviewLspCommand::test_component_metadata`<br>`tests/test_lsp_metadata.py::test_is_handler_says_what_a_client_can_call` |
+| 배포 자산 변경 감지 | `phx-track-static`과 `static_changed?/1` | 번들 URL의 `?v=<패키지 버전>`, 개발 서버의 템플릿 저장 뒤 rejoin. 열린 탭이 새 배포의 자산과 다른지 알 길이 없다 | 🟠 GAP-059 (#GAP059) |  |
 
-### 2.15 Miscellaneous ✅
+### 2.15 Miscellaneous 🟠
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -265,10 +298,16 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |  |
 | on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) | `tests/test_lifecycle_hooks.py::TestWebSocketJoin::test_a_redirecting_hook_sends_url_change_and_no_render`<br>`tests/test_lifecycle_hooks.py::TestHttpRender::test_the_page_component_runs_its_hooks` |
 | attach_hook | ✅ | `attach_hook()` | ✅ | `tests/test_attach_hook.py::test_a_halting_handle_event_hook_stops_the_handler`<br>`tests/test_attach_hook.py::test_a_handle_params_hook_runs_before_params_changed`<br>`tests/test_attach_hook.py::test_an_after_render_hook_runs_after_each_render` |
+| attach_hook 확장 단계·reply halt·send_update_after | `attach_hook`의 `:handle_info`·`:handle_async` 단계, `{:halt, reply, socket}`, `send_update_after/3` | `attach_hook`은 handle_event·handle_params·after_render(훅 이벤트는 handle_event 훅을 지나지 않는다). halt는 응답 없이. `send_update()`는 즉시만 | 🟡 GAP-058 (#GAP058) |  |
+| 서버 flash 상태와 이동 뒤 전달 | flash 맵, 종류별 `clear_flash`, `push_navigate`·`redirect` 목적지로 넘어감 | `put_flash()`는 이 연결의 `[wire-flash]`에 한 번 그린다. 서버 상태·종류별 clear·이동 뒤 전달 없음 | 🟠 GAP-063 (#GAP063) |  |
 
 ---
 
 ## 3. 미구현 기능 우선순위
+
+취소선 행은 끝난 것이다. 남은 행의 `추적` 칸이 이슈이고 2절 행의 상태 칸과 같다(`tests/test_feature_gap.py`).
+난이도 `미정`은 착수할 때 그 이슈에서 정한다. 묶음과 순서는 [이슈 초안](./design/phoenix-1.2-issue-drafts-codex-2026-10-13.md)의
+"우선순위와 의존 관계"가 제안이고, 의존은 각 이슈에 적는다.
 
 ### 🔴 P0: Critical (DX에 큰 영향)
 
@@ -282,6 +321,12 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제. 다음 렌더가 화면에서 비우지 않게~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-024~~ | ~~**Stable HTML Diff**~~ | ~~서명 상태를 dynamic 파트로 옮겨 부분 diff 활성화, 상태 압축 서명~~ | ~~하~~ | ✅ 완료 |
 
+LiveView 1.2.12 대조에서 남은 것(#229):
+
+| ID | 기능 | 설명 | 난이도 | 추적 |
+|----|------|------|:------:|----------|
+| GAP-066 | 이동 목적지 URL 검증 정책 감사 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP066 |
+
 ### 🟠 P1: Important (기능적 차이)
 
 | ID | 기능 | 설명 | 난이도 | 추적 |
@@ -293,6 +338,21 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-011~~ | ~~Flash Messages~~ | ~~일회성 알림 메시지~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-012~~ | ~~LongPolling Fallback~~ | ~~WebSocket 불가 시 폴백~~ | ~~중~~ | ⚪ 설계상 제외. WebSocket을 필수 전제로 둔다 ([설계 메모](./design/longpolling-fallback.md), [#59](https://github.com/itda-work/django-wireview/issues/59)) |
 | ~~GAP-013~~ | ~~pushEvent (Hook→Server)~~ | ~~훅에서 서버로 이벤트 전송~~ | ~~중~~ | ✅ 완료 |
+
+LiveView 1.2.12 대조에서 남은 것(#229):
+
+| ID | 기능 | 설명 | 난이도 | 추적 |
+|----|------|------|:------:|----------|
+| GAP-038 | 창 단위 이벤트와 요소 밖 클릭(click-away) 바인딩 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP038 |
+| GAP-040 | 이벤트 시간 제어 확장과 이벤트 정보 payload | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP040 |
+| GAP-041 | JS() 속성 토글·체인 재사용·상대 선택자 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP041 |
+| GAP-042 | 포커스 스택과 포커스 가두기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP042 |
+| GAP-043 | 트랜지션 세 단계·blocking·비차단 체인 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP043 |
+| GAP-045 | 속성 단위 패치 제외와 포커스 칸의 서버 우선 패치 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP045 |
+| GAP-048 | 폼 payload 의미(disabled·submitter·_target·사용 여부·reset) | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP048 |
+| GAP-049 | 컴포넌트 재시작의 폼 복구와 복구 끄기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP049 |
+| GAP-050 | 서버가 지시하는 HTTP 폼 제출과 제출·업로드 잠금 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP050 |
+| GAP-056 | DOM 바인딩을 읽는 컴포넌트 테스트 헬퍼와 테스트 경고 설정 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP056 |
 
 ### 🟡 P2: Nice to Have (편의 기능)
 
@@ -321,6 +381,35 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-037~~ | ~~Sticky JS 명령~~ | ~~JS 명령이 바꾼 클래스·속성·표시가 다음 렌더에서 사라졌다 (#219)~~ | ~~중~~ | ✅ 완료 (`docs/features/js-commands.md`) |
 | GAP-027 | Session extraction | ~~컨슈머 핸들러를 `WireviewSession`으로 분리~~(1단계, #60, v1.0.0rc3). ~~업로드 분산 접근~~(3단계, #83). 남은 것: 세션 상태 export/import(2단계), 프런트 어댑터(4단계) (docs/design/session-extraction.md §4·5) | 상 | 착수 기준(§5)의 워크로드가 생길 때 |
+
+LiveView 1.2.12 대조에서 남은 것(#229):
+
+| ID | 기능 | 설명 | 난이도 | 추적 |
+|----|------|------|:------:|----------|
+| GAP-039 | 선언적 mount·remove·연결 수명주기 JS | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP039 |
+| GAP-044 | JS push·dispatch 옵션과 창 단위 서버 이벤트 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP044 |
+| GAP-046 | 훅 컨텍스트의 남은 API(pushEventTo·js·upload·클래스 훅·beforeUpdate(toEl)) | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP046 |
+| GAP-047 | 연결 params·metadata와 클라이언트 연결 설정 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP047 |
+| GAP-051 | 스트림 부호 limit·stream_configure·객체 delete·비스트림 자식 보존 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP051 |
+| GAP-052 | 업로드 검증·진행률 콜백·소비 제어 옵션 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP052 |
+| GAP-053 | 외부 업로드의 사용자 uploader·서버 writer·청크 유휴 시한 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP053 |
+| GAP-054 | assign_async의 키·재로딩·reset, 취소 이유, stream_async | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP054 |
+| GAP-055 | 함수 컴포넌트 attr 선언(values·doc·global)과 슬롯 entry 속성 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP055 |
+| GAP-057 | 비동기 작업 대기·업로드 구동·push_event/reply/title 테스트 단언 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP057 |
+| GAP-058 | attach_hook의 알림·비동기 단계와 응답 halt, 예약 send_update | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP058 |
+| GAP-059 | 열린 탭이 새 배포의 정적 자산을 감지하는 신호 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP059 |
+| GAP-060 | 바뀌지 않은 의존성의 평가 생략과 이동 시 DOM 상태 보존 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP060 |
+| GAP-062 | 명시적 patch 내비게이션과 이동 유형 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP062 |
+| GAP-063 | 플래시의 서버 상태와 이동 뒤 전달 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP063 |
+| GAP-064 | DOM 포털과 컴포넌트 소유권 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP064 |
+
+### 🔵 P3: Polish (다듬기)
+
+| ID | 기능 | 설명 | 난이도 | 추적 |
+|----|------|------|:------:|----------|
+| GAP-061 | 템플릿 안 JS·CSS 자산 colocate와 컴포넌트 밖 정적 훅 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP061 |
+| GAP-065 | async_result·live_title·dynamic_tag 편의 컴포넌트 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP065 |
+| GAP-067 | 상태 필드의 지연 기본값·변경 조회·렌더러 선택 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #GAP067 |
 
 ---
 

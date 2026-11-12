@@ -1,4 +1,5 @@
-"""Guard: every ✅ in ``docs/FEATURE-GAP.md`` names a test that runs the feature.
+"""Guard: every ✅ in ``docs/FEATURE-GAP.md`` names a test that runs the feature, every 🟡 and 🟠
+names a GAP and its issue.
 
 Four features marked ✅ did not work (#75, #84, #83, #67): nothing stood between
 "the table says so" and "the code does so". Each row of the comparison table in
@@ -8,6 +9,10 @@ counts drift from the table.
 
 Whether a named test really exercises its feature is a review question, not a
 parse; the criteria are written next to the overview in the document itself.
+
+The table used to forbid 🟡 and 🟠 rows, so the thirty gaps the LiveView 1.2 comparison found
+could not be written down and the document said there were none (#229). Open rows are allowed
+now on one condition: each names its GAP and issue, and section 3 tracks it under the same issue.
 """
 
 import ast
@@ -114,11 +119,52 @@ def test_every_status_is_a_known_kind():
     assert not unknown
 
 
-def test_every_unsupported_row_has_a_gap_and_an_issue():
-    # The overview promises this for 🟠.
-    rows = [row for row in ROWS if row[2].startswith("🟠")]
-    bare = [_row_id(row) for row in rows if not re.search(r"GAP-\d{3}", row[2]) or not re.search(r"#\d+", row[2])]
+#: An issue reference: ``#123``. Before an issue exists the row holds no reference and fails here.
+ISSUE = re.compile(r"#\d+\b")
+GAP = re.compile(r"GAP-\d{3}")
+OPEN = ("🟡", "🟠")
+
+
+def _open_rows():
+    return [row for row in ROWS if row[2].startswith(OPEN)]
+
+
+def test_every_open_row_has_a_gap_and_an_issue():
+    """The overview promises this for every 🟡 and 🟠 row: the table may say what is missing,
+    as long as it says where the work is tracked. A gap nobody filed is not tracked."""
+    bare = [_row_id(row) for row in _open_rows() if not GAP.search(row[2]) or not ISSUE.search(row[2])]
     assert not bare
+
+
+def _priority_rows() -> dict[str, str]:
+    """Section 3's rows that are not struck through: GAP id -> its tracking cell."""
+    text = DOC.read_text(encoding="utf-8")
+    section = text[text.index("## 3.") : text.index("## 4.")]
+    found = {}
+    for line in section.split("\n"):
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 2 and (match := re.fullmatch(r"(GAP-\d{3})", cells[0])):
+            found[match.group(1)] = cells[-1]
+    return found
+
+
+def test_every_open_row_is_in_the_priority_list_with_the_same_issue():
+    """Section 2 says what is missing, section 3 orders it. A row in one and not the other, or the
+    two naming different issues, is a gap one of them forgot."""
+    priority = _priority_rows()
+    for row in _open_rows():
+        for gap in GAP.findall(row[2]):
+            assert gap in priority, f"{_row_id(row)}: {gap} is not in section 3"
+            assert set(ISSUE.findall(row[2])) <= set(ISSUE.findall(priority[gap])), (
+                f"{_row_id(row)}: section 3 tracks {gap} as {priority[gap]!r}"
+            )
+
+
+def test_every_open_gap_in_the_priority_list_has_a_row():
+    """GAP-027 is the one open item that is not a LiveView feature (it is how the session is cut),
+    so it has no row of its own."""
+    in_rows = {gap for row in _open_rows() for gap in GAP.findall(row[2])}
+    assert set(_priority_rows()) - in_rows == {"GAP-027"}
 
 
 def test_the_overview_counts_the_table():
@@ -147,11 +193,15 @@ def _headings() -> dict[str, tuple[str, str]]:
 
 
 def test_each_category_heading_says_what_its_rows_are():
-    """2.12 and 2.15 kept a ⚠️ in their headings after every row under them was ✅."""
-    marks = {
-        section: "✅" if all(row[2][:1] in "✅⚪" for row in ROWS if row[0] == section) else "🟡"
-        for section in _headings()
-    }
+    """2.12 and 2.15 kept a ⚠️ in their headings after every row under them was ✅.
+
+    A category with a 🟠 row is 🟠, one whose open rows are all 🟡 is 🟡, any other is ✅."""
+
+    def mark(section):
+        statuses = {row[2][:1] for row in ROWS if row[0] == section}
+        return "🟠" if "🟠" in statuses else "🟡" if "🟡" in statuses else "✅"
+
+    marks = {section: mark(section) for section in _headings()}
 
     assert {section: mark for section, (_, mark) in _headings().items()} == marks
 
@@ -160,27 +210,41 @@ def test_the_coverage_table_counts_each_category():
     """Section 1 gave each category a percentage nobody computed (Streams 80% with every row ✅)."""
     text = DOC.read_text(encoding="utf-8")
     coverage = text[text.index("## 1.") : text.index("## 2.")]
+    header = re.search(r"^\| 카테고리 \| (.+) \|$", coverage, re.MULTILINE)
+    assert header, "section 1 has no category table"
+    columns = [cell.strip().strip(":") for cell in header.group(1).split("|")]
+    assert columns == list(STATUS_KINDS), f"section 1's columns are {columns}"
+
     stated = {
-        m.group(1): (int(m.group(2)), int(m.group(3)))
-        for m in re.finditer(r"^\| (2\.\d+) [^|]+\| (\d+) \| (\d+) \|$", coverage, re.MULTILINE)
+        m.group(1): tuple(int(n) for n in m.group(2).split(" | "))
+        for m in re.finditer(r"^\| (2\.\d+) [^|]+\| ((?:\d+ \| )*\d+) \|$", coverage, re.MULTILINE)
     }
     counted = {
-        section: (
-            sum(row[2].startswith("✅") for row in ROWS if row[0] == section),
-            sum(row[2].startswith("⚪") for row in ROWS if row[0] == section),
-        )
+        section: tuple(sum(row[2].startswith(mark) for row in ROWS if row[0] == section) for mark in STATUS_KINDS)
         for section in _headings()
     }
 
     assert stated == counted
 
 
-def test_every_row_is_supported_or_not_planned():
-    """Section 1 says no row is 🟡 or 🟠 and counts only ✅ and ⚪. A 🟡 row would leave both
-    counts as they were, so the table would still match while the sentence was false."""
-    assert [(row[0], row[1], row[2]) for row in ROWS if not row[2].startswith(("✅", "⚪"))] == []
-
-
 def test_the_document_has_one_update_date():
     """The header said 2026-09-30 while the footer still said 2025-06."""
     assert len(re.findall(r"최종 업데이트", DOC.read_text(encoding="utf-8"))) == 1
+
+
+def test_the_readme_comparison_counts_the_table():
+    """README said every row but the two left out by design was the same as LiveView's while
+    thirty gaps from the 1.2 comparison sat outside the table (#229). Its numbers are the table's."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    counts = Counter(row[2][:1] for row in ROWS)
+
+    match = re.search(
+        r"기능표 (\d+)행 중 (\d+)행이 같습니다\. 설계상 제외한 둘\([^)]*\) 말고도, "
+        r"LiveView [\d.]+와 견주어 아직 없는 기능 (\d+)행과 일부만 있는 기능 (\d+)행이",
+        readme,
+    )
+    assert match, "README no longer compares itself with LiveView in the words this test reads"
+    stated = tuple(int(n) for n in match.groups())
+
+    assert stated == (len(ROWS), counts["✅"], counts["🟠"], counts["🟡"])
+    assert counts["⚪"] == 2  # "설계상 제외한 둘"
