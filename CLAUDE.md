@@ -92,6 +92,9 @@ wireview/
 ├── core/uvicorn_patches.py uvicorn 결함 하나를 감싼다(#226): sansio·wsproto의 shutdown()이 페이지가 닫는 중인 연결에서 던져 서버의 종료(1012·leaving() 기다림)를 끊는다.
 │                          첫 연결(consumer.websocket_connect)에서 이미 실린 클래스만, 메서드가 결함의 모양일 때만 감싼다. 끄는 설정은 PATCH_UVICORN_SHUTDOWN.
 │                          tests/test_uvicorn_patches.py의 test_uvicorn_still_has_the_defect가 실패하면 상류가 고친 것이다 — 그때 뺀다
+├── core/inbound.py        연결이 보내는 것의 상한(#230): 프레임 크기(INBOUND_MAX_BYTES, 1009, 파싱 전에 UTF-8 바이트), 빈도(INBOUND_RATE_PER_SECOND·INBOUND_BURST 토큰 버킷,
+│                          모든 프레임을 센다, 1008, 기본 꺼짐), 바이너리 프레임(1003). 컨슈머의 websocket_receive가 Gate에 묻고 세션의 refuse_inbound가 닫는다.
+│                          연결이 드는 컴포넌트 수(CONNECTION_MAX_COMPONENTS, 1008)는 command_join이 본다. 시계는 모듈의 monotonic(테스트가 바꾼다)
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -116,6 +119,7 @@ wireview/
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입. 마커 변수는 값을 직접 resolve하고 평범한 int·str은
 │                          Django의 VariableNode와 같은 출력을 지름길로 찍는다(render_value, #176). 바꾸면 tests/test_template_values.py가 Django 출력과 맞춘다
 ├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만.
+│                          수신 프레임은 파싱 전에 inbound 상한을 지난다(websocket_receive). JSON이 아닌 프레임은 버린다
 │                          세션은 disconnect()와 ASGI __call__의 finally 둘 다에서 끝낸다 — 서버가 앱을 취소하거나(daphne의 close timeout·종료,
 │                          uvicorn의 graceful 시한) 앱이 던지면 Channels가 disconnect()를 부르지 않는다(#211)
 ├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.

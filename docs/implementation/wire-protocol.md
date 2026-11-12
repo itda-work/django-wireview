@@ -42,6 +42,17 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 표에 없는 command, 또는 payload가 그 명령의 인자와 맞지 않는 메시지는 WARNING 로그를 남기고 버린다. 연결은 닫지 않는다(#94). 전에는 예외가 컨슈머 밖으로 나가 소켓이 닫혔고, 한 릴리스 어긋난 번들이 그런 메시지를 보낼 때마다 페이지의 모든 컴포넌트가 다시 join했다.
 
+프레임은 파싱 전에 연결의 상한을 지난다(`wireview/core/inbound.py`, #230). 넘으면 그 프레임과 그 뒤에 온 것을 처리하지 않고 소켓을 닫는다 — 클라이언트에게는 평범한 끊김이고, 다시 연결해 join한다.
+
+| 경우 | 닫힘 코드 |
+|------|-----------|
+| 텍스트 프레임이 `INBOUND_MAX_BYTES`(기본 1 MiB, UTF-8 바이트)보다 크다 | 1009 |
+| `INBOUND_RATE_PER_SECOND`·`INBOUND_BURST`보다 많이 보냈다(기본 꺼짐). 명령을 가리지 않고 모든 프레임을 센다 | 1008 |
+| 바이너리 프레임 | 1003 |
+| 새 id의 `join`이 `CONNECTION_MAX_COMPONENTS`(기본 꺼짐)를 넘긴다 | 1008 |
+
+JSON이 아닌 텍스트 프레임(빈 프레임 포함)은 표에 없는 command처럼 WARNING 로그를 남기고 버린다. 전에는 바이너리 프레임과 함께 예외로 컨슈머 밖에 나가 연결이 끝났다.
+
 `user_event`의 `id`가 이 연결에 등록된 컴포넌트가 아니면(모르는 id, 경계가 거절한 id, 이미 떠난 id, 그린 쪽의 render가 은퇴시킨 id) 핸들러를 돌리지 않고 `gone`으로 답한다(`vsn` 9 미만이면 `diff: null`인 render). 예외: 그린 쪽의 render가 은퇴시킨 지 얼마 안 된 id(페이지가 그 render를 보기 전에 보낸 이벤트, 페이지의 `leave`가 오기 전)는 옛 인스턴스의 핸들러를 돌리고, 그 render는 보내지 않고 같은 `gone`으로 답한다(설계 메모 live-component-ownership §3-6의 묘비). `id`·`component_id`가 문자열이 아닌 메시지는 맞지 않는 페이로드처럼 로그 후 버린다. 전에는 아무것도 보내지 않아 그 이벤트의 로딩 상태가 풀리지 않았다(#204). `command`가 핸들러가 아니면(밑줄로 시작, 없는 이름, 프레임워크 메서드) 아무것도 호출하지 않고 `diff: null`인 render로 답한다. 로딩 상태를 풀고 `ref`를 정리하게 하기 위해서다.
 
 ## 3. Outbound (세션 → 브라우저)

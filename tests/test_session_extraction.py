@@ -136,8 +136,18 @@ def test_the_consumer_is_only_the_adapter():
 
     And ``dispatch``: where one message ends is the adapter's to know, and it
     only tells the session (``handling_message``, #178). And ``close``: whether
-    the socket is gone, to take no close frame, is the socket's (#216).
+    the socket is gone, to take no close frame, is the socket's (#216). And
+    ``websocket_receive``: a frame's size and kind are the socket's, judged
+    before it is parsed; the session says whether to refuse it (#230).
     """
     own = {name for name, value in vars(WireviewConsumer).items() if callable(value) and not name.startswith("__")}
-    assert own <= {"websocket_connect", "connect", "disconnect", "receive_json", "dispatch", "close"}
+    assert own <= {
+        "websocket_connect",
+        "connect",
+        "disconnect",
+        "websocket_receive",
+        "receive_json",
+        "dispatch",
+        "close",
+    }
     assert issubclass(WireviewConsumer, WireviewSession)

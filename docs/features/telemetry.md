@@ -56,6 +56,7 @@ telemetry.disable()
 | `join_rejected` | 소켓이나 join이 거절됐을 때 | 세션 클래스 |
 | `publish_failed` | 채널 레이어가 발행이나 세션 전송을 거부했을 때 | 브로커 클래스(`ChannelsBroker`) |
 | `broadcast_overflowed` | `Broadcast` 패치가 연결에 쌓여 소켓을 닫았을 때 | 세션 클래스 |
+| `message_refused` | 연결이 보낸 것이 상한을 넘어 소켓을 닫았을 때 | 세션 클래스 |
 
 ### 구간 시그널
 
@@ -78,7 +79,7 @@ telemetry.disable()
 
 ### 이벤트 시그널
 
-아래 다섯 개는 일어난 일을 알린다. `duration_ms`·`payload_size`·`error` 공통 키가 없고 자기 키만 싣는다.
+아래 여섯 개는 일어난 일을 알린다. `duration_ms`·`payload_size`·`error` 공통 키가 없고 자기 키만 싣는다.
 
 | 시그널 | 키워드 |
 |--------|--------|
@@ -87,6 +88,7 @@ telemetry.disable()
 | `join_rejected` | `reason`(아래 표), `component_name`(`origin`이면 `None`), `detail`(로그와 같은 설명 문장) |
 | `publish_failed` | `kind`(`"publish"` 또는 `"send_to_session"`), `target`(토픽 또는 세션의 채널 이름), `error`(예외), `dropped`(아래) |
 | `broadcast_overflowed` | `connection_id`, `component_id`, `topic`, `limit`(기다릴 수 있는 프레임 수, 1,000). 한 연결에 쓰지 못한 `Broadcast` 프레임이 그보다 많아 소켓을 코드 1013으로 닫았다 — `joined()`의 작업을 기다리며 잡아 둔 것이거나, 소켓이 받지 못해 큐에 쌓인 것이다. 버리지 않고 닫으므로 페이지는 다시 연결해 목록을 바로잡는다([broadcast](./broadcast.md#순서와-유실)) |
+| `message_refused` | `connection_id`, `reason`(아래 표), `size`(프레임의 바이트 수, `components`면 연결이 들고 있던 컴포넌트 수), `limit`(그 설정의 값: 바이트, 초당 메시지 수, 컴포넌트 수. `binary`면 `None`). 그 프레임은 처리하지 않았다 ([배포](../DEPLOYMENT.md#메시지-크기와-빈도)) |
 
 `connection_opened`는 Origin 검사를 통과하고 수락된 소켓에만 난다. 거절된 소켓은 `join_rejected(reason="origin")`
 하나만 남기고 `connection_closed`도 내지 않으므로, 둘을 빼면 열린 소켓 수가 된다.
@@ -106,6 +108,16 @@ telemetry.disable()
 | `error` | 마운트가 예외를 던졌다. 로그에 트레이스백이 있다 | `error` |
 
 join의 답을 쓰는 동안 페이지가 떠난 것(빠른 이동)은 거절이 아니다 — `join_rejected`를 내지 않는다(#216).
+
+`message_refused`의 `reason`도 닫힌 집합이다(`telemetry.MESSAGE_REFUSED_REASONS`, #230). 같은 연결의 `connection_closed`가
+그 닫힘 코드를 싣는다.
+
+| `reason` | 뜻 | 닫힘 코드 |
+|----------|----|-----------|
+| `size` | 텍스트 프레임이 `INBOUND_MAX_BYTES`보다 크다. JSON 파싱 전에 잰다 | 1009 |
+| `rate` | `INBOUND_RATE_PER_SECOND`·`INBOUND_BURST`보다 많이 보냈다 | 1008 |
+| `binary` | 바이너리 프레임. 클라이언트는 텍스트만 보낸다 | 1003 |
+| `components` | 새 id의 join이 `CONNECTION_MAX_COMPONENTS`를 넘기려 했다 | 1008 |
 
 `expired`는 오래 열어 둔 탭이면 평범하다. `invalid`가 늘면 서명 키가 프로세스마다 다르거나 배포 사이에 바뀐
 것이다. 부모의 join에 딸려 온 자식 상태를 버리는 경우(서명 불일치·경계)는 거절이 아니다 — 자식은 부모 템플릿의

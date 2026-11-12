@@ -240,3 +240,15 @@ def test_the_front_server_gets_the_files_out_of_the_app_image():
         pair for code in blocks("dockerfile") for pair in re.findall(r"^COPY --from=\S+ (\S+) (\S+)$", code, re.M)
     ]
     assert (f"{workdir}/staticfiles", alias) in copies, "no image takes the app image's STATIC_ROOT to the nginx alias"
+
+
+@pytest.mark.unit
+def test_the_inbound_limits_block_names_settings_that_exist():
+    # A key wireview does not know is a limit that silently does nothing (#230)
+    from wireview.settings import DEFAULT
+
+    namespace: dict = {}
+    exec(block("# settings.py\nWIREVIEW = {"), namespace)
+    limits = namespace["WIREVIEW"]
+    assert set(limits) <= set(DEFAULT), set(limits) - set(DEFAULT)
+    assert limits["INBOUND_MAX_BYTES"] == DEFAULT["INBOUND_MAX_BYTES"], "the block shows the default size"

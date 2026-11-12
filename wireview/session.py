@@ -21,8 +21,8 @@ from django.utils.datastructures import MultiValueDict
 
 from wireview.core.component import Component
 
-from . import telemetry
-from .core import notifications, patches, template_reload
+from . import settings, telemetry
+from .core import inbound, notifications, patches, template_reload
 from .core.live_session import (
     AUTH_USER_ID_KEY,
     IDENTITY_CSRF,
@@ -235,6 +235,15 @@ class _Held:
         self.expiries.clear()
 
 
+#: What the log says each inbound refusal was (``refuse_inbound``, #230)
+_REFUSED_DETAIL = {
+    "size": "a message larger than INBOUND_MAX_BYTES",
+    "rate": "more messages than INBOUND_RATE_PER_SECOND and INBOUND_BURST allow",
+    "binary": "a binary frame; the client sends text",
+    "components": "a join past CONNECTION_MAX_COMPONENTS",
+}
+
+
 class WireviewSession:
     """One browser tab's live session, apart from how its messages travel (GAP-027, #60).
 
@@ -275,6 +284,8 @@ class WireviewSession:
         # How many messages the adapter is handling now (WireviewConsumer.dispatch).
         # The mail they sent is not handled before they end.
         self.handling: int = 0
+        # What this connection may send: a frame's size, how many a second (#230)
+        self._inbound = inbound.Gate()
         # When start() ran, for connection_closed's duration. Read only while
         # telemetry is on, so an unmeasured session reads no clock (#124).
         self._opened_at: float | None = None
@@ -534,6 +545,37 @@ class WireviewSession:
             return
         await handler(**payload)
 
+    def inbound_refusal(self, text: str | None, data: bytes | None) -> tuple[str, int, int | float | None] | None:
+        """Why the adapter must not handle this frame, before it is parsed, or ``None`` (#230)."""
+        return self._inbound.refusal(text, data)
+
+    async def refuse_inbound(self, reason: str, size: int, limit: int | float | None) -> None:
+        """Close the connection for what it sent: ``reason`` is one of ``telemetry.MESSAGE_REFUSED_REASONS``.
+
+        Logged without the message: what an over-large or flooding client sent
+        is not for the log. Nothing the frame said is handled.
+        """
+        code = inbound.CLOSE_CODES[reason]
+        log.warning(
+            "Closing connection %s (%d): %s (%d %s, limit %s)",
+            self.connection_id,
+            code,
+            _REFUSED_DETAIL[reason],
+            size,
+            "components held" if reason == "components" else "bytes",
+            limit,
+        )
+        telemetry.emit(
+            telemetry.message_refused,
+            type(self),
+            connection_id=self.connection_id,
+            reason=reason,
+            size=size,
+            limit=limit,
+        )
+        self._close_patches()
+        await self.close(code=code)
+
     async def _crashed(self, component: Component, ref: t.Any = None) -> None:
         """Recover from user code that raised while handling ``component``.
 
@@ -697,6 +739,13 @@ class WireviewSession:
             # state and its lifecycle runs with the parent's render. Current clients
             # do not send this; a cached older script still might.
             log.debug("Ignoring direct join for LiveComponent %s", component_id)
+            return
+        # Each id a join brings is one more instance this connection holds, and any
+        # number of valid states under distinct ids can be had: a page whose
+        # components have no id signs a new one on every load (#230)
+        held = len(self.repo.components)
+        if existing is None and (most := settings.CONNECTION_MAX_COMPONENTS) is not None and held >= most:
+            await self.refuse_inbound("components", held, most)
             return
         # The page tries a component whose join failed again: new DOM came for it
         self.repo.retry_join(component_id)

@@ -29,6 +29,23 @@ WIREVIEW = {
 | `RECONNECT_MAX_DELAY_MS` | `10000` | 재시도 대기의 상한(밀리초) |
 | `RECONNECT_GROW_FACTOR` | `1.3` | 재시도마다 대기에 곱하는 수. 1보다 작으면 클라이언트가 기본값을 쓴다. 쓸 수 없는 값과, 대기가 0이거나 첫 대기(`MIN_DELAY` + `JITTER`)가 `MAX_DELAY`를 넘는 조합은 `wireview.W016`이 알린다 |
 
+## 연결이 보내는 것
+
+연결 하나가 서버에 보낼 수 있는 것의 상한이다(#230). 넘으면 그 메시지를 처리하지 않고 소켓을 닫는다 — 페이지는
+다시 연결해 요소의 상태로 join하고, 재연결 백오프가 제동이 된다. 닫을 때 WARNING 로그(메시지 내용은 싣지 않는다)와
+텔레메트리 `message_refused`를 남긴다([telemetry](./telemetry.md)). 설명과 ASGI 서버의 상한은
+[배포](../DEPLOYMENT.md#메시지-크기와-빈도).
+
+| 키 | 기본값 | 뜻 |
+|----|--------|----|
+| `INBOUND_MAX_BYTES` | `1048576` (1 MiB) | 텍스트 프레임 하나의 상한(UTF-8 바이트). 넘으면 JSON을 파싱하기 전에 1009로 닫는다. `None`이면 상한이 없다 — ASGI 서버의 상한만 남는다 |
+| `INBOUND_RATE_PER_SECOND` | `None` | 연결 하나가 초당 보낼 수 있는 메시지 수. 명령을 가리지 않고 모든 프레임을 센다(join 포함). 넘으면 1008로 닫는다. `None`이면 세지 않는다 |
+| `INBOUND_BURST` | `200` | 한꺼번에 보낼 수 있는 메시지 수(토큰 버킷의 크기). 연결이 열리면 가득 차 있다. 페이지의 첫 바퀴는 컴포넌트마다 join 하나를 한꺼번에 보내므로 가장 큰 페이지의 컴포넌트 수보다 넉넉해야 한다. `INBOUND_RATE_PER_SECOND`가 `None`이면 쓰지 않는다 |
+| `CONNECTION_MAX_COMPONENTS` | `None` | 연결 하나가 들 수 있는 컴포넌트 인스턴스 수(LiveComponent·중첩 컴포넌트 포함). 새 id의 join이 그 수를 넘기려 하면 1008로 닫는다. 같은 id의 다시 join은 세지 않는다. boost 이동은 새 페이지의 join이 옛 페이지의 leave보다 먼저 올 수 있으므로 가장 큰 페이지의 두 배쯤으로 둔다. `None`이면 세지 않는다 |
+
+바이너리 프레임은 크기와 상관없이 1003으로 닫는다 — 클라이언트는 텍스트만 보낸다. JSON이 아닌 텍스트 프레임은
+WARNING 로그를 남기고 버린다(모르는 명령과 같다, [wire protocol](../implementation/wire-protocol.md#2-inbound-브라우저--세션)).
+
 ## 서명
 
 | 키 | 기본값 | 뜻 |

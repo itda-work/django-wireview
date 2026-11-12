@@ -988,9 +988,52 @@ class WebSocketRateLimitMiddleware:
 `incr`이 원자적인 캐시(Redis, Memcached)여야 동시 연결이 같은 값을 읽고 한도를 넘기지 않는다. 프로세스가 여럿이면
 `LocMemCache`는 프로세스마다 따로 센다.
 
-이것은 **연결** 수만 센다. 열린 연결 안에서 오는 이벤트에는 wireview가 빈도·크기 상한을 두지 않는다 —
-`.throttle`·`.debounce`는 브라우저에서만 돈다. 이벤트 속도 제한은 `handle_event` 훅으로 건다
-([라이프사이클 훅](features/lifecycle-hooks.md#속도-제한)). 프레임 크기 상한은 uvicorn의 `--ws-max-size`(기본 16MB)다.
+이것은 **연결** 수만 센다. 열린 연결 안에서 오는 메시지는 아래 [메시지 크기와 빈도](#메시지-크기와-빈도)가 막는다.
+
+### 메시지 크기와 빈도
+
+`.throttle`·`.debounce`는 브라우저에서만 돈다. 소켓에 직접 프레임을 쓰는 클라이언트는 그것을 거치지 않으므로, 연결
+하나가 서버에 쓰게 할 수 있는 것에 wireview가 상한을 둔다(#230). 넘으면 그 메시지를 처리하지 않고 소켓을 닫는다 —
+정상 페이지라면 다시 연결해 요소의 상태로 join하고, 재연결 백오프(`RECONNECT_*`)가 그 사이의 제동이 된다.
+
+| 상한 | 설정 | 기본 | 넘으면 |
+|------|------|------|--------|
+| 메시지 하나의 크기 | `INBOUND_MAX_BYTES` | 1 MiB | 1009 (message too big). JSON 파싱 전에 UTF-8 바이트로 잰다 |
+| 연결의 메시지 빈도 | `INBOUND_RATE_PER_SECOND`, `INBOUND_BURST` | 끔 (켜면 버킷 200) | 1008 (policy violation) |
+| 연결이 드는 컴포넌트 수 | `CONNECTION_MAX_COMPONENTS` | 끔 | 1008 |
+| 바이너리 프레임 | — | 언제나 | 1003 (unsupported data) |
+
+```python
+# settings.py
+WIREVIEW = {
+    # 훅이 pushEvent로 큰 데이터를 보내거나 큰 textarea 폼이 있으면 올린다
+    "INBOUND_MAX_BYTES": 1024 * 1024,
+    # 연결 하나가 초당 20개, 한꺼번에 200개까지. 모든 메시지를 센다(join 포함)
+    "INBOUND_RATE_PER_SECOND": 20,
+    "INBOUND_BURST": 200,
+    # 가장 큰 페이지의 컴포넌트 수의 두 배쯤
+    "CONNECTION_MAX_COMPONENTS": 2000,
+}
+```
+
+- **메모리를 지키는 것은 ASGI 서버의 상한이다.** wireview의 검사는 서버가 프레임을 다 읽어 앱에 넘긴 뒤에 돈다 —
+  그 뒤의 파싱·검증·핸들러가 쓰는 것을 막는다. 프레임을 읽는 동안의 메모리는 서버가 정한다: uvicorn
+  `--ws-max-size`(기본 16 MiB, 넘으면 1009), daphne `--websocket-max-message-size`·`--websocket-max-frame-size`(4.2.3에서
+  기본 1 MiB, `runserver`는 `DAPHNE_WEBSOCKET_MAX_MESSAGE_SIZE`). Caddy·nginx의 프록시는 메시지 크기를 보지 않는다.
+  두 상한이 함께 있으면 작은 쪽이 먼저 끊는다 — 서버가 먼저 끊으면 wireview의 로그·텔레메트리가 남지 않는다. 그래서
+  uvicorn은 `INBOUND_MAX_BYTES`보다 조금 크게(`--ws-max-size 2097152`), `INBOUND_MAX_BYTES`를 올리면 daphne의 두 값도
+  함께 올린다.
+- **빈도 제한은 1.x에서 기본으로 꺼져 있다.** 정상 페이지도 몰려 보낸다 — 페이지 로드와 boost 이동은 컴포넌트마다 join을
+  한꺼번에, 스로틀 없는 훅은 이벤트마다 하나를. 켤 때는 `INBOUND_BURST`를 가장 큰 페이지의 컴포넌트 수보다 넉넉하게 둔다.
+  재연결한 연결은 새 버킷으로 시작하므로 이것은 한 연결의 몰림을 끊을 뿐이다 — 다시 연결하는 빈도는 위의 연결 미들웨어가 막는다.
+- **컴포넌트 수.** 서명된 상태가 있어야 join되지만, id 없이 그린 컴포넌트는 페이지를 불러올 때마다 새 id(`rx-…`)로
+  서명된다. 그래서 클라이언트가 페이지를 여러 번 불러 모은 상태로 한 연결의 인스턴스를 얼마든지 늘릴 수 있다.
+  `CONNECTION_MAX_COMPONENTS`가 그것을 막는다.
+- **컴포넌트마다의 세밀한 제한은 `handle_event` 훅이다.** 이 설정들은 연결을 끊는 거친 상한이고, 특정 핸들러(쓰기, 외부 API,
+  비싼 질의)만 초당 몇 번으로 묶고 넘치는 이벤트는 조용히 버리려면 [라이프사이클 훅](features/lifecycle-hooks.md#속도-제한)의
+  토큰 버킷을 쓴다.
+- 닫을 때 WARNING 로그(크기와 상한만, 메시지 내용은 싣지 않는다)와 텔레메트리 `message_refused`(`reason`: `size`·`rate`·
+  `binary`·`components`)를 남긴다([telemetry](features/telemetry.md)). `connection_closed`의 `code`에도 닫힘 코드가 실린다.
 
 ## 문제 해결
 

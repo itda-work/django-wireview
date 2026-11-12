@@ -83,6 +83,18 @@ DEFAULT: dict[str, t.Any] = {
     "RECONNECT_JITTER_MS": 4000,
     "RECONNECT_MAX_DELAY_MS": 10000,
     "RECONNECT_GROW_FACTOR": 1.3,
+    # What one connection may send (wireview.core.inbound, #230). A text frame over
+    # INBOUND_MAX_BYTES (UTF-8) closes the socket with 1009 before it is parsed; None = no limit.
+    # The ASGI server's own frame limit (uvicorn --ws-max-size) is read first.
+    "INBOUND_MAX_BYTES": 1024 * 1024,
+    # Frames a second a connection may send, every command alike, with bursts of up to
+    # INBOUND_BURST (the page's first round joins each component at once). Past it the
+    # socket closes with 1008 and the page reconnects. None = no limit
+    "INBOUND_RATE_PER_SECOND": None,
+    "INBOUND_BURST": 200,
+    # Components one connection may hold. A join that would hold more closes the socket
+    # with 1008. None = no limit
+    "CONNECTION_MAX_COMPONENTS": None,
 }
 
 #: Keys that existed and are gone, and what to do instead. ``wireview.W014``
@@ -179,3 +191,7 @@ if t.TYPE_CHECKING:
     RECONNECT_JITTER_MS: int
     RECONNECT_MAX_DELAY_MS: int
     RECONNECT_GROW_FACTOR: float
+    INBOUND_MAX_BYTES: int | None
+    INBOUND_RATE_PER_SECOND: float | None
+    INBOUND_BURST: int
+    CONNECTION_MAX_COMPONENTS: int | None

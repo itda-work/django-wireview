@@ -169,5 +169,26 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
                             "Connection %s left before %s was answered: %s", self.connection_id, each.get("type"), gone
                         )
 
+    async def websocket_receive(self, message):
+        # Closed -- by this, for a frame before it, or by the page -- what was on its way is not handled
+        if self._socket.gone:
+            return
+        text, data = message.get("text"), message.get("bytes")
+        # Before the parse: its cost is what a size limit bounds (#230). Here, on the
+        # receive path, and not in websocket_connect: every frame comes this way.
+        if (refused := self.inbound_refusal(text, data)) or text is None:
+            # A frame with no text is refused as binary
+            if refused:
+                await self.refuse_inbound(*refused)
+            return
+        try:
+            content = await self.decode_json(text)
+        except ValueError:
+            # Not one a client of ours sends: dropped like an unknown command (#94).
+            # It used to raise out of the consumer and end the connection with a traceback.
+            log.warning("Ignoring a message that is not JSON (%d characters)", len(text))
+            return
+        await self.receive_json(content)
+
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
         await self.handle_message(content)

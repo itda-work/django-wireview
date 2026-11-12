@@ -15,11 +15,12 @@ Signal                       Fired when
 ``join_rejected``            a socket or a join was refused (see ``JOIN_REJECTED_REASONS``)
 ``publish_failed``           the channel layer refused a publish or a session send
 ``broadcast_overflowed``     a connection fell behind on ``Broadcast`` patches and was closed
+``message_refused``          a connection sent past an inbound limit and was closed
 ===========================  ==================================================
 
 The first four are spans: they carry ``duration_ms`` (float), ``payload_size``
 (bytes, or ``None`` when the size is not measurable) and ``error`` (the
-exception that escaped the measured block, or ``None``). The other five are
+exception that escaped the measured block, or ``None``). The other six are
 events and carry only their own keyword arguments (#124). All of them are
 documented in ``docs/features/telemetry.md``.
 
@@ -49,7 +50,9 @@ __all__ = (
     "join_rejected",
     "publish_failed",
     "broadcast_overflowed",
+    "message_refused",
     "JOIN_REJECTED_REASONS",
+    "MESSAGE_REFUSED_REASONS",
     "is_enabled",
     "enable",
     "disable",
@@ -131,6 +134,28 @@ publish_failed = Signal()
 #: sender: session class. Kwargs: ``connection_id``, ``component_id``,
 #: ``topic``, ``limit`` (how many it holds).
 broadcast_overflowed = Signal()
+
+#: Why a connection was closed for what it sent (``wireview.core.inbound``, #230).
+#: A closed set, like ``JOIN_REJECTED_REASONS``.
+MESSAGE_REFUSED_REASONS = frozenset(
+    {
+        # A frame larger than INBOUND_MAX_BYTES (code 1009)
+        "size",
+        # More frames than INBOUND_RATE_PER_SECOND and INBOUND_BURST allow (code 1008)
+        "rate",
+        # A binary frame: the client only sends text (code 1003)
+        "binary",
+        # A join past CONNECTION_MAX_COMPONENTS (code 1008)
+        "components",
+    }
+)
+
+#: A connection sent past an inbound limit; the frame was not handled and the
+#: socket was closed. sender: session class. Kwargs: ``connection_id``,
+#: ``reason`` (one of ``MESSAGE_REFUSED_REASONS``), ``size`` (the frame's bytes,
+#: or the components held for ``"components"``), ``limit`` (the setting's value:
+#: bytes, frames a second, components; ``None`` for ``"binary"``).
+message_refused = Signal()
 
 
 _enabled: bool = settings.TELEMETRY

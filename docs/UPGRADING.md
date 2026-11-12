@@ -110,6 +110,16 @@ dependencies = ["django-wireview>=1.5,<2"]
   - 배포 전에 열린 페이지: 1.5가 id 없이 그려 서명한 프로듀서의 상태는 1.6의 join을 통과한다 — 서명 상태는 그 id를
     템플릿이 주었는지 프레임워크가 지었는지 싣지 않는다. 그 태그를 다시 지나는 렌더(새로고침의 HTTP 렌더, 그 프로듀서를 그린
     컴포넌트의 다시 그리기)는 막으므로, 그 페이지는 그때 오류를 만난다.
+- **깨짐: 1 MiB보다 큰 WebSocket 메시지는 연결을 닫는다(#230).** 새 설정 `INBOUND_MAX_BYTES`(기본 1 MiB)를 넘는
+  텍스트 프레임은 처리하지 않고 소켓을 1009로 닫는다. 1.5는 서버의 상한(uvicorn 16 MiB)까지 받았다. 훅의
+  `pushEvent`로 큰 데이터(예: 2 MB 문자열)를 보내거나 아주 큰 textarea 폼이 있으면 그 페이지는 끊기고 다시 연결하기를
+  되풀이한다. WARNING 로그 `Closing connection … (1009)`가 그것이다.
+  - 옮기는 법: `WIREVIEW = {"INBOUND_MAX_BYTES": 4 * 1024 * 1024}`처럼 올리거나 `None`으로 끈다. daphne를 쓰면 그
+    자체의 상한(4.2.3에서 기본 1 MiB, `--websocket-max-message-size`)도 함께 올린다. 파일은 WebSocket이 아니라 청크
+    업로드로 오므로 해당하지 않는다.
+  - 함께 생긴 것(기본 꺼짐): 연결의 메시지 빈도 `INBOUND_RATE_PER_SECOND`·`INBOUND_BURST`(넘으면 1008), 연결이 드는
+    컴포넌트 수 `CONNECTION_MAX_COMPONENTS`(1008). 바이너리 프레임은 1003으로 닫고, JSON이 아닌 텍스트 프레임은
+    버린다 — 1.5에서는 둘 다 예외로 연결이 끝났다. [배포](./DEPLOYMENT.md#메시지-크기와-빈도)
 
 ### 보안
 

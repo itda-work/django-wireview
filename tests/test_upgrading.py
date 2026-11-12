@@ -117,6 +117,10 @@ UPGRADE_NOTE = {
         "옛 상태에 실린 `exclude_fields`·temporary assign 값은 join에서 버린다",
         "기본값에서 시작한다",
     ),
+    "Breaking: a WebSocket message larger than 1 MiB": (
+        "1 MiB보다 큰 WebSocket 메시지는 연결을 닫는다",
+        "INBOUND_MAX_BYTES",
+    ),
     "A connection whose app ended without a disconnect is ended all the same": (
         "연결이 끝날 때의 `leaving()`은 모두 합쳐 5초 안에 끝나야 한다",
         "프레임워크가 대신 떠난다",
@@ -238,6 +242,8 @@ UPGRADE_NOTE = {
 
 EXAMPLE = "저장소의 예제만 바뀌었다"
 NO_UPGRADE_NOTE = {
+    "Inbound limits per connection": "기본으로 꺼져 있다",
+    "A binary WebSocket frame, or a text frame that is not JSON": "no client of ours sends one",
     "README marks the project as experimental": "표시만 바뀌고 동작은 그대로다",
     "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",
     "`docs/features/react-islands.md`": "문서만 더해졌다",

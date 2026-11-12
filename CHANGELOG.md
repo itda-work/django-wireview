@@ -25,7 +25,12 @@ The django-reactor era changelog (2.x) is preserved in
   parent's props, where it used to fail the parent's join. The signed envelope carries `m`, the models each model
   field names; a token without it (an older server's) is not checked. `docs/DEPLOYMENT.md` "필드를 바꾸는 배포"
   says which change gets which.
-
+- Inbound limits per connection (#230): `INBOUND_RATE_PER_SECOND` with `INBOUND_BURST` bounds how many messages a
+  connection sends (a token bucket over every frame, joins included; past it the socket closes with 1008), and
+  `CONNECTION_MAX_COMPONENTS` how many component instances it holds (a join under a new id past it closes with 1008).
+  Both are off by default. A page whose components have no id signs a fresh id on every load, so a client could grow
+  one connection's instances without bound. Each refusal emits the new telemetry event `message_refused` (reasons in
+  `telemetry.MESSAGE_REFUSED_REASONS`) and logs a WARNING without the message.
 - `docs/features/react-islands.md`: React on an island -- registering it, a Vite bundle and its dev server, CSP
   nonces, and a policy without nonces for pages a public cache keeps, which allows the header's inline `<style>` by
   its hash (`'sha256-9wSH+FNcf1J15W2Bp98kNXSBki4k6cyx3+rcC+BzFkU='`; it changes with that style, and the changelog
@@ -105,6 +110,9 @@ The django-reactor era changelog (2.x) is preserved in
 - A join reads a signed state as the class answering to the name now would have signed it (#231): a key that class
   leaves out of its state (`Meta.exclude_fields`, `Meta.temporary_assigns`) is dropped from one an older version
   signed, so the field starts as in every other join of the class rather than from the old value.
+- **Breaking: a WebSocket message larger than 1 MiB closes the connection with 1009** (#230). The new setting
+  `INBOUND_MAX_BYTES` (default 1 MiB, `None` turns it off) is checked in UTF-8 bytes before the JSON parse. 1.5
+  accepted whatever the ASGI server did (uvicorn: 16 MiB). An app whose hooks `pushEvent` large data raises it.
 
 - **Breaking: Python 3.13 or newer is required; 3.12 is no longer supported** (#225). channels-nats, the NATS
   channel layer, requires 3.13 since 0.7.0, and the 3.12 floor held its dev dependency at `<0.7`. The supported grid
@@ -201,6 +209,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A binary WebSocket frame, or a text frame that is not JSON, raised out of the consumer and ended the connection with
+  a traceback (#230). A binary frame now closes it with 1003; a frame that is not JSON is logged and dropped, like an
+  unknown command (#94).
 - `{% wireview_header %}` left its nonces out under Django 6.0's CSP middleware whenever it was the first thing on the
   page to use the nonce (#224). The middleware's `LazyNonce` is false until something makes it a string, the header
   tested it for truth, and the policy then had no nonce either: under a nonce-only `style-src` the header's `<style>`

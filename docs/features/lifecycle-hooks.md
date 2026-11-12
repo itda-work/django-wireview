@@ -292,9 +292,11 @@ class GoogleAnalytics:
 
 ### 속도 제한
 
-`{% on "input.debounce.300" %}`·`.throttle`은 **브라우저에서만** 돈다. 서버는 이벤트 빈도에도 메시지
-크기에도 상한을 두지 않으므로, 소켓에 직접 프레임을 보내는 클라이언트는 그 수정자를 거치지 않는다.
-서버에서 막아야 하는 핸들러(쓰기, 외부 API 호출, 비싼 질의)가 있으면 `handle_event` 훅으로 건다.
+`{% on "input.debounce.300" %}`·`.throttle`은 **브라우저에서만** 돈다. 소켓에 직접 프레임을 보내는 클라이언트는
+그 수정자를 거치지 않는다. 연결 단위의 거친 상한 — 메시지 크기(`INBOUND_MAX_BYTES`, 기본 1 MiB)와 빈도
+(`INBOUND_RATE_PER_SECOND`, 기본 꺼짐) — 은 설정이 두고 넘으면 연결을 닫는다([배포](../DEPLOYMENT.md#메시지-크기와-빈도)).
+그보다 세밀하게, 특정 핸들러(쓰기, 외부 API 호출, 비싼 질의)만 묶고 넘치는 이벤트는 연결을 두고 버리려면
+`handle_event` 훅으로 건다.
 아래는 컴포넌트마다 초당 `RATE`개, 몰아서 `BURST`개까지 받는 토큰 버킷이다.
 
 ```python
@@ -334,9 +336,9 @@ class RateLimitHook:
   미들웨어가 막는다.
 - **halt는 조용하다.** 거절된 이벤트는 핸들러를 부르지 않을 뿐 오류를 보내지 않는다. 알려야 하면 halt 전에
   `await component.put_flash(...)` 같은 명령을 보낸다.
-- **메시지 크기.** 프레임 하나의 상한은 ASGI 서버가 정한다. uvicorn은 `--ws-max-size`(기본 16MB)다. 이벤트
-  인자로 큰 값을 받을 일이 없으면 줄여 둔다. 파일은 WebSocket이 아니라 [청크 업로드](./chunked-uploads.md)
-  엔드포인트로 오고 `UPLOAD_MAX_FILE_SIZE`가 따로 막는다.
+- **메시지 크기.** 훅이 아니라 설정 `INBOUND_MAX_BYTES`(기본 1 MiB)가 막고, 그보다 먼저 ASGI 서버의 상한
+  (uvicorn `--ws-max-size`, daphne `--websocket-max-message-size`)이 막는다([배포](../DEPLOYMENT.md#메시지-크기와-빈도)).
+  파일은 WebSocket이 아니라 [청크 업로드](./chunked-uploads.md) 엔드포인트로 오고 `UPLOAD_MAX_FILE_SIZE`가 따로 막는다.
 
 이 패턴의 동작은 `tests/test_lifecycle_hooks.py`의 `TestRateLimitExample`이 위 코드 블록을 그대로 실행해 확인한다.
 
