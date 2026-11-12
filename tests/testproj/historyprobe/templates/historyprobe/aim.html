@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <input data-testid="aim-to"
+         name="to"
+         value="{{ this.to }}"
+         {% on "change" "aim" %}>
+  <span data-testid="aim-at">{{ this.to }}</span>
+  <span data-testid="aim-refused">{{ this.refused }}</span>
+  <button data-testid="aim-push" {% on "click" "go" how="push" %}>push</button>
+  <button data-testid="aim-replace" {% on "click" "go" how="replace" %}>replace</button>
+  <button data-testid="aim-redirect" {% on "click" "go" how="redirect" %}>redirect</button>
+  <button data-testid="aim-navigate" {% on "click" "go" how="navigate" %}>navigate</button>
+</div>

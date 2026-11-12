@@ -1,0 +1,228 @@
+{
+  "base": "http://x.test/page/",
+  "comment": "Navigation destinations (#262): what the browser's URL parser makes of each (client: same/other/refused, navigation.mjs destination) and what the server's check_destination says (server: ok/refused). tests/js/navigation.test.mjs and tests/test_navigation_urls.py read it.",
+  "vectors": [
+    {
+      "url": "/path/",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/path/"
+    },
+    {
+      "url": "?page=2",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/page/?page=2"
+    },
+    {
+      "url": "#top",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/page/#top"
+    },
+    {
+      "url": "page/2",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/page/page/2"
+    },
+    {
+      "url": "http://x.test/a/",
+      "client": "same",
+      "server": "ok"
+    },
+    {
+      "url": "http://x.test:80/a/",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/a/"
+    },
+    {
+      "url": "/a b/",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/a%20b/"
+    },
+    {
+      "url": "%2F%2Fother.example/",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/page/%2F%2Fother.example/"
+    },
+    {
+      "url": "http:other.example",
+      "client": "same",
+      "server": "ok",
+      "href": "http://x.test/page/other.example"
+    },
+    {
+      "url": "http://other.example@x.test/",
+      "client": "same",
+      "server": "ok",
+      "href": "http://other.example@x.test/"
+    },
+    {
+      "url": "https://x.test/a/",
+      "client": "other",
+      "server": "ok"
+    },
+    {
+      "url": "https://pay.example/checkout",
+      "client": "other",
+      "server": "ok"
+    },
+    {
+      "url": "//other.example/x",
+      "client": "other",
+      "server": "ok",
+      "href": "http://other.example/x"
+    },
+    {
+      "url": "///other.example/x",
+      "client": "other",
+      "server": "ok",
+      "href": "http://other.example/x"
+    },
+    {
+      "url": "HTTP://other.example/x",
+      "client": "other",
+      "server": "ok",
+      "href": "http://other.example/x"
+    },
+    {
+      "url": "HtTpS://x.test/a/",
+      "client": "other",
+      "server": "ok",
+      "href": "https://x.test/a/"
+    },
+    {
+      "url": "https:other.example",
+      "client": "other",
+      "server": "ok",
+      "href": "https://other.example/"
+    },
+    {
+      "url": "http://user:pass@other.example/",
+      "client": "other",
+      "server": "ok"
+    },
+    {
+      "url": "http://x.test@other.example/",
+      "client": "other",
+      "server": "ok",
+      "href": "http://x.test@other.example/"
+    },
+    {
+      "url": " http://other.example/",
+      "client": "other",
+      "server": "refused",
+      "href": "http://other.example/"
+    },
+    {
+      "url": "\thttp://other.example/",
+      "client": "other",
+      "server": "refused",
+      "href": "http://other.example/"
+    },
+    {
+      "url": "http://other.example/\n",
+      "client": "other",
+      "server": "refused",
+      "href": "http://other.example/"
+    },
+    {
+      "url": "/\\other.example/",
+      "client": "other",
+      "server": "refused",
+      "href": "http://other.example/"
+    },
+    {
+      "url": "\\\\other.example/",
+      "client": "other",
+      "server": "refused",
+      "href": "http://other.example/"
+    },
+    {
+      "url": "http:\\\\other.example/",
+      "client": "other",
+      "server": "refused",
+      "href": "http://other.example/"
+    },
+    {
+      "url": "/x\r\n/y",
+      "client": "same",
+      "server": "refused",
+      "href": "http://x.test/x/y"
+    },
+    {
+      "url": "javascript:alert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "JavaScript:alert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": " javascript:alert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "java\tscript:alert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "java\nscript:alert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "\u0001javascript:alert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "javascript://x.test/%0aalert(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "data:text/html,<script>alert(1)</script>",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "vbscript:msgbox(1)",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "mailto:someone@example.com",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "ftp://other.example/",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "file:///etc/passwd",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "blob:http://x.test/0",
+      "client": "refused",
+      "server": "refused"
+    },
+    {
+      "url": "http://[::1",
+      "client": "refused",
+      "server": "refused"
+    }
+  ]
+}

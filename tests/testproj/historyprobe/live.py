@@ -188,3 +188,35 @@ class HistoryGuardedList(Component):
             return
         self.q = q
         self.items = [q, q * 2]
+
+
+class HistoryAim(Component):
+    """Sends the page wherever the test typed (#262): ``to`` is set from an
+    input, and each button moves there one way. The destinations a URL policy
+    has to judge -- another origin, a scheme that is not http(s) -- come from
+    the test, as an app's would come from data it was given."""
+
+    class Meta:
+        template_name = "historyprobe/aim.html"
+
+    to: str = ""
+    #: What the last move raised, as the handler saw it
+    refused: str = ""
+
+    async def aim(self, to: str = "", **_rest):
+        self.to = to
+
+    async def go(self, how: str = "push", **_rest):
+        from wireview import JS
+
+        try:
+            if how == "redirect":
+                await self.wire.redirect_to(self.to)
+            elif how == "replace":
+                await self.wire.replace_to(self.to)
+            elif how == "navigate":
+                await self.wire.push_js(self.id, JS().navigate(self.to))
+            else:
+                await self.wire.push_to(self.to)
+        except Exception as error:  # noqa: BLE001 -- shown to the test
+            self.refused = type(error).__name__

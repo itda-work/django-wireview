@@ -123,6 +123,20 @@ dependencies = ["django-wireview>=1.5,<2"]
 
 ### 보안
 
+- **깨짐: 이동 목적지가 http(s)가 아니면 호출이 `DisallowedRedirect`를 던진다(#262).** `redirect_to`·`push_to`·
+  `replace_to`·`JS().navigate`가 해석한 URL이 http·https 아닌 스킴(`javascript:`·`data:`·`mailto:`…), ASCII 제어문자
+  (탭·LF·CR), 백슬래시, 앞뒤 공백을 가지면 호출한 자리에서 `django.core.exceptions.DisallowedRedirect`다. 1.5에서는
+  그대로 페이지로 갔다. `mailto:`로 보내던 코드는 `JS().navigate` 대신 링크(`<a href="mailto:…">`)를 그린다. 백슬래시가
+  든 경로는 `%5C`로 쓴다. 외부 http(s) 주소는 그대로 간다.
+  - 조용히 달라짐: 클라이언트는 모든 이동의 목적지를 브라우저의 URL 파서로 판단한다. `//other.example/`·
+    `HTTP://other.example/`처럼 `http://`로 시작하지 않는 다른 출처 주소, 그리고 `push_to`·`replace_to`의 외부 주소는
+    이제 브라우저의 전체 이동이다 — 1.5에서는 `pushState`의 `SecurityError`로 아무 일도 일어나지 않았다. http(s)가
+    아닌 목적지는 `wireview.visit()`에서도 어디로도 가지 않는다(boost가 꺼진 페이지에서 `javascript:`가 실행되던 것).
+  - 조용히 달라짐: boost가 링크·뒤로 가기를 가져오는 요청은 `same-origin` 모드다. 다른 출처로 리다이렉트하는 주소는
+    이 페이지에서 따라가지 않고 브라우저가 다시 열어 따라간다. 다른 출처 서버가 그 페이지의 CORS 요청(`Origin` 헤더)을
+    받던 것이 없어진다.
+  - 보안 조치: 요청에서 온 목적지(`?next=`)를 `redirect_to`에 넘긴다면 `url_has_allowed_host_and_scheme`으로 호스트를
+    거른다. 호스트 허용 목록은 여전히 앱의 몫이다([목적지 검증](./features/navigation.md#목적지-검증-프레임워크가-보장하는-것과-앱의-몫)).
 - **고쳐짐: 컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다(#206).** 1.5까지는 첫 HTTP 렌더에서도 라이브 렌더에서도
   빈 값이라, 컴포넌트 안의 일반 POST 폼은 403을 받았다. 그래서 그 뷰에 `csrf_exempt`를 붙여 두었다면 떼고 폼에
   `{% csrf_token %}`을 둔다 — 그 예외는 그 뷰의 CSRF 보호를 통째로 끈 것이다. 무엇이 어디서 오는지는

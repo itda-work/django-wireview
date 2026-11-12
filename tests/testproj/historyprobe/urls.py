@@ -1,4 +1,4 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import path
 
@@ -46,6 +46,27 @@ def notes(request):
     return HttpResponse("plain notes", content_type="text/plain; charset=utf-8")
 
 
+#: The requests that reached ``foreign/``, as (method, Origin header) (#262)
+FOREIGN: list[tuple[str, str]] = []
+
+
+def foreign(request):
+    # Another origin's page -- the test server under its other name -- that
+    # lets any origin read it, as a CDN or a public API does
+    FOREIGN.append((request.method, request.headers.get("Origin", "")))
+    response = HttpResponse(
+        '<!DOCTYPE html><html><body><span data-testid="page">foreign</span></body></html>',
+        content_type="text/html; charset=utf-8",
+    )
+    response["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
+def hop(request):
+    # An open redirect, as an app's "continue to" endpoint is: wherever ``to`` says
+    return HttpResponseRedirect(request.GET["to"])
+
+
 def bars(name):
     return lambda request: render(request, "historyprobe/bars.html", {"name": name})
 
@@ -60,6 +81,10 @@ urlpatterns = [
     # Answers that are not a page to boost (#227)
     path("report/", report, name="report"),
     path("notes/", notes, name="notes"),
+    # Destinations a URL policy judges (#262)
+    path("aim/", lambda request: render(request, "historyprobe/aim_page.html"), name="aim"),
+    path("foreign/", foreign, name="foreign"),
+    path("hop/", hop, name="hop"),
     # Inside ls-members: a patch stays inside it, a push to other/ leaves it
     path("members/", members.view(page("members")), name="members"),
     # Components whose params_changed returns early on a query they already hold (#177)

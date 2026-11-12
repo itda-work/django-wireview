@@ -90,6 +90,7 @@
 | `core/live_session.py` | 페이지 경계(`live_session`)와 인증 세대 |
 | `core/origin.py` | WebSocket Origin 검사 (#96) |
 | `core/inbound.py` | 연결이 보내는 것의 상한: 프레임 크기·빈도·바이너리 프레임, 닫힘 코드 (#230) |
+| `core/destinations.py` | 이동 목적지의 URL 정책: http·https만, 제어문자·백슬래시·앞뒤 공백 거절 (#262) |
 | `core/transport.py` | `Outbound`·`Broker` 인터페이스와 Channels 구현 |
 | `core/uvicorn_patches.py` | 페이지가 닫는 중인 연결에서 던져 서버의 종료를 끊는 uvicorn `shutdown()`을 첫 연결에서 감싼다. 결함의 모양일 때만 (#226) |
 | `template_engine.py` | 템플릿 변수 출력에 diff 마커 주입 |
@@ -346,7 +347,7 @@ wireview/
 ├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, patches,
 │                          # watched, state, signing, model_state, session(SessionView), live_session, origin, inbound, transport,
 │                          # template_reload, connections, lazy_context, notifications, csrf, page_request,
-│                          # uvicorn_patches
+│                          # uvicorn_patches, destinations
 ├── features/              # streams, presence, uploads, upload_store, hooks, toasts
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py

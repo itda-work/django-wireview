@@ -752,6 +752,9 @@ class ServerConnection {
           case "replace":
           case "push": {
             const replace = payload.command === "replace";
+            // Another origin is the browser's to load, and a URL that is not
+            // http(s) goes nowhere (#262): not asked about, not a patch
+            if (boost.HistoryCache.leaves(url, replace)) break;
             const patch = boost.HistoryCache.isPatch(url);
             // The page may keep the user where they are: nothing moves, and the
             // server hears no params (#154)

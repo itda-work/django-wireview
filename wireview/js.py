@@ -446,7 +446,15 @@ class JS:
         Example:
             JS().navigate("/dashboard")
             JS().navigate("/login", replace=True)
+
+        Raises:
+            DisallowedRedirect: the URL is not one a navigation may go to --
+                a scheme other than http or https, a control character, a
+                backslash, whitespace around it (#262).
         """
+        from .core.destinations import check_destination
+
+        check_destination(url)
         return self._add_command(
             "navigate",
             url=url,

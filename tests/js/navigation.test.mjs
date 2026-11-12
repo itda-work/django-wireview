@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -15,6 +16,7 @@ import {
   boostsForm,
   boostsLink,
   carriedAcross,
+  destination,
   fetchOutcome,
   formMethod,
   formRequest,
@@ -25,6 +27,7 @@ import {
   isSameUrl,
   newPageId,
   onlyFragmentMoved,
+  pageRequest,
   patchesPage,
   returnsToPatch,
   stamped,
@@ -260,7 +263,19 @@ test("a form is sent in no-cors mode, so a redirect off the site is an answer an
 
 test("an answer is a page, an error page included", () => {
   assert.equal(fetchOutcome({ response: { type: "basic" } }), "page");
-  assert.equal(fetchOutcome({ response: { type: "cors" } }), "page");
+});
+
+test("another origin's answer is never a page, whatever its CORS headers allow (#262)", () => {
+  // A cors-mode fetch that another origin answered, or one this origin
+  // redirected there: the other origin let it be read
+  assert.equal(fetchOutcome({ response: { type: "cors" } }), "elsewhere");
+  const here = "http://x.test";
+  assert.equal(fetchOutcome({ response: { type: "basic", url: "http://x.test/a/" } }, here), "page");
+  assert.equal(fetchOutcome({ response: { type: "basic", url: "http://y.test/a/" } }, here), "elsewhere");
+  assert.equal(fetchOutcome({ response: { type: "basic", url: "https://x.test/a/" } }, here), "elsewhere");
+  assert.equal(fetchOutcome({ response: { type: "basic", url: "http://x.test:81/a/" } }, here), "elsewhere");
+  // A response the page made itself has no URL
+  assert.equal(fetchOutcome({ response: { type: "basic", url: "" } }, here), "page");
 });
 
 test("an opaque answer is a redirect to another origin, whose address the page cannot see", () => {
@@ -413,4 +428,32 @@ test("a page restored as it was, at its own entry, has nothing to do", () => {
 
 test("a page that was loaded, not restored, has nothing to do", () => {
   assert.equal(arrivesOnRestore(false, { id: null, url: "http://x/a/" }, "http://x/b/", "http://x/a/"), false);
+});
+
+// --- where a navigation goes (#262) ---
+
+/**
+ * The vectors tests/test_navigation_urls.py judges on the server, with what
+ * the browser's URL parser makes of each: the two halves of the policy are
+ * read side by side from one table.
+ */
+const VECTORS = JSON.parse(readFileSync(new URL("./navigation-urls.json", import.meta.url), "utf-8"));
+
+test("every destination vector is read by the URL parser as the table says", () => {
+  const base = VECTORS.base;
+  const origin = new URL(base).origin;
+  const wrong = VECTORS.vectors
+    .map((vector) => ({ ...vector, got: destination(vector.url, base, origin) }))
+    .filter(({ client, href, got }) => got.kind !== client || (href !== undefined && got.href !== href))
+    .map(({ url, client, got }) => ({ url, client, got }));
+  assert.deepEqual(wrong, []);
+});
+
+test("a destination that does not parse is refused", () => {
+  assert.deepEqual(destination("http://[::1", "http://x.test/", "http://x.test"), { kind: "refused", href: null });
+});
+
+test("a page's fetch does not follow a redirect to another origin; a form's still tells one apart", () => {
+  assert.deepEqual(pageRequest(), { mode: "same-origin" });
+  assert.equal(formRequest("POST", new FormData()).mode, "no-cors");
 });

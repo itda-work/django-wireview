@@ -369,34 +369,104 @@ export function formRequest(method, body) {
 }
 
 /**
+ * @typedef {Object} Destination
+ * @property {"same" | "other" | "refused"} kind - "same": this document's
+ *   origin, boost's to fetch and draw; "other": another origin, the browser's
+ *   to go to and never drawn here; "refused": not a web page (`javascript:`,
+ *   `data:`, `mailto:`...) or not a URL at all, gone to by no one
+ * @property {string | null} href - the URL as the browser reads it; null when
+ *   it does not parse
+ */
+
+/**
+ * Where a navigation goes, as the browser's URL parser reads it (#262). Every
+ * way a page moves -- a link, a boosted form, `wireview.visit()`,
+ * `JS().navigate`, the server's `redirect_to`, `push_to` and `replace_to`, a
+ * page that hands a navigation back to the browser -- asks this, and nothing
+ * looks at how the string starts: `//other.example/`, `HTTP://other.example/`
+ * and ` http://other.example/` are all another origin, and `java\tscript:`
+ * is `javascript:`.
+ * @param {string} url
+ * @param {string} base - the document's base URL
+ * @param {string} origin - the document's origin
+ * @returns {Destination}
+ */
+export function destination(url, base, origin) {
+  let parsed;
+  try {
+    parsed = new URL(url, base);
+  } catch {
+    return { kind: "refused", href: null };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return { kind: "refused", href: parsed.href };
+  return { kind: parsed.origin === origin ? "same" : "other", href: parsed.href };
+}
+
+/**
+ * The request a boosted navigation that is not a form's sends (#262): a link,
+ * a push, a popstate. `same-origin` mode: a redirect to another origin is not
+ * followed from this page at all -- the fetch fails as a network error does,
+ * and the browser loads the URL and follows it itself (`fetchOutcome`
+ * "unanswered"). The other origin is asked once, by the browser, and never
+ * by this page's script, whatever CORS it allows. A form keeps `no-cors`
+ * (`formRequest`): it is sent once, and must tell such a redirect from no
+ * answer.
+ * @returns {RequestInit}
+ */
+export function pageRequest() {
+  return { mode: "same-origin" };
+}
+
+/**
  * What a boosted navigation's fetch came to (#170).
  * - "page": an answer to show -- a 404 or a 500 included, under its URL
  * - "file": an answer that is not a page to show (#227): a body that is not
  *   an HTML document (`isDocument`), or one the server marks to be saved
  *   (`Content-Disposition: attachment`). The browser's to handle -- a link's
  *   is asked for again, a form's is saved from what came back
- * - "elsewhere": the server answered with a redirect to another origin, which
- *   only a `no-cors` request (`formRequest`) sees as such; its target is
- *   hidden from the page
+ * - "elsewhere": the answer is another origin's (#262) -- a redirect there,
+ *   which a `no-cors` request (`formRequest`) gets as an opaque answer whose
+ *   target is hidden, or one a `cors` request followed and the other origin
+ *   let it read. Never drawn in this document, whatever its CORS headers say
  * - "aborted": the request was stopped (an `AbortError`), not failed: the page
  *   is going somewhere else, or the user stopped it. Nothing to do.
  * - "unanswered": the network, not the server -- no answer at all. A
  *   Chromium `window.stop()` lands here too: it rejects the fetch with the
  *   same `TypeError` a dropped connection does, and the two cannot be told
  *   apart.
- * @param {{response?: {type: string, headers?: {get(name: string): string|null}}, error?: unknown}} result -
+ * @param {{response?: {type: string, url?: string, headers?: {get(name: string): string|null}}, error?: unknown}} result -
  *   what the fetch resolved to, or what it rejected with
+ * @param {string} [origin] - the document's: an answer from anywhere else is
+ *   "elsewhere"
  * @returns {"page" | "file" | "elsewhere" | "aborted" | "unanswered"}
  */
-export function fetchOutcome({ response, error }) {
+export function fetchOutcome({ response, error }, origin = undefined) {
   if (error !== undefined || response === undefined) {
     return /** @type {{name?: string} | null} */ (error)?.name === "AbortError" ? "aborted" : "unanswered";
   }
-  if (response.type === "opaque" || response.type === "opaqueredirect") return "elsewhere";
+  // "cors": another origin answered and allowed the read (#262)
+  if (response.type === "opaque" || response.type === "opaqueredirect" || response.type === "cors") {
+    return "elsewhere";
+  }
+  if (origin !== undefined && response.url && !sameOrigin(response.url, origin)) return "elsewhere";
   // An opaque answer's headers are hidden; any other's are the server's
   const headers = response.headers;
   if (headers === undefined) return "page";
   return isDocument(headers.get("content-type"), headers.get("content-disposition")) ? "page" : "file";
+}
+
+/**
+ * Whether `url` is an absolute URL of `origin`. One that does not parse is not.
+ * @param {string} url
+ * @param {string} origin
+ * @returns {boolean}
+ */
+function sameOrigin(url, origin) {
+  try {
+    return new URL(url).origin === origin;
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   beforeNavigateDetail,
   boostsForm,
   boostsLink,
+  destination,
   fetchOutcome,
   formMethod,
   formRequest,
@@ -22,6 +23,7 @@ import {
   isSameUrl,
   newPageId,
   onlyFragmentMoved,
+  pageRequest,
   patchesPage,
   returnsToPatch,
   stamped,
@@ -406,7 +408,45 @@ let undoing = null;
  */
 function loadInstead(url, error) {
   if (error !== undefined) console.warn("wireview: could not fetch %s; loading it without boost", url, error);
-  document.location.replace(url);
+  leave(url, { replace: true });
+}
+
+/**
+ * Where `url` goes (navigation.mjs `destination`, #262): resolved against
+ * this document as the browser resolves it.
+ * @param {string} url
+ * @returns {import("./navigation.mjs").Destination}
+ */
+function whereTo(url) {
+  return destination(url, document.baseURI, document.location.origin);
+}
+
+/**
+ * Whether `url` is refused -- not an http(s) URL -- and said so (#262).
+ * Nothing moves: a `javascript:` URL handed to `location.assign` runs.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function refuses(url) {
+  if (whereTo(url).kind !== "refused") return false;
+  console.error("wireview: refused to navigate to %s: only http and https URLs are followed", url);
+  return true;
+}
+
+/**
+ * Hands a navigation to the browser: a page load of `url`, as the browser
+ * reads it -- never one that is refused (#262).
+ * @param {string} url
+ * @param {{replace?: boolean}} [options] - take the current entry's place
+ */
+function leave(url, { replace = false } = {}) {
+  if (refuses(url)) return;
+  const href = /** @type {string} */ (whereTo(url).href);
+  if (replace) {
+    document.location.replace(href);
+  } else {
+    document.location.assign(href);
+  }
 }
 
 /**
@@ -454,7 +494,9 @@ if (BOOST_PAGES) {
       link &&
       link.href &&
       (!link.target || link.target === "_self") &&
-      link.origin == document.location.origin &&
+      // As the browser reads it (#262): another origin, or a `javascript:`
+      // link the page itself wrote, is the browser's
+      whereTo(link.href).kind === "same" &&
       e.button === 0 && // left click only
       !e.metaKey && // open in new tab (mac)
       !e.ctrlKey && // open in new tab (win & linux)
@@ -541,16 +583,14 @@ function replaceBodyContent(newBody, scrollY = undefined, landed = true, kind = 
 }
 
 /**
- * Checks if a URL has the same origin as the current document.
- * @param {string} url - The URL to check
- * @returns {boolean} True if same origin or relative URL
+ * Whether `url` is this document's origin, as the browser's URL parser reads
+ * it (#262). Before, anything that did not start with `http://` or `https://`
+ * was: `//other.example/`, `HTTP://other.example/`, `javascript:`.
+ * @param {string} url
+ * @returns {boolean}
  */
 function hasSameOriginAsDocument(url) {
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return new URL(url).origin === document.location.origin;
-  } else {
-    return true;
-  }
+  return whereTo(url).kind === "same";
 }
 
 /**
@@ -570,14 +610,12 @@ class HistoryCache {
    *   cancelled the move.
    */
   static async load(url, { replace = false, fetch: always = false, kind = "visit" } = {}) {
+    // Not a page: no one goes there, and the page is not asked (#262)
+    if (refuses(url)) return false;
     // A jump to a fragment of this document is the browser's, as a link's is
     // (#170): `wireview.visit("#top")` scrolls rather than fetching the page
     if (!always && isFragmentLink(document.location.href, url, document.baseURI)) {
-      if (replace) {
-        document.location.replace(url);
-      } else {
-        document.location.assign(url);
-      }
+      leave(url, { replace });
       return true;
     }
     if (BOOST_PAGES && hasSameOriginAsDocument(url)) {
@@ -588,12 +626,23 @@ class HistoryCache {
       if (!mayNavigate(url, kind, { cancelable: kind !== "redirect" })) return false;
       return replace ? this.swap(url, kind) : this.push(url, kind);
     }
-    if (replace) {
-      document.location.replace(url);
-    } else {
-      document.location.assign(url);
-    }
+    leave(url, { replace });
     return false;
+  }
+
+  /**
+   * What a move the server asked for (`push_to`, `replace_to`) that is not
+   * this document's does instead (#262): nothing, for a refused URL, or a
+   * page load of another origin's -- which `pushState` would refuse, and
+   * boost would not draw here.
+   * @param {string} url
+   * @param {boolean} replace
+   * @returns {boolean} true when it took the move
+   */
+  static leaves(url, replace) {
+    if (hasSameOriginAsDocument(url)) return false;
+    leave(url, { replace });
+    return true;
   }
 
   /**
@@ -619,6 +668,7 @@ class HistoryCache {
    *   a full page load took over.
    */
   static async push(path, kind = "push") {
+    if (this.leaves(path, false)) return false;
     // The browser makes no entry for a load of the URL it shows, and Back from
     // a second one would change nothing (#170): fetched in place instead
     if (isSameUrl(document.location.href, path, document.baseURI)) return this.swap(path, kind);
@@ -652,7 +702,7 @@ class HistoryCache {
         // The entry stays, as Forward's: it says what it is for when Forward
         // comes back to it (FILE_KEY)
         if (file) replaceEntry({ [FILE_KEY]: true }, path);
-        undoing = { token: navGate.token, entry, left, then: file ? () => document.location.assign(path) : null };
+        undoing = { token: navGate.token, entry, left, then: file ? () => leave(path) : null };
         history.back();
       },
       kind
@@ -743,6 +793,7 @@ class HistoryCache {
    * @returns {Promise<boolean>} as `push`
    */
   static async swap(path, kind = "replace") {
+    if (this.leaves(path, true)) return false;
     navGate.begin();
     leavingDocument = false;
     const left = leavePage();
@@ -762,7 +813,7 @@ class HistoryCache {
         // A file is the browser's (#227), asked for again in place of the entry
         if (outcome === "file") {
           response?.body?.cancel().catch(() => {});
-          document.location.replace(path);
+          leave(path, { replace: true });
         }
       },
       kind
@@ -808,13 +859,17 @@ class HistoryCache {
     let content = "";
     /** @type {unknown} */
     let error;
+    const origin = document.location.origin;
     try {
-      response = await fetch(url, init);
-      if (fetchOutcome({ response }) === "page") content = await response.text();
+      // Nothing of another origin is fetched to be drawn here (#262): every
+      // way in checked already, and this is where they meet
+      if (!hasSameOriginAsDocument(url)) throw new TypeError(`${url} is not this document's origin`);
+      response = await fetch(url, init ?? pageRequest());
+      if (fetchOutcome({ response }, origin) === "page") content = await response.text();
     } catch (e) {
       error = e;
     }
-    const outcome = fetchOutcome({ response, error });
+    const outcome = fetchOutcome({ response, error }, origin);
     if (outcome !== "page") {
       // An answer -- a 404, a 500 -- is a page, and shown under its URL like
       // any other. Without one the address bar names a page the screen does
@@ -822,7 +877,9 @@ class HistoryCache {
       // must not drag the page back to where it was going.
       if (!navGate.accepts(token)) return false;
       if (outcome === "elsewhere") {
-        console.warn("wireview: %s redirected to another origin, which a boosted form cannot follow", url);
+        // A form's is not sent again; a link's the browser asks for again,
+        // and follows wherever it goes (#170, #262)
+        console.warn("wireview: %s answered from another origin, which boost does not show", url);
       }
       // Nothing queued for this navigation paints or joins any more -- but for
       // a stopped one, what it already painted is the caller's to keep
@@ -841,11 +898,7 @@ class HistoryCache {
       // made one, a popstate returned to one). assign added a second whenever a
       // redirect made the URL differ, and Back then led to the redirecting URL,
       // which redirected forward again (#110). A submitted form has no entry yet.
-      if (entry === "push") {
-        document.location.assign(response.url || url);
-      } else {
-        document.location.replace(response.url || url);
-      }
+      leave(response.url || url, { replace: entry !== "push" });
       return false;
     }
     // The entry names the URL that was asked for. After a redirect the page is
@@ -976,7 +1029,7 @@ function arrive(state, { restored = false, left = null } = {}) {
   // and the page on screen goes back to the entry before it, its own
   if (state?.[FILE_KEY] === true) {
     const url = here;
-    undoing = { token: navGate.token, entry: undefined, left: page.id, then: () => document.location.assign(url) };
+    undoing = { token: navGate.token, entry: undefined, left: page.id, then: () => leave(url) };
     history.back();
     return;
   }
@@ -1046,7 +1099,7 @@ function arrive(state, { restored = false, left = null } = {}) {
         });
       } else {
         navGate.abandon();
-        if (!leavingDocument) document.location.replace(url);
+        if (!leavingDocument) leave(url, { replace: true });
       }
     },
     "popstate"

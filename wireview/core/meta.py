@@ -24,6 +24,7 @@ from ..debug import render_queries
 from ..utils import db
 from . import shared_render
 from .connections import keep_connections
+from .destinations import check_destination
 from .lazy_context import LazyContext, PropertyFailed, is_lazy
 from .render_gate import RenderGate
 from .render_reads import RenderReads
@@ -93,10 +94,15 @@ def resolve_destination(to: RedirectDestination, **kwargs: t.Any) -> str:
     docstring shows -- would raise ``NoReverseMatch``. Same for a bare fragment.
     Everything else keeps ``resolve_url``'s behaviour: a view name, a model with
     ``get_absolute_url``, a path.
+
+    Whatever it resolves to goes through the URL policy (``destinations``,
+    #262): a scheme other than http or https, a control character, a
+    backslash or whitespace around it raise ``DisallowedRedirect`` here, at
+    the call. Another site's http(s) URL is allowed -- the browser goes there.
     """
     if isinstance(to, str) and to[:1] in ("?", "#"):
-        return to
-    return resolve_url(to, **kwargs)
+        return check_destination(to)
+    return check_destination(str(resolve_url(to, **kwargs)))
 
 
 class Repo(t.Protocol):

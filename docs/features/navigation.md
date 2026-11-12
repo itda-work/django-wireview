@@ -179,5 +179,45 @@ URL 패턴의 인자 이름이 그 옵션과 겹치면 `reverse()`의 결과를 
 
 Phoenix 1.2의 이동 취소에 대응하는 `wireview:before-navigate`는 이미 있다. 단, 서버 redirect와 일부
 뒤로 가기 경로는 취소할 수 없다. 서버에서 목적지의 이동 유형을 조회하는 `navigation_type` 대응 API는 없다.
-목적지는 `resolve_url`로 해석하며, 이 API 자체가 URL 스킴·제어문자 허용 정책을 검증하지는 않는다.
-사용자 입력을 목적지로 쓸 때는 애플리케이션에서 검증한다.
+
+### 목적지 검증: 프레임워크가 보장하는 것과 앱의 몫
+
+목적지는 `resolve_url`로 해석한 뒤 URL 정책을 지난다(#262). 1.5까지는 이 API가 스킴·제어문자를 보지 않았다.
+
+**프레임워크가 보장한다.**
+
+- 서버: `redirect_to`·`push_to`·`replace_to`·`JS().navigate`는 해석한 URL이 다음이면 **호출한 자리에서**
+  `django.core.exceptions.DisallowedRedirect`를 던진다 — Django의 `HttpResponseRedirect`가 위험한 스킴에 던지는 것과
+  같은 예외다. 아무것도 페이지로 가지 않고, HTTP 렌더의 meta refresh에도 실리지 않는다.
+  - http·https가 아닌 스킴(`javascript:`·`data:`·`vbscript:`·`mailto:`·`ftp:`…, 대소문자 무관)
+  - ASCII 제어문자(탭·LF·CR 포함) — 브라우저의 URL 파서는 그것을 지우고 읽어 `java\tscript:`가 `javascript:`가 된다
+  - 백슬래시 — http(s) URL에서 브라우저는 그것을 `/`로 읽어 `/\host`가 다른 호스트다. `%5C`로 쓴다
+  - 앞뒤의 공백
+  - 상대 경로, `?page=2`, `#top`, URL 이름, `get_absolute_url()`, 같은 출처·다른 출처의 http(s) 주소는 전처럼 간다.
+    `/`도 `.`도 없는 문자열은 `resolve_url`의 규칙대로 URL 이름이다(`"javascript:alert(1)"`은 `NoReverseMatch`).
+- 브라우저: 모든 이동 — 링크, boost 폼, `wireview.visit()`, `JS().navigate`, 서버의 세 명령, 뒤로·앞으로 가기,
+  boost가 브라우저에 넘기는 이동 — 이 목적지를 **브라우저의 URL 파서로** 해석해 판단한다. 문자열이 어떻게
+  시작하는지는 보지 않는다.
+  - 이 문서와 같은 출처면 boost(켜져 있을 때).
+  - 다른 출처면 브라우저의 전체 이동이다. `//other.example/`·`HTTP://other.example/`·` http://other.example/`도 다른
+    출처다. **다른 출처의 내용은 어떤 경로로도 이 페이지에 그려지지 않는다** — 같은 출처 주소가 다른 출처로
+    리다이렉트해도, 그 출처가 CORS로 읽기를 허용해도. boost의 가져오기는 `same-origin` 모드라 그 리다이렉트를
+    따라가지 않고, 브라우저가 그 주소를 다시 열어 따라간다([boost](./boost.md#가져오기가-실패하면)).
+  - http·https가 아니면 어디로도 가지 않고 `console.error`를 남긴다(boost가 꺼져 있어도 — 1.5에서는
+    `wireview.visit("javascript:…")`가 그 스크립트를 실행했다).
+
+**앱의 몫이다.** 어느 **호스트**로 보내도 되는지. 외부 http(s) 주소로의 `redirect_to`(결제·OAuth)는 그대로 동작하므로,
+요청에서 온 목적지(`?next=`)는 오픈 리다이렉트가 되지 않게 앱이 먼저 거른다.
+
+```python
+from django.utils.http import url_has_allowed_host_and_scheme
+
+next_url = self.next or "/"
+if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={"example.com"}, require_https=True):
+    next_url = "/"
+await self.wire.redirect_to(next_url)
+```
+
+`push_to`·`replace_to`에 다른 출처 주소를 주면 브라우저의 이동(`replace_to`는 지금 항목을 바꾸는 이동)으로 끝난다 —
+1.5에서는 `pushState`가 다른 출처 주소를 거절해 아무 일도 일어나지 않았다. 테스트의 `mount()`도 같은 해석을 지나므로
+거절되는 목적지는 테스트에서도 그 호출이 `DisallowedRedirect`를 던진다.

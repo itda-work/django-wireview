@@ -102,6 +102,10 @@ wireview/
 ├── core/live_session.py   페이지 경계 정본. live_session() 선언과 레지스트리, @session.view,
 │                          인증 세대 지문(auth_fingerprint), 로그아웃 무효화 발행 (GAP-009)
 ├── core/origin.py         WebSocket Origin 검사. 컨슈머가 accept 전에 ALLOWED_HOSTS와 대조한다(CSWSH, #96)
+├── core/destinations.py   이동 목적지의 서버 쪽 정책(#262). check_destination: http·https 밖의 스킴, ASCII 제어문자, 백슬래시, 앞뒤 공백은
+│                          DisallowedRedirect. resolve_destination(redirect_to·push_to·replace_to)과 JS().navigate가 부른다. 클라이언트의 짝은
+│                          navigation.mjs의 destination(브라우저 URL 파서) — 벡터 표 tests/js/navigation-urls.json을 양쪽 테스트가 읽는다.
+│                          wireview의 어떤 모듈도 import하지 않는다(js·core.meta가 함께 쓴다)
 ├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용).
 │                          봉투의 i는 그 상태를 낸 요청·연결의 신분(로그인 + CSRF 시크릿 지문, live_session.identity_fingerprint).
 │                          저장소가 등록하는 컴포넌트에 wire.identity를 달아 sign_state가 읽는다. join이 연결의 것과 다르면 renew(#209)
@@ -503,6 +507,11 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   `AttributeError`다 — 대입된 값이 이후의 override를 가렸기 때문이다. 새 설정 키는 `DEFAULT`에, 없앤 키는 `REMOVED`에 둔다(W014가 읽는다).
 - **`UPLOAD_TEMP_DIR`은 첫 청크가 올 때에야 읽힌다.** 잘못된 경로나 마운트되지 않은 볼륨은 기동 시 아무 신호도 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다. 빈 문자열은 미설정과 같게 다뤄 시스템 temp로 간다(`Path("")`가 cwd이기 때문이다). `manage.py check`의 `wireview.W008`이 미리 잡는다.
 - **청크 업로드가 워커 사이에서 공유해야 하는 것은 둘뿐이다.** 청크 저장소(`UPLOAD_TEMP_DIR`, 한 호스트면 시스템 temp가 이미 공유)와 서명 키. 엔드포인트는 상태를 안 들고 있으므로 스티키 라우팅은 필요 없다. 키가 어긋나면 403, 디렉터리가 어긋나면 200을 받고도 완료되지 않는다. 상세는 `docs/features/chunked-uploads.md`.
+- **이동 목적지는 문자열 앞머리로 판단하지 않는다(#262).** 클라이언트는 `wireview/static/wireview/navigation.mjs`의 `destination`(브라우저 URL 파서)으로,
+  서버는 `wireview/core/destinations.py`의 `check_destination`으로만 정한다. `location.assign`·`replace`를 부르는 새 길은
+  `wireview/static/wireview/wireview-boost.js`의 `leave()`를 지나고, boost가 가져온 응답은 `fetchOutcome(…, origin)`이 다른 출처면 그리지 않는다.
+  1.5의 `startsWith("http://")` 검사는 `//host`·`HTTP://`·`javascript:`를 같은 출처로 봤다. 두 판정의 벡터는
+  `tests/js/navigation-urls.json` 하나이고 tests/js/navigation.test.mjs와 tests/test_navigation_urls.py가 함께 읽는다.
 - **서명은 `wireview/core/signing.py`의 `get_signer(salt)`로만 한다.** `TimestampSigner(salt=...)`를 직접 만들면 `SIGNING_KEY`와 fallback을 무시해 키 로테이션이 조용히 깨진다. 서명 지점은 둘 — 업로드 토큰과 data-state.
 - **async 뷰와 `ATOMIC_REQUESTS`.** Django 핸들러는 async 뷰를 트랜잭션으로 감쌀 수 없어 뷰를 부르기 전에 500을 낸다. 업로드 엔드포인트는 `wireview/urls.py`에서 모든 alias에 `non_atomic_requests`로 등록해 피한다. 새 async 뷰를 추가하면 같은 처리가 필요하고, **뷰를 직접 호출하는 테스트는 이 실패를 못 잡는다**.
 - **live_session은 `django.template.context_processors.request`에 의존한다.** 템플릿 태그가 경계를

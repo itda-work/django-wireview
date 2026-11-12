@@ -538,6 +538,22 @@ The django-reactor era changelog (2.x) is preserved in
   in production until the process restarts. A class out of scope that way renders on every connection again.
   Under the dev server's autoreloader a template change has the scope read anew.
 
+### Security
+
+- Navigation destinations are judged by the browser's URL parser (#262, GAP-066). The client took any destination
+  that did not start with `http://` or `https://` for this origin: `//other.example/`, `HTTP://other.example/` and
+  ` http://other.example/` were fetched by boost (and stopped on a `SecurityError` from `pushState`), and with
+  `BOOST_PAGES` off `wireview.visit("javascript:...")` ran the script. Now every move -- a link, a boosted form,
+  `wireview.visit()`, `JS().navigate`, `redirect_to`/`push_to`/`replace_to`, Back and Forward, a navigation handed to
+  the browser -- resolves its destination with `new URL()`: this origin is boosted, another origin is a page load the
+  browser makes, and a scheme other than http or https goes nowhere (`console.error`). An answer from another origin is
+  never drawn in the page whatever its CORS headers allow (`response.type` `cors`, or a `response.url` elsewhere), and a
+  boosted link's fetch is `same-origin` mode, so a redirect to another origin is followed by the browser and not by
+  the page. On the server, `redirect_to`, `push_to`, `replace_to` and `JS().navigate` raise `DisallowedRedirect` at the
+  call for a scheme other than http or https, an ASCII control character, a backslash, or whitespace around the URL
+  (`wireview/core/destinations.py`); an HTTP render's meta refresh never carries one. External http(s) destinations
+  still work; which hosts are allowed stays the app's (`url_has_allowed_host_and_scheme`).
+
 ## [1.5.1] - 2026-10-10
 
 ### Added

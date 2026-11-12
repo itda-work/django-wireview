@@ -121,6 +121,10 @@ UPGRADE_NOTE = {
         "1 MiB보다 큰 WebSocket 메시지는 연결을 닫는다",
         "INBOUND_MAX_BYTES",
     ),
+    "Navigation destinations are judged by the browser's URL parser": (
+        "깨짐: 이동 목적지가 http(s)가 아니면 호출이 `DisallowedRedirect`를 던진다",
+        "`url_has_allowed_host_and_scheme`",
+    ),
     "Boost leaves files to the browser (#227)": (
         "조용히 달라짐: boost는 파일을 브라우저에 맡긴다",
         "GET이 두 번 간다",
