@@ -1206,7 +1206,8 @@ async def run_list_frame(reuse: bool, monkeypatch) -> list[t.Any]:
         seen.append(child_html(consumer, "lf"))
     seen.extend(outbound.renders())
     seen.extend(raw)
-    token = re.compile(r"ey[\w-]+:[\w-]+:[\w-]+")
+    # A signed state is "ey..." or, compressed, ".eJ..."; its timestamp changes with the second.
+    token = re.compile(r"\.?e[yJ][\w-]+:[\w-]+:[\w-]+")
 
     def masked(value: t.Any) -> t.Any:
         if isinstance(value, str):
