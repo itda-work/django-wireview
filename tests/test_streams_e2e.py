@@ -10,7 +10,7 @@ import re
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, expect_count, expect_text, open_live, wait_live
+from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, expect_count, expect_text, open_live, wait_joined, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -32,12 +32,7 @@ def probe(page, server):
     page.add_init_script(INBOX_SHIM)
     page.set_viewport_size({"width": 800, "height": 600})
     open_live(page, f"{server}/streamprobe/")
-    # data-is-live is set when the join is sent. Its answer -- the stream's first page,
-    # a reset that puts new rows in -- may land after a click a test makes at once,
-    # taking away what a JS() command did to the dead render's rows. `joined` comes last.
-    page.wait_for_function(
-        "window.__inbox.seen.some((m) => m.command === 'joined' && m.payload && m.payload.id === 'probe')"
-    )
+    wait_joined(page)
     return page
 
 

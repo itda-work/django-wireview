@@ -38,6 +38,7 @@ __all__ = [
     "INBOX_SHIM",
     "open_live",
     "wait_live",
+    "wait_joined",
     "expect_text",
     "expect_count",
 ]
@@ -180,6 +181,30 @@ def wait_live(page: t.Any, selector: str = LIVE_SELECTOR) -> None:
             means a particular one (``[data-name=XTodoList][data-is-live="true"]``).
     """
     _with_server_errors(lambda: page.wait_for_selector(selector, timeout=WAIT_TIMEOUT * 1000))
+
+
+#: What a component is drawn with, and a LiveComponent too (``wireview-component wireview-live``).
+COMPONENT_SELECTOR = "[wireview-component]"
+
+
+def wait_joined(page: t.Any) -> None:
+    """Wait until every component on the page has the answer to its join.
+
+    ``data-is-live`` (``wait_live``) is set when a join is sent, not when it is
+    answered. The answer -- the first render, a stream's first page -- can land
+    after the test's first click and undo it: a stream reset takes away what a
+    ``JS()`` command did to the dead render's rows. ``joined`` is the last of a
+    join's answer (wire-protocol.md),
+    so a page where every component heard it is a page a user acts on. The page
+    needs ``INBOX_SHIM``, which records what it received.
+    """
+    script = (
+        "() => { const ids = [...document.querySelectorAll(%r)].map((e) => e.id);"
+        " const heard = new Set(window.__inbox.seen.filter((m) => m.command === 'joined')"
+        ".map((m) => m.payload && m.payload.id));"
+        " return ids.length > 0 && ids.every((id) => heard.has(id)); }"
+    ) % COMPONENT_SELECTOR
+    _with_server_errors(lambda: page.wait_for_function(script, timeout=WAIT_TIMEOUT * 1000))
 
 
 def open_live(page: t.Any, url: str, selector: str = LIVE_SELECTOR) -> None:
