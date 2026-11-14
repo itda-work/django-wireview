@@ -294,10 +294,22 @@ async def _close_the_layer() -> None:
     channels-nats closes the current loop's connection; the in-memory layer's
     ``close`` does nothing, and channels_redis has none (its ``close_pools`` is not
     scoped to one loop), so both are left alone.
+
+    channels_redis does keep one thing of this loop: the per-channel locks of its
+    receives (``receive_clean_locks``). A receive cancelled while it waited for one
+    -- this teardown cancels them -- never takes back its count, so the lock is not
+    let go with its last holder and stays bound to this loop. Every process-local
+    channel shares one key, and the next server's second receive raised "bound to a
+    different event loop": its pages heard nothing, seven example tests in a row.
+    One loop per process never meets it; a server per test does, so it starts clean.
     """
     from channels.layers import get_channel_layer
 
-    close = getattr(get_channel_layer(), "close", None)
+    layer = get_channel_layer()
+    locks = getattr(layer, "receive_clean_locks", None)
+    if locks is not None:
+        layer.receive_clean_locks = type(locks)()  # type: ignore[union-attr]
+    close = getattr(layer, "close", None)
     if close is not None:
         await close()
 

@@ -516,3 +516,42 @@ def test_a_wait_that_times_out_says_what_the_server_logged(page, transactional_d
 
     assert "The server logged, while this was waiting:" in str(failure.value)
     assert "joined() raised on purpose" in str(failure.value)
+
+
+def test_a_lock_a_cancelled_receive_left_on_channels_redis_does_not_reach_the_next_server(monkeypatch):
+    """The teardown leaves the next server's loop a channels_redis layer it can receive on.
+
+    A receive cancelled while it waited for the layer's per-channel lock never takes
+    back its count, and the lock stays bound to the loop that closed. Every
+    process-local channel shares its key: the next server's second receive raised
+    "bound to a different event loop", and seven example tests in a row heard nothing.
+    """
+    import asyncio
+
+    from channels_redis.core import ChannelLock
+
+    class Layer:
+        receive_clean_locks = ChannelLock()
+
+    layer = Layer()
+    monkeypatch.setattr("channels.layers.get_channel_layer", lambda *args, **kwargs: layer)
+    key = "specific.process!"
+
+    async def a_server_that_ends() -> None:
+        await layer.receive_clean_locks.acquire(key)
+        waiting = asyncio.ensure_future(layer.receive_clean_locks.acquire(key))
+        await asyncio.sleep(0)
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+        layer.receive_clean_locks.release(key)
+        await e2e_server._close_the_layer()
+
+    async def the_next_server() -> None:
+        await layer.receive_clean_locks.acquire(key)
+        second = asyncio.ensure_future(layer.receive_clean_locks.acquire(key))
+        await asyncio.sleep(0)
+        layer.receive_clean_locks.release(key)
+        await asyncio.wait_for(second, 1)
+
+    asyncio.run(a_server_that_ends())
+    asyncio.run(the_next_server())
