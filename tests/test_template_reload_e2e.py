@@ -257,7 +257,11 @@ def test_an_event_held_while_the_rejoin_waits_reaches_the_instance_an_error_brin
     box(page, "box-boom").click()
     page.wait_for_function("window.__inbox.held.some((m) => m.command === 'error')")
 
-    page.evaluate("window.__inbox.release(1)")
+    # Up to the rejoin and no further: a join's answer that came late (a slow runner) is held before it
+    assert page.evaluate("window.__inbox.held.findIndex((m) => m.command === 'rejoin')") < page.evaluate(
+        "window.__inbox.held.findIndex((m) => m.command === 'error')"
+    )
+    page.evaluate("window.__inbox.release(window.__inbox.held.findIndex((m) => m.command === 'rejoin') + 1)")
     page.wait_for_function("window.__frames.includes('sync')")
     box(page, "box-bump").click()
     page.evaluate("window.__inbox.release()")
