@@ -29,8 +29,15 @@ def _db(transactional_db):
 
 @pytest.fixture
 def probe(page, server):
+    page.add_init_script(INBOX_SHIM)
     page.set_viewport_size({"width": 800, "height": 600})
     open_live(page, f"{server}/streamprobe/")
+    # data-is-live is set when the join is sent. Its answer -- the stream's first page,
+    # a reset that puts new rows in -- may land after a click a test makes at once,
+    # taking away what a JS() command did to the dead render's rows. `joined` comes last.
+    page.wait_for_function(
+        "window.__inbox.seen.some((m) => m.command === 'joined' && m.payload && m.payload.id === 'probe')"
+    )
     return page
 
 
