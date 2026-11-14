@@ -357,6 +357,7 @@ def button(text: str, variant: str = "primary"):
 | v1.4.0 | ✅ | 개발 중 SQL을 부른 자리를 알린다. 렌더·핸들러·작업이 실행한 문장마다 템플릿 줄이나 property를 로거 `wireview.queries`에 남기고 같은 자리의 반복을 `WARNING`으로(`DEBUG_RENDER_QUERIES`, #182), 테스트는 `MountedComponent.queries()`로 단언한다. 같은 기록을 개발 서버가 JSON 줄로 남겨 VS Code 확장이 인라인 힌트로 보인다(#188). 첫 HTTP 렌더가 요청의 DB 연결을 닫아 `ATOMIC_REQUESTS`의 쓰기가 조용히 롤백되던 결함 수정(#190). 할 일은 [업그레이드 가이드](./UPGRADING.md#13에서-14로) |
 | v1.5.0 | ✅ | 템플릿이 읽는 것만 계산한다. `Meta.lazy_properties`를 켠 컴포넌트는 sync property를 템플릿이 그 이름을 읽을 때 렌더마다 한 번 계산하므로 쓰지 않는 property의 SQL이 돌지 않는다(#187). 렌더 SQL 로그와 편집기 기록이 라이브 렌더와 그 `LiveComponent`들(#189), 뷰 템플릿이 그린 컴포넌트들(#193)을 한 일로 묶어 형제 사이의 N+1을 반복으로 보인다. 초기화된 temporary assign 뒤에 남긴 블록이 `{% class %}`·extends 부모 등으로 읽은 바뀐 값을 다시 그리지 않던 결함 수정(#194). ASGI 서버 비교 벤치(#191). 할 일은 [업그레이드 가이드](./UPGRADING.md#14에서-15로) |
 | v1.5.1 | ✅ | 문서 사이트만 바뀐 패치. 모든 페이지 헤더가 그 문서가 설명하는 릴리스를 태그 배지로 보이고, 그 릴리스의 CHANGELOG 절로 잇는다(#196). 라이브러리 코드는 1.5.0과 같다. 할 일 없음 |
+| v1.6.0 | ✅ | 연결과 테스트를 단단히 한다. 연결마다 받는 것의 상한(`INBOUND_*`, 1 MiB 넘는 프레임은 1009, W024, #230), 이동 목적지를 브라우저 URL 파서로 판정(GHSA-82mx-9qrx-gqcv, #262), 탭이 돌아올 때의 재연결과 확인(#228), `{% island %}`와 훅 `pushEvent`의 Promise(#221·#222), JS 명령의 sticky(#219), presence의 프로듀서별 meta(#202·#212), mount한 컴포넌트가 알림을 받는 테스트와 pytest 플러그인(#201), DOM 바인딩을 읽는 테스트 헬퍼(GAP-056, #252), 배포 뒤의 join(#231), Python 3.15·Django 6.1(#265). 깨지는 것이 넷이다(Python 3.13 이상, 1 MiB 상한, 컴포넌트 템플릿은 Django 엔진만, presence 프로듀서의 id). 할 일은 [업그레이드 가이드](./UPGRADING.md#15에서-16으로) |
 
 ### 릴리스 절차
 
@@ -467,4 +468,4 @@ Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올�
 
 ---
 
-*마지막 업데이트: 2026-10-19*
+*마지막 업데이트: 2026-11-14*

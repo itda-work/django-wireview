@@ -12,6 +12,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-14
+
 ### Added
 
 - `MountedComponent.click()`, `change()`, `input()` and `submit()` act on the page a mounted component draws
@@ -3398,7 +3400,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/itda-work/django-wireview/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/itda-work/django-wireview/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/itda-work/django-wireview/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/itda-work/django-wireview/compare/v1.3.0...v1.4.0
