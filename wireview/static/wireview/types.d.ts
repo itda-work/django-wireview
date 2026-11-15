@@ -164,12 +164,14 @@ interface Window {
     /**
      * `options.commit`: the event commits the fields it comes from, so its answer may reset
      * them (docs/features/html-diff.md, "입력 중인 값"). By default decided from `eventType`.
+     * `options.submitter`: the submit button whose name and value go with the form; by default
+     * `element` when it is one. No other button is sent (docs/features/forms.md).
      */
     send(
       element: HTMLElement,
       name: string,
       args?: Record<string, unknown>,
-      options?: { eventType?: string; commit?: boolean; target?: string },
+      options?: { eventType?: string; commit?: boolean; target?: string; submitter?: Element | null },
     ): void;
     debug: WireviewDebug;
     hooks: Record<string, WireviewHook & ThisType<any>>;

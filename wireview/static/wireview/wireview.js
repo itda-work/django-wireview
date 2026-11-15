@@ -1682,8 +1682,9 @@ class WireviewComponent {
    * @param {HTMLElement} formScope - Form or component element to serialize
    * @param {Element|null} [commitFrom] - the element of a committing action (values.mjs)
    * @param {{elements: HTMLElement[], eventType?: string}} [loading] - what markLoading marked
+   * @param {Element|null} [submitter] - the submit button that sent the event: the only button serialized (#244)
    */
-  dispatch(command, args, formScope, commitFrom = null, loading = undefined) {
+  dispatch(command, args, formScope, commitFrom = null, loading = undefined, submitter = null) {
     // A form's submit uploads the form's auto_upload=False files first, and is
     // sent once the server has them all (submits.mjs, #264)
     const form = loading?.eventType === "submit" ? loading.elements[0] : null;
@@ -1694,7 +1695,7 @@ class WireviewComponent {
       const held = {
         component: this,
         mark: null,
-        send: (mark) => this.sendNow(command, args, formScope, commitFrom, { ...loading, mark }),
+        send: (mark) => this.sendNow(command, args, formScope, commitFrom, { ...loading, mark }, submitter),
       };
       if (submitUploads.begin(form, uploadSlotsOf(form), uploadView, held)) {
         held.mark = connection.loading.hold(this.id, loading.elements, loading.eventType);
@@ -1702,7 +1703,7 @@ class WireviewComponent {
         return;
       }
     }
-    this.sendNow(command, args, formScope, commitFrom, loading);
+    this.sendNow(command, args, formScope, commitFrom, loading, submitter);
   }
 
   /**
@@ -1713,8 +1714,9 @@ class WireviewComponent {
    * @param {Element|null} commitFrom
    * @param {{elements: HTMLElement[], eventType?: string, mark?: import("./loading.mjs").Mark<HTMLElement> | null}} [loading] -
    *   `mark` is the one a submit that waited for its uploads holds
+   * @param {Element|null} [submitter]
    */
-  sendNow(command, args, formScope, commitFrom, loading) {
+  sendNow(command, args, formScope, commitFrom, loading, submitter = null) {
     const fields = commitFrom ? commitScope(commitFrom, formScope) : new Map();
     // Paired with its answer by ref when this server echoes refs: the answer
     // may reset the fields a committing action sends (#92), and ends the
@@ -1725,57 +1727,113 @@ class WireviewComponent {
     if (fields.size) boost.valueGuard.record(ref ?? null, fields);
     if (loading?.mark) connection.loading.send(loading.mark, ref ?? null);
     else if (loading) connection.loading.track(ref ?? null, this.id, loading.elements, loading.eventType);
-    connection.sendUserEvent(this.id, command, this.serialize(formScope), args, ref);
+    connection.sendUserEvent(this.id, command, this.serialize(formScope, submitter), args, ref);
   }
 
   /**
-   * Serialize all elements inside `element` with a [name] attribute into
-   * a an array of `[element[name], element[value]]`
-   * @param {HTMLElement} element
+   * The fields an event sends, by name: what a browser would submit of `element`,
+   * and the other named elements in it (#244).
+   *
+   * A form sends its controls as a submission does (HTML's "constructing the
+   * entry list"): the controls it owns, a `form="id"` one outside it included
+   * and one inside it that names another form left out; not a disabled one,
+   * nor one in a disabled fieldset; a button only when it is the event's
+   * submitter, and a reset or plain button never. A component that is not in a
+   * form sends what is in it by the same rules. Either way a nested
+   * component's fields are its own. A checkbox or radio goes when checked (its
+   * value, or `true` when it has none), a select-multiple as its chosen values.
+   * @param {HTMLElement} element - a form, or the component's element
+   * @param {Element|null} [submitter] - the submit button that sent the event, if one did
    * @returns {Object<string, Array<string|boolean>>}
    */
-  serialize(element) {
+  serialize(element, submitter = null) {
     /** @type {Object<string, Array<string|boolean>>} */
-    let result = {};
-    let thisElement = this.getElemenet();
-    for (let node of element.querySelectorAll("[name]")) {
+    const result = {};
+    const thisElement = this.getElemenet();
+    /** @param {string} key @param {string|boolean} value */
+    const add = (key, value) => {
+      (result[key] ??= []).push(value);
+    };
+    for (const node of namedIn(element)) {
       const el = /** @type {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement} */ (node);
       // Avoid serializing data of a nested component
-      if (el.closest("[wireview-component]") !== thisElement) {
+      if (el.closest("[wireview-component]") !== thisElement) continue;
+      if (el.matches(":disabled")) continue;
+      const key = el.getAttribute("name");
+      if (!key) continue;
+
+      const elType = el.type?.toLowerCase() || "";
+      if (isButtonControl(el)) {
+        if (el !== submitter) continue;
+        if (elType === "image") {
+          // A submission sends where on the image it was clicked; a key or a script clicks at 0, 0
+          add(`${key}.x`, "0");
+          add(`${key}.y`, "0");
+        } else {
+          add(key, el.value);
+        }
         continue;
       }
-
-      /** @type {string|boolean|string[]|null} */
-      let value = null;
-      const elType = el.type?.toLowerCase() || "";
       switch (elType) {
         case "checkbox":
         case "radio":
-          value = /** @type {HTMLInputElement} */ (el).checked
-            ? el.value || true
-            : null;
+          if (/** @type {HTMLInputElement} */ (el).checked) add(key, el.value || true);
           break;
         case "select-multiple":
-          value = Array.from(/** @type {HTMLSelectElement} */ (el).selectedOptions).map(
-            (option) => option.value
+          add(
+            key,
+            /** @type {any} */ (Array.from(/** @type {HTMLSelectElement} */ (el).selectedOptions).map((o) => o.value))
           );
           break;
         default:
-          value = el.value;
+          add(key, el.value);
           break;
-      }
-
-      if (value !== null) {
-        let key = el.getAttribute("name");
-        if (key) {
-          let values = result[key] ?? [];
-          values.push(/** @type {string|boolean} */ (value));
-          result[key] = values;
-        }
       }
     }
     return result;
   }
+}
+
+/**
+ * The named elements `element` sends, in document order. A form's are those
+ * it holds and owns, with the controls `form="id"` gives it from outside; a
+ * control inside it owned by another form is that form's.
+ * @param {HTMLElement} element
+ * @returns {Element[]}
+ */
+function namedIn(element) {
+  const inside = Array.from(element.querySelectorAll("[name]"));
+  if (!(element instanceof HTMLFormElement)) return inside;
+  const owned = inside.filter((el) => !isListed(el) || /** @type {any} */ (el).form === element);
+  const outside = Array.from(element.elements).filter((el) => el.hasAttribute("name") && !element.contains(el));
+  if (!outside.length) return owned;
+  return [...owned, ...outside].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+}
+
+/**
+ * A form-associated listed element: one that has a form owner.
+ * @param {Element} el
+ */
+function isListed(el) {
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLButtonElement ||
+    el instanceof HTMLSelectElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLFieldSetElement ||
+    el instanceof HTMLOutputElement ||
+    el instanceof HTMLObjectElement
+  );
+}
+
+/**
+ * A button of a form: a `<button>` of any type, or an input that is one. Only
+ * the one that submitted is sent.
+ * @param {Element} el
+ */
+function isButtonControl(el) {
+  if (el instanceof HTMLButtonElement) return true;
+  return el instanceof HTMLInputElement && ["submit", "image", "reset", "button"].includes(el.type);
 }
 
 // ============================================================================
@@ -3751,10 +3809,22 @@ const EventBindings = {
           // it comes from: its answer may reset them (a todo input emptied
           // after Enter). Anything else leaves them to the user (#91, #92).
           const commit = isCommitAction(event.type, binding.steps, { submitter: isSubmitter(element) });
+          // The button that submitted: a submit's, or the submit button clicked (#244)
+          const submitter =
+            event.type === "submit"
+              ? /** @type {SubmitEvent} */ (event).submitter ?? null
+              : event.type === "click" && isSubmitter(element)
+                ? element
+                : null;
           if (value.js) {
-            window.wireview.exec(element, value.js, { commit, eventType: event.type });
+            window.wireview.exec(element, value.js, { commit, eventType: event.type, submitter });
           } else if (value.h !== undefined) {
-            window.wireview.send(element, value.h, { ...(value.a || {}) }, { eventType: event.type, commit, target: value.t });
+            window.wireview.send(element, value.h, { ...(value.a || {}) }, {
+              eventType: event.type,
+              commit,
+              target: value.t,
+              submitter,
+            });
           }
         },
       });
@@ -4038,7 +4108,7 @@ function keepStickyOps(item, next) {
  * stays through the renders that morph it (boost.sticky, #219).
  * @param {JSCommand} cmd - Command to execute
  * @param {HTMLElement} element - Context element (event target)
- * @param {{commit?: boolean, eventType?: string}} [options] - a `push` commits the fields it comes
+ * @param {{commit?: boolean, eventType?: string, submitter?: Element | null}} [options] - a `push` commits the fields it comes
  *   from (#92) and marks its element loading for `eventType`
  * @returns {Promise<void>}
  */
@@ -4175,10 +4245,14 @@ async function executeCommand(cmd, element, options = {}) {
               form && componentEl.contains(form) ? form : componentEl;
             const marked = markLoading(element, options.eventType);
             // A push inside a committing binding commits like the binding would (#92).
-            component.dispatch(cmd.event, cmd.value || {}, formScope, options.commit ? element : null, {
-              elements: marked,
-              eventType: options.eventType,
-            });
+            component.dispatch(
+              cmd.event,
+              cmd.value || {},
+              formScope,
+              options.commit ? element : null,
+              { elements: marked, eventType: options.eventType },
+              options.submitter ?? null
+            );
           }
         }
       }
@@ -4270,13 +4344,16 @@ window.wireview = {
    * @param {HTMLElement} element
    * @param {string} name
    * @param {Object} [args]
-   * @param {{eventType?: string, commit?: boolean, target?: string}} [options] -
+   * @param {{eventType?: string, commit?: boolean, target?: string, submitter?: Element | null}} [options] -
    *   `eventType` picks the loading class; `commit` says whether the event commits
    *   the fields it comes from (their answer may reset them), by default decided
-   *   from `eventType`; `target` is the id of the LiveComponent to send to
+   *   from `eventType`; `target` is the id of the LiveComponent to send to;
+   *   `submitter` is the submit button whose name and value go with the form,
+   *   by default `element` when it is one (#244)
    */
   send(element, name, args = {}, options = {}) {
     const { eventType, target: targetId } = options;
+    const submitter = options.submitter !== undefined ? options.submitter : isSubmitter(element) ? element : null;
     const commit = options.commit ?? isCommitAction(eventType, [], { submitter: isSubmitter(element) });
 
     const component_el = /** @type {HTMLElement|null} */ (
@@ -4298,7 +4375,7 @@ window.wireview = {
       // Start timing for profiling
       startEventTiming();
 
-      component.dispatch(name, args, formScope, commit ? element : null, { elements: marked, eventType });
+      component.dispatch(name, args, formScope, commit ? element : null, { elements: marked, eventType }, submitter);
     }
   },
 
@@ -4307,8 +4384,8 @@ window.wireview = {
    * Commands are executed sequentially in the order provided.
    * @param {HTMLElement} element - Context element (typically event.target)
    * @param {JSCommand[]} commands - Array of commands to execute
-   * @param {{commit?: boolean, eventType?: string}} [options] - whether a `push` in the chain
-   *   commits its fields (#92), and the event that started the chain
+   * @param {{commit?: boolean, eventType?: string, submitter?: Element | null}} [options] - whether a `push`
+   *   in the chain commits its fields (#92), the event that started the chain, and the button that submitted (#244)
    * @returns {Promise<void>}
    */
   async exec(element, commands, options = {}) {

@@ -1,0 +1,73 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-payload">{{ heard }}</output>
+  {# Every kind of field, and every kind of button: only the one that submits goes #}
+  <form data-testid="f-basic" {% on "submit.prevent" "got" %}>
+    <input name="text" value="t">
+    <input name="num" type="number" value="3">
+    <textarea name="area">a</textarea>
+    <select name="one">
+      <option value="x">x</option>
+      <option value="y" selected>y</option>
+    </select>
+    <select name="many" multiple>
+      <option value="p" selected>p</option>
+      <option value="q">q</option>
+      <option value="r" selected>r</option>
+    </select>
+    <input type="checkbox" name="box" value="on1" checked>
+    <input type="checkbox" name="box" value="on2">
+    <input type="checkbox" name="plain" checked>
+    <input type="radio" name="pick" value="a">
+    <input type="radio" name="pick" value="b" checked>
+    <input type="hidden" name="secret" value="h">
+    <input name="dotted.name" value="d">
+    <input name="items.0" value="i0">
+    <input name="items.1" value="i1">
+    <input type="reset" name="reset" value="r">
+    <input type="button" name="plainbutton" value="pb">
+    <button type="button" name="typed" value="tb">typed</button>
+    <button type="reset" name="resetbutton" value="rb">reset</button>
+    <button name="action" value="save" data-testid="f-basic-save">save</button>
+    <button name="action" value="delete" data-testid="f-basic-delete">delete</button>
+    <input type="submit" name="go" value="Go" data-testid="f-basic-go">
+  </form>
+  {# Disabled controls stay home, a disabled fieldset's too, except in its first legend #}
+  <form data-testid="f-disabled" {% on "submit.prevent" "got" %}>
+    <input name="on" value="1">
+    <input name="off" value="2" disabled>
+    <select name="offselect" disabled>
+      <option selected>s</option>
+    </select>
+    <fieldset disabled>
+      <legend>
+        <input name="legend" value="l">
+      </legend>
+      <input name="fenced" value="f">
+      <textarea name="fencedarea">fa</textarea>
+    </fieldset>
+    <fieldset>
+      <input name="open" value="o">
+    </fieldset>
+    <button name="b" value="1" data-testid="f-disabled-submit">submit</button>
+  </form>
+  {# The controls a form owns: form="id" brings one from outside, and takes one inside away #}
+  <form id="f-owner" data-testid="f-owner" {% on "submit.prevent" "got" %}>
+    <input name="inner" value="in">
+    <input name="elsewhere" value="away" form="f-other">
+  </form>
+  <input name="outer" value="out" form="f-owner">
+  <button name="outerbutton"
+          value="ob"
+          form="f-owner"
+          data-testid="f-owner-submit">outer submit</button>
+  <form id="f-other" data-testid="f-other" {% on "submit.prevent" "got" %}>
+    <input name="mine" value="m">
+  </form>
+  {# An image button sends where it was clicked; a script's or a key's submit clicks at 0, 0 #}
+  <form data-testid="f-image" {% on "submit.prevent" "got" %}>
+    <input name="q" value="v">
+    <input type="image" name="pic" alt="pic" data-testid="f-image-pic">
+  </form>
+</div>

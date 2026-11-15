@@ -24,14 +24,26 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from testproj.domprobe.live import HEARD, DomBubble, DomChat, DomForm, DomHooked, DomKeys, DomNest, DomTable, DomTrap
-from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, SCENARIOS, heard
+from testproj.domprobe.live import (
+    HEARD,
+    DomBubble,
+    DomChat,
+    DomForm,
+    DomHooked,
+    DomKeys,
+    DomNest,
+    DomPayload,
+    DomTable,
+    DomTrap,
+)
+from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, PAYLOADS, SCENARIOS, heard, submitted
 
 from wireview import JS, Component, mount
 from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
 from wireview.testing_dom import (
     NON_BUBBLING,
     Element,
+    Page,
     Selector,
     _Dispatch,
     key_event,
@@ -111,8 +123,10 @@ class _Recorder:
     def __init__(self, elements: list[Element]) -> None:
         self.elements = elements
         self.fired: list[list] = []
+        # The chain is divs: none of them is a submit button, so nothing looks for its form
+        self.root = None
 
-    def server_event(self, el, handler, args, target, type_):
+    def server_event(self, el, handler, args, target, type_, submitter=None):
         self.fired.append([self.elements.index(el), handler])
         return None
 
@@ -209,6 +223,22 @@ async def test_an_action_sends_what_the_page_would(scenario):
     view = await mount(scenario.component)
     await scenario.helper(view)
     assert heard(scenario.component, scenario.expected, HEARD) == scenario.expected
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", PAYLOADS, ids=[p.name for p in PAYLOADS])
+async def test_a_submit_sends_what_a_browsers_submission_would(payload):
+    """The fields of a submit are a submission's: no disabled control, only the button that submitted, the
+    controls ``form=`` gives the form (#244). tests/test_dom_events_e2e.py holds the client and the
+    browser's ``FormData`` to the same table."""
+    view = await mount(DomPayload, id="payload")
+    page = Page(view.render(), "payload")
+    button = page.find(f"[data-testid={payload.submitter}]") if payload.submitter else None
+
+    (event,) = page.submit(page.find(f"[data-testid={payload.form}]"), None, button)
+
+    assert submitted(event.implicit_args) == payload.sent
 
 
 @pytest.mark.integration

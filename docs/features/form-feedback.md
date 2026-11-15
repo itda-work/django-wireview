@@ -233,6 +233,24 @@ window.wireview.hooks.FormReset = {
 };
 ```
 
+## 이벤트에 실리는 칸
+
+폼 안의 요소에서 난 이벤트(`submit`, `change`, 폼 안 버튼의 `click` 등)는 그 폼의 칸을 싣는다. 폼 밖이면 컴포넌트 안의
+`name` 있는 요소 전부다. 중첩 컴포넌트의 칸은 그 컴포넌트의 것이라 빠진다. 무엇이 실리는지는 브라우저가 폼을 제출할 때와
+같다(`FormData`, #244).
+
+- **disabled 칸은 빠진다.** `disabled`인 칸, `<fieldset disabled>` 안의 칸(그 첫 `<legend>` 안은 아니다) 모두다.
+- **버튼은 그 이벤트를 보낸 submit 버튼 하나만** 이름과 값이 실린다. 저장·삭제 버튼이 `name="action"`을 나눠 쓰면 누른
+  쪽의 값이 온다. 제출이 아닌 이벤트(`change`, 다른 칸의 `click`)에는 버튼이 실리지 않는다. `type="reset"`·`type="button"`은
+  실리지 않는다. `<input type="image">`는 `이름.x`·`이름.y`가 `"0"`으로 실린다(브라우저는 누른 자리의 좌표를 싣는다).
+- **`form="id"`로 연결한 칸도 그 폼의 것이다.** 폼 밖에 둔 칸·버튼도 실리고, 폼 안에 있어도 다른 폼을 가리키는 칸은 그
+  폼으로 간다. 같은 컴포넌트 안의 것만이다.
+- checkbox·radio는 체크된 것만(값이 없으면 `"on"`), select multiple은 고른 값들, 같은 이름이 여럿이면 핸들러는 마지막
+  값을 받는다. 점과 숫자 인덱스가 든 이름(`items.0`)은 지금처럼 서버가 풀어 준다.
+
+`window.wireview.send(el, name, args, {submitter})`로 보낼 때는 `submitter`가 실을 버튼이다. 주지 않으면 `el`이 submit
+버튼일 때 그것이다. 1.6까지는 disabled 칸과 이름 있는 버튼이 모두 실렸다 — [업그레이드 가이드](../UPGRADING.md#16에서-17로).
+
 ## Django 폼과 함께 쓰기
 
 ```python

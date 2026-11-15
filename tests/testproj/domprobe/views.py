@@ -11,3 +11,7 @@ def streams(request):
 
 def table(request):
     return render(request, "domprobe/table_page.html")
+
+
+def payload(request):
+    return render(request, "domprobe/payload_page.html")

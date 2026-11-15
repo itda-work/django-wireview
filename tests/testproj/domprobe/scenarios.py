@@ -23,12 +23,12 @@ FORM = {
     "tags": ["a", "c"],
     "opts": "x",
     "plan": "free",
-    # Disabled fields and every named button go too, as the client sends them
-    "locked": "L",
+    # A disabled field stays home, and a named button goes only when it submitted (#244)
     "secret": "h",
     "query": "",
-    "action": "delete",
 }
+# What a submit with the save button sends: the form and the button that submitted
+SAVED = {**FORM, "action": "save"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -108,8 +108,10 @@ SCENARIOS = [
     ),
     # A JS() chain without a push sends nothing; the ancestor's binding does
     Scenario("js", DomBubble, "heard-bubble", lambda v: v.click("[data-testid=js]"), _click("js"), [WRAPPED]),
-    # A submit button submits its form: every field, every named button
-    Scenario("save", DomForm, "heard-form", lambda v: v.click("[data-testid=save]"), _click("save"), [("saved", FORM)]),
+    # A submit button submits its form: every enabled field, and that button
+    Scenario(
+        "save", DomForm, "heard-form", lambda v: v.click("[data-testid=save]"), _click("save"), [("saved", SAVED)]
+    ),
     Scenario(
         "submit-values",
         DomForm,
@@ -120,7 +122,7 @@ SCENARIOS = [
             submitter="[data-testid=save]",
         ),
         _fill_and_save,
-        [("saved", {**FORM, "title": "new", "agree": "on", "plan": "pro", "tags": ["b"], "opts": "y"})],
+        [("saved", {**SAVED, "title": "new", "agree": "on", "plan": "pro", "tags": ["b"], "opts": "y"})],
     ),
     # A change bubbles to the form's binding; the form's fields go with it
     Scenario(
@@ -197,7 +199,8 @@ SCENARIOS = [
 
 
 # DomKeys' fields outside its forms: every named one in the component, its forms' included
-KEYS = {"draft": "d0", "subject": "s0", "q": "q0", "q2": "r0", "go": "1", "q3": "x0"}
+# The component's fields; the send form's button goes only with a submit it made
+KEYS = {"draft": "d0", "subject": "s0", "q": "q0", "q2": "r0", "q3": "x0"}
 
 SCENARIOS += [
     # A modifier key held during the click
@@ -306,7 +309,7 @@ SCENARIOS += [
         "heard-form",
         lambda v: v.click("[data-testid=save-label]"),
         _click("save-label"),
-        [("saved", FORM)],
+        [("saved", SAVED)],
     ),
 ]
 
@@ -320,3 +323,54 @@ def heard(component: type, expected: list[tuple[str, dict[str, t.Any]]], log: li
     """What ``component``'s handlers named in ``expected`` heard, in order."""
     names = {name for name, _ in expected}
     return [(name, kwargs) for cls, name, kwargs in log if cls == component.__name__ and name in names]
+
+
+@dataclasses.dataclass(frozen=True)
+class Payload:
+    """A form of ``DomPayload``, the button that submits it, and the fields its submit sends.
+
+    ``sent`` is in a submission's terms: each name with its values in order, a
+    select-multiple's chosen values one by one -- what the browser's
+    ``FormData(form, submitter)`` holds (#244).
+    """
+
+    name: str
+    form: str
+    submitter: str | None
+    sent: dict[str, list[str]]
+
+
+_BASIC = {
+    "text": ["t"],
+    "num": ["3"],
+    "area": ["a"],
+    "one": ["y"],
+    "many": ["p", "r"],
+    "box": ["on1"],
+    "plain": ["on"],
+    "pick": ["b"],
+    "secret": ["h"],
+    "dotted.name": ["d"],
+    "items.0": ["i0"],
+    "items.1": ["i1"],
+}
+
+PAYLOADS = [
+    # The button that submits goes, the other one with its name does not; reset and plain buttons never do
+    Payload("first-button", "f-basic", "f-basic-save", {**_BASIC, "action": ["save"]}),
+    Payload("second-button", "f-basic", "f-basic-delete", {**_BASIC, "action": ["delete"]}),
+    Payload("submit-input", "f-basic", "f-basic-go", {**_BASIC, "go": ["Go"]}),
+    Payload("no-button", "f-basic", None, _BASIC),
+    Payload("disabled", "f-disabled", "f-disabled-submit", {"on": ["1"], "legend": ["l"], "open": ["o"], "b": ["1"]}),
+    Payload("form-attribute", "f-owner", "f-owner-submit", {"inner": ["in"], "outer": ["out"], "outerbutton": ["ob"]}),
+    Payload("owned-elsewhere", "f-other", None, {"elsewhere": ["away"], "mine": ["m"]}),
+    Payload("image", "f-image", "f-image-pic", {"q": ["v"], "pic.x": ["0"], "pic.y": ["0"]}),
+]
+
+
+def submitted(implicit_args: dict[str, list[t.Any]]) -> dict[str, list[str]]:
+    """A ``user_event``'s ``implicit_args`` in a submission's terms: a select-multiple's list spread out."""
+    return {
+        name: [str(v) for value in values for v in (value if isinstance(value, list) else [value])]
+        for name, values in implicit_args.items()
+    }

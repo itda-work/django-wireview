@@ -712,24 +712,40 @@ def is_component(el: Element) -> bool:
     return el.has("wireview-component")
 
 
-def serialize(scope: Element, component: Element, fields: Fields) -> dict[str, list[t.Any]]:
-    """``Component.serialize(scope)`` of the component whose element is ``component``.
+def serialize(
+    scope: Element, component: Element, fields: Fields, root: Element, submitter: Element | None = None
+) -> dict[str, list[t.Any]]:
+    """``Component.serialize(scope, submitter)`` of the component whose element is ``component`` (#244).
 
-    Every element with a ``name`` under ``scope`` that is not inside a nested
-    component: checkboxes and radios when checked (their value, or ``true``
-    when it is empty), a select-multiple's chosen values as one list, anything
-    else its value -- named buttons and disabled fields included, as the client
-    sends them.
+    What a browser submits of a form, and the other named elements in it: the
+    controls the form owns -- a ``form="id"`` one outside it included, one in it
+    that names another form left out -- not a disabled one nor one in a disabled
+    fieldset, a button only when it is ``submitter``. A component outside a form
+    sends what is in it by the same rules. A nested component's fields are its
+    own. Checkboxes and radios go when checked (their value, or ``true`` when it
+    is empty), a select-multiple's chosen values as one list.
     """
     result: dict[str, list[t.Any]] = {}
-    for el in scope.descendants():
-        if not el.has("name"):
-            continue
+    for el in _named_in(scope, root):
         if el.closest(is_component) is not component:
+            continue
+        if el.tag in _DISABLEABLE and disabled_by(el) is not None:
+            continue
+        key = el.get("name")
+        if not key:
             continue
         kind = field_type(el)
         value: t.Any
-        if kind in ("checkbox", "radio"):
+        if _is_button_control(el):
+            if el is not submitter:
+                continue
+            if kind == "image":
+                # A key or a script clicks at 0, 0
+                result.setdefault(f"{key}.x", []).append("0")
+                result.setdefault(f"{key}.y", []).append("0")
+                continue
+            value = el.get("value") or ""
+        elif kind in ("checkbox", "radio"):
             value = (fields.value(el) or True) if fields.checked(el) else None
             if value is None:
                 continue
@@ -737,14 +753,33 @@ def serialize(scope: Element, component: Element, fields: Fields) -> dict[str, l
             value = fields.selected(el)
         elif el.tag in ("input", "select", "textarea"):
             value = fields.value(el)
-        elif el.tag == "button":
-            value = el.get("value") or ""
         else:
             value = _non_field_value(el)
-        key = el.get("name")
-        if key:
-            result.setdefault(key, []).append(value)
+        result.setdefault(key, []).append(value)
     return result
+
+
+#: Elements with a form owner (HTML's listed elements)
+_LISTED = ("button", "fieldset", "input", "object", "output", "select", "textarea")
+#: Elements ``:disabled`` can match among the named ones a form sends
+_DISABLEABLE = ("button", "fieldset", "input", "select", "textarea")
+
+
+def _named_in(scope: Element, root: Element) -> list[Element]:
+    """``namedIn`` in wireview.js: the named elements ``scope`` sends, in document order."""
+    if scope.tag != "form":
+        return [d for d in scope.descendants() if d.has("name")]
+    return [
+        d
+        for d in root.descendants()
+        if d is not scope and d.has("name") and (form_of(d, root) is scope if d.tag in _LISTED else scope.contains(d))
+    ]
+
+
+def _is_button_control(el: Element) -> bool:
+    if el.tag == "button":
+        return True
+    return el.tag == "input" and input_type(el) in ("submit", "image", "reset", "button")
 
 
 def form_of(el: Element, root: Element) -> Element | None:
@@ -853,6 +888,8 @@ class _EventState:
     stopped: bool = False
     #: A debounced run goes on after the dispatch, when prevent and stop no longer matter
     late: bool = False
+    #: The submit's ``event.submitter``
+    submitter: Element | None = None
 
 
 class _BindingRun:
@@ -892,7 +929,11 @@ class _BindingRun:
         return True
 
     def fire(self) -> None:
-        self.action.fire(self.el, self.value, self.type)
+        # The button that submitted: a submit's, or the submit button clicked (EventBindings.run, #244)
+        submitter = self.state.submitter if self.type == "submit" else None
+        if self.type == "click" and is_submitter(self.el, self.action.page.root):
+            submitter = self.el
+        self.action.fire(self.el, self.value, self.type, submitter)
 
 
 class _Dispatch:
@@ -907,13 +948,20 @@ class _Dispatch:
         # Debounced runs, in the order their timers end (delay, then when they were set)
         self.timers: list[tuple[float, int, t.Callable[[], None]]] = []
 
-    def dispatch(self, target: Element, type_: str, event: t.Mapping[str, t.Any] | None = None) -> bool:
+    def dispatch(
+        self,
+        target: Element,
+        type_: str,
+        event: t.Mapping[str, t.Any] | None = None,
+        submitter: Element | None = None,
+    ) -> bool:
         """Dispatch ``type_`` at ``target``, bubbling (``EventBindings.bubble``). Whether its default was prevented.
 
         An event that does not bubble (``focus``, ``blur``) runs its target's
-        bindings alone: the client's capture listener on the root.
+        bindings alone: the client's capture listener on the root. ``submitter``
+        is a submit's ``event.submitter``.
         """
-        state = _EventState()
+        state = _EventState(submitter=submitter)
         self.dispatched.append((type_, target))
         path = [target] if type_ in NON_BUBBLING else [target, *(a for a in target.ancestors() if a.tag != "#document")]
         for el in path:
@@ -946,7 +994,7 @@ class _Dispatch:
         modifier = failed.name if failed.arg is None else f"{failed.name} {failed.arg!r}"
         self.skipped.append(_Skipped(el, attribute, f"its {modifier} modifier does not hold for this event"))
 
-    def fire(self, el: Element, value: dict[str, t.Any], type_: str) -> None:
+    def fire(self, el: Element, value: dict[str, t.Any], type_: str, submitter: Element | None = None) -> None:
         if "js" in value:
             pushes = [c for c in value["js"] or [] if isinstance(c, dict) and c.get("cmd") == "push"]
             if pushes:
@@ -962,7 +1010,7 @@ class _Dispatch:
         handler = value.get("h")
         if handler is None:
             return
-        self.sent.append(self.page.server_event(el, handler, value.get("a") or {}, value.get("t"), type_))
+        self.sent.append(self.page.server_event(el, handler, value.get("a") or {}, value.get("t"), type_, submitter))
 
 
 class Page:
@@ -1003,7 +1051,13 @@ class Page:
     # -- what an event sends ------------------------------------------------
 
     def server_event(
-        self, el: Element, handler: str, args: dict[str, t.Any], target: str | None, type_: str
+        self,
+        el: Element,
+        handler: str,
+        args: dict[str, t.Any],
+        target: str | None,
+        type_: str,
+        submitter: Element | None = None,
     ) -> ServerEvent:
         """``wireview.send(el, handler, args, {target})``: the component it goes to and the fields it carries."""
         owner = el.closest(is_component)
@@ -1028,7 +1082,7 @@ class Page:
         return ServerEvent(
             component_id=component_id,
             handler=handler,
-            implicit_args=serialize(scope, target_el, self.fields),
+            implicit_args=serialize(scope, target_el, self.fields, self.root, submitter),
             explicit_args=dict(args),
             event_type=type_,
             element=el,
@@ -1085,7 +1139,7 @@ class Page:
         elif not prevented and is_submitter(el, self.root):
             form = form_of(el, self.root)
             assert form is not None
-            self._submit(action, form)
+            self._submit(action, form, el)
         if not prevented and (control := self._labelled_by_click(el)) is not None:
             # The label's activation: a click of its own on the field, which ticks and submits as one does
             self._click(action, control, {})
@@ -1177,12 +1231,12 @@ class Page:
         for name, value in (values or {}).items():
             self._set_named(form, name, value)
         action = _Dispatch(self)
-        self._submit(action, form)
+        self._submit(action, form, submitter)
         return self._finish(action, form, "submit")
 
-    def _submit(self, action: _Dispatch, form: Element) -> None:
+    def _submit(self, action: _Dispatch, form: Element, submitter: Element | None = None) -> None:
         # Constraint validation (required, pattern) is the browser's and is not checked here
-        prevented = action.dispatch(form, "submit")
+        prevented = action.dispatch(form, "submit", submitter=submitter)
         if not prevented:
             raise DomError(
                 f"Nothing prevents the submit of {form.describe()}: the browser would also send the form to its "
@@ -1363,7 +1417,7 @@ def _text_matches(el: Element, text: str | re.Pattern[str]) -> bool:
 class _Reaching(_Dispatch):
     """A dispatch that only asks whether a binding that talks to the server fires, whoever's it is."""
 
-    def fire(self, el: Element, value: dict[str, t.Any], type_: str) -> None:
+    def fire(self, el: Element, value: dict[str, t.Any], type_: str, submitter: Element | None = None) -> None:
         if value.get("h") is not None or "js" in value:
             self.sent.append(t.cast(ServerEvent, None))
 

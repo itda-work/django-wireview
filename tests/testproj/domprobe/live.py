@@ -245,3 +245,21 @@ class DomTrap(_Recording, Component):
 
     async def archive(self, id: int) -> None:
         self._heard("archive", {"id": id})
+
+
+class DomPayload(_Recording, Component):
+    """What a form's submit sends, form by form: the fields a browser's submission would (#244).
+
+    ``testproj.domprobe.scenarios.PAYLOADS`` lists each form, the button that
+    submits it and what goes; ``tests/test_dom_events.py`` holds the helpers to
+    it and ``tests/test_dom_events_e2e.py`` the client and the browser's own
+    ``FormData``.
+    """
+
+    class Meta:
+        template_name = "domprobe/payload.html"
+
+    heard: str = ""
+
+    async def got(self, **kwargs: t.Any) -> None:
+        self._heard("got", kwargs)

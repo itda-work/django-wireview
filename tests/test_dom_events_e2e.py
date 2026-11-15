@@ -19,7 +19,7 @@ import re
 import pytest
 from playwright.sync_api import expect
 from testproj.domprobe.live import HEARD, DomHooked
-from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, SCENARIOS, by, heard
+from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, PAYLOADS, SCENARIOS, by, heard, submitted
 from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, WAIT_TIMEOUT, expect_text, open_live, wait_joined
 from testproj.e2e_server import serve
 
@@ -46,6 +46,50 @@ def test_a_browser_hears_what_the_helpers_send(page, server, scenario):
     scenario.browser(page)
     expect_text(by(page, scenario.output), scenario.done)  # type: ignore[arg-type]
     assert heard(scenario.component, scenario.expected, HEARD) == scenario.expected
+
+
+#: An init script that keeps every user_event the page sends, as sent
+FRAMES_SHIM = """
+(() => {
+  const send = WebSocket.prototype.send;
+  window.__events = [];
+  WebSocket.prototype.send = function (data) {
+    try {
+      const message = JSON.parse(data);
+      if (message.command === "user_event") window.__events.push(message.payload);
+    } catch (e) {}
+    return send.call(this, data);
+  };
+})();
+"""
+
+#: What the browser itself would submit: FormData(form, submitter), each name with its values in order
+FORM_DATA = """([form, submitter]) => {
+  const data = new FormData(document.querySelector(`[data-testid=${form}]`),
+                            submitter ? document.querySelector(`[data-testid=${submitter}]`) : null);
+  const sent = {};
+  for (const [name, value] of data) (sent[name] ??= []).push(typeof value === "string" ? value : "<file>");
+  return sent;
+}"""
+
+
+@pytest.mark.parametrize("payload", PAYLOADS, ids=[p.name for p in PAYLOADS])
+def test_a_submit_sends_what_the_browsers_own_submission_would(page, server, payload):
+    """The client's fields for a submit are FormData's: no disabled control, the submitter alone of the
+    buttons, the controls ``form=`` gives the form (#244). The helpers are held to the same table."""
+    page.add_init_script(FRAMES_SHIM)
+    open_live(page, f"{server}/domprobe/payload/")
+
+    assert page.evaluate(FORM_DATA, [payload.form, payload.submitter]) == payload.sent
+
+    page.evaluate(
+        """([form, submitter]) => document.querySelector(`[data-testid=${form}]`)
+             .requestSubmit(submitter ? document.querySelector(`[data-testid=${submitter}]`) : undefined)""",
+        [payload.form, payload.submitter],
+    )
+    page.wait_for_function("window.__events.length > 0", timeout=WAIT_TIMEOUT * 1000)
+    (event,) = page.evaluate("window.__events")
+    assert submitted(event["implicit_args"]) == payload.sent
 
 
 SHOWN = """() => {

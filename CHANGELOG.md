@@ -12,6 +12,16 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- An event sends a form's fields as the browser's own submission would (`FormData`, GAP-048 #244): a disabled field,
+  or one in a disabled `<fieldset>` outside its first `<legend>`, stays home; of the buttons only the submit button
+  that sent the event goes, so a form whose save and delete buttons share `name="action"` tells its handler which
+  one was pressed instead of always the last; a reset or plain button never goes; a control `form="id"` gives the
+  form from outside it goes with it, and one inside that names another form goes with that one. Until now every
+  named button and every disabled field went. `window.wireview.send()` takes `submitter` for the button to send.
+  The test helpers (`submit()`, `click()`) send the same.
+
 ## [1.6.1] - 2026-11-15
 
 ### Fixed
