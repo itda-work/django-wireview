@@ -13,8 +13,8 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 116 |
-| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 14 |
+| ✅ 지원 | 117 |
+| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 13 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 15 |
 | ⚪ 설계상 제외 | 2 |
 
@@ -61,7 +61,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | 2.8 Navigation | 8 | 1 | 0 | 0 |
 | 2.9 JavaScript Interoperability | 13 | 1 | 5 | 0 |
 | 2.10 Components | 10 | 0 | 3 | 1 |
-| 2.11 Form Handling | 8 | 4 | 0 | 0 |
+| 2.11 Form Handling | 9 | 3 | 0 | 0 |
 | 2.12 Performance Features | 6 | 1 | 0 | 0 |
 | 2.13 Testing | 7 | 1 | 1 | 0 |
 | 2.14 Developer Tools | 6 | 0 | 1 | 0 |
@@ -246,7 +246,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | Form recovery | ✅ 자동 | 재연결 시 폼 상태 복원 | ✅ (GAP-008) | `tests/test_offline_e2e.py::test_auto_recover_sends_the_forms_values_to_its_handler`<br>`tests/test_offline_e2e.py::test_auto_recover_without_a_handler_replays_the_forms_change_binding` |
 | Changeset integration | Ecto | 핸들러에서 Django Form으로 검증 ([문서](./features/form-feedback.md)) | ✅ 다른 접근 | `tests/test_forms_e2e.py::test_a_valid_django_form_saves`<br>`tests/test_forms_e2e.py::test_feedback_waits_for_the_field_to_be_touched` |
 | 이벤트 시간 제어 확장·이벤트 정보 | `phx-debounce="blur"`, 기본 지연, submit 때 대기 중 이벤트 정리, 키별 throttle, keydown의 `key`·metadata | 숫자 `.debounce.N`·`.throttle.N`, `{% on %}`의 고정 인자, 이름 있는 필드 값. 나머지는 없다 | 🟡 GAP-040 (#236) |  |
-| 폼 payload 의미 | disabled·누르지 않은 버튼 제외, submitter, `_target`, `_unused_`·`used_input?/1` | 브라우저의 제출(`FormData`)과 같은 칸을 보낸다: disabled 칸 제외, 보낸 submit 버튼만, `form=`으로 연결한 칸 포함(#244 1단계, tests/test_dom_events.py·tests/test_dom_events_e2e.py의 payload 표). `wire-feedback-for`의 touched는 폼 단위이고, 폼의 reset은 그 폼의 touched를 지우고 `input`·`change`를 보낸다(2단계, tests/test_forms_e2e.py의 feedback 절). `_target`·사용 여부는 아직 없다 | 🟡 GAP-048 (#244) |  |
+| 폼 payload 의미 | disabled·누르지 않은 버튼 제외, submitter, `_target`, `_unused_`·`used_input?/1` | 브라우저의 제출(`FormData`)과 같은 칸을 보낸다: disabled 칸 제외, 보낸 submit 버튼만, `form=`으로 연결한 칸 포함. `wire-feedback-for`의 touched는 폼 단위이고, 폼의 reset은 그 폼의 touched를 지우고 `input`·`change`를 보낸다. 핸들러가 인자로 적으면 `_target`(이벤트가 난 칸), `_unused`(쓰이지 않은 칸), `_bad_input`(값으로 읽지 못한 number 칸)을 받는다 — `**kwargs`에는 섞이지 않는다(#244) | ✅ | tests/test_dom_events_e2e.py::test_a_submit_sends_what_the_browsers_own_submission_would<br>tests/test_dom_events_e2e.py::test_a_browser_hears_what_the_helpers_send<br>tests/test_forms_e2e.py::test_a_field_touched_in_one_form_shows_that_forms_feedback_only<br>tests/test_forms_e2e.py::test_a_reset_hides_its_forms_feedback_and_sends_what_it_left<br>tests/test_event_meta.py::test_kwargs_get_the_form_and_nothing_else<br>tests/test_ime_e2e.py::test_a_composing_fields_events_name_it_and_carry_what_it_shows |
 | 폼 복구 범위 | 재연결과 crash 재join 모두에서 기본 복구, `phx-auto-recover="ignore"` | 소켓 재연결 때 `wire-auto-recover`를 단 폼만. error 뒤 다시 join에서는 복구하지 않고 끄는 예약값이 없다 | 🟡 GAP-049 (#245) |  |
 | 서버가 지시하는 HTTP 제출·제출 잠금·업로드 뒤 제출 | `phx-trigger-action`, 제출 중 입력 readonly·버튼 disabled, `auto_upload: false` 폼은 submit 때 업로드 | `auto_upload=False`로 받은 파일은 그 입력이 든 폼을 제출할 때 올라가고, 서버가 모두 받은 뒤에 제출 이벤트가 간다. 서버가 HTTP 제출을 지시하는 길은 없다. 제출 중 잠금은 `wire-disabled-with`를 단 submit 버튼과 업로드를 기다리는 동안의 두 번째 제출 무시뿐이다 | 🟡 GAP-050 (#246) |  |
 
@@ -349,7 +349,7 @@ LiveView 1.2.12 대조에서 남은 것(#229):
 | GAP-042 | 포커스 스택과 포커스 가두기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #238 |
 | GAP-043 | 트랜지션 세 단계·blocking·비차단 체인 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #239 |
 | GAP-045 | 속성 단위 패치 제외와 포커스 칸의 서버 우선 패치 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #241 |
-| GAP-048 | 폼 payload 의미(disabled·submitter·_target·사용 여부·reset) | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #244 |
+| ~~GAP-048~~ | ~~폼 payload 의미(disabled·submitter·_target·사용 여부·reset)~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#244) |
 | GAP-049 | 컴포넌트 재시작의 폼 복구와 복구 끄기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #245 |
 | GAP-050 | 서버가 지시하는 HTTP 폼 제출과 제출·업로드 잠금 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #246 |
 | GAP-056 | DOM 바인딩을 읽는 컴포넌트 테스트 헬퍼와 테스트 경고 설정 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #252 |

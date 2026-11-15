@@ -42,7 +42,7 @@ from django.middleware.csrf import get_token
 from django.urls import Resolver404
 
 from . import testing_dom
-from .core import csrf, notifications, patches, shared_render
+from .core import csrf, handlers, notifications, patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
@@ -455,6 +455,9 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # An event call() handled since the last render: a session renders after
         # each event, call() does not (render_diff() is the test's)
         self._unrendered_event = False
+        # What the DOM helpers' user touched, form by form, as the page keeps it
+        # across renders (FeedbackManager): an event's ``_unused`` (#244)
+        self._touched = testing_dom.Touched()
         self._host = _Connection(self)
         wire._post = self._post
         wire.patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
@@ -992,8 +995,14 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         """
         return await self._handle(handler_name, kwargs)
 
-    async def _handle(self, handler_name: str, kwargs: dict[str, t.Any]) -> t.Any:
-        """Run an event's handler as a session does: ``call()`` and the DOM helpers' one way in."""
+    async def _handle(
+        self, handler_name: str, kwargs: dict[str, t.Any], meta: t.Mapping[str, t.Any] | None = None
+    ) -> t.Any:
+        """Run an event's handler as a session does: ``call()`` and the DOM helpers' one way in.
+
+        ``meta`` is what a DOM helper's event says beyond the fields
+        (``handlers.event_meta``): the handler gets the part it names.
+        """
         from .repository import ComponentRepository
         from .utils import filter_parameters
 
@@ -1022,7 +1031,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             # Arguments the handler does not take are dropped, as they are for an event
             # that carries a form's other fields.
             with render_queries.scope("handler", self._component, handler_name):
-                result = handler(**filter_parameters(handler, kwargs))
+                result = handler(**{**filter_parameters(handler, kwargs), **handlers.named_event_meta(handler, meta)})
                 # Handle async handlers
                 import inspect
 
@@ -1276,7 +1285,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             raise testing_dom.DomError(
                 f"{self._component._name} is frozen and draws nothing: there is no page to act on"
             )
-        return testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops)
+        return testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops, self._touched)
 
     async def _act(self, action: t.Callable[[testing_dom.Page], list[testing_dom.ServerEvent]]) -> str | None:
         """Do ``action`` on the page as it is now, send its events in order, and render."""
@@ -1290,7 +1299,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         for event in action(page):
             # What the session does with a user_event's two halves (command_user_event)
             kwargs = dict(parse_request_data(MultiValueDict(event.implicit_args)), **event.explicit_args)
-            await self._handle(event.handler, kwargs)
+            await self._handle(event.handler, kwargs, handlers.event_meta(event.meta))
         return await sync_to_async(self.render)()
 
     def render(self) -> str | None:

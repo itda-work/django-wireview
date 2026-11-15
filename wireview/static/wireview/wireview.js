@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import {
+  EVENT_META_SINCE,
   JOINED_SINCE,
   JOIN_REFS_SINCE,
   PROTOCOL_VERSION,
@@ -62,6 +63,14 @@ function parseQueryString(search) {
  * @typedef {Object} WireviewMessage
  * @property {string} command - The command type
  * @property {Object} payload - The message payload
+ */
+
+/**
+ * What a user_event says beyond its fields, for a server that takes it (EVENT_META_SINCE, #244)
+ * @typedef {Object} EventMeta
+ * @property {string|null} target - the name of the field the event came from
+ * @property {string[]} unused - the names of the fields it sends that nobody has changed or left yet
+ * @property {string[]} bad_input - the names of the fields whose input the browser could not read as a value
  */
 
 /**
@@ -1284,12 +1293,15 @@ class ServerConnection {
    * @param {string} command - Event command name
    * @param {Object} implicit_args - Form data from the component
    * @param {Object} explicit_args - Explicit event arguments
+   * @param {number} [ref]
+   * @param {EventMeta} [meta] - only for a server that announced EVENT_META_SINCE (#244)
    */
-  sendUserEvent(id, command, implicit_args, explicit_args, ref) {
-    debugLog("send", `user_event ${command}`, { id, explicit_args, ref });
-    /** @type {{id: string, command: string, implicit_args: Object, explicit_args: Object, ref?: number}} */
+  sendUserEvent(id, command, implicit_args, explicit_args, ref, meta) {
+    debugLog("send", `user_event ${command}`, { id, explicit_args, ref, meta });
+    /** @type {{id: string, command: string, implicit_args: Object, explicit_args: Object, ref?: number, meta?: EventMeta}} */
     const payload = { id, command, implicit_args, explicit_args };
     if (ref !== undefined) payload.ref = ref;
+    if (meta !== undefined) payload.meta = meta;
     this._send("user_event", payload);
   }
 
@@ -1683,8 +1695,9 @@ class WireviewComponent {
    * @param {Element|null} [commitFrom] - the element of a committing action (values.mjs)
    * @param {{elements: HTMLElement[], eventType?: string}} [loading] - what markLoading marked
    * @param {Element|null} [submitter] - the submit button that sent the event: the only button serialized (#244)
+   * @param {Element|null} [source] - the element the event happened at: the field it came from, for `meta` (#244)
    */
-  dispatch(command, args, formScope, commitFrom = null, loading = undefined, submitter = null) {
+  dispatch(command, args, formScope, commitFrom = null, loading = undefined, submitter = null, source = null) {
     // A form's submit uploads the form's auto_upload=False files first, and is
     // sent once the server has them all (submits.mjs, #264)
     const form = loading?.eventType === "submit" ? loading.elements[0] : null;
@@ -1695,7 +1708,7 @@ class WireviewComponent {
       const held = {
         component: this,
         mark: null,
-        send: (mark) => this.sendNow(command, args, formScope, commitFrom, { ...loading, mark }, submitter),
+        send: (mark) => this.sendNow(command, args, formScope, commitFrom, { ...loading, mark }, submitter, source),
       };
       if (submitUploads.begin(form, uploadSlotsOf(form), uploadView, held)) {
         held.mark = connection.loading.hold(this.id, loading.elements, loading.eventType);
@@ -1703,7 +1716,7 @@ class WireviewComponent {
         return;
       }
     }
-    this.sendNow(command, args, formScope, commitFrom, loading, submitter);
+    this.sendNow(command, args, formScope, commitFrom, loading, submitter, source);
   }
 
   /**
@@ -1715,8 +1728,9 @@ class WireviewComponent {
    * @param {{elements: HTMLElement[], eventType?: string, mark?: import("./loading.mjs").Mark<HTMLElement> | null}} [loading] -
    *   `mark` is the one a submit that waited for its uploads holds
    * @param {Element|null} [submitter]
+   * @param {Element|null} [source]
    */
-  sendNow(command, args, formScope, commitFrom, loading, submitter = null) {
+  sendNow(command, args, formScope, commitFrom, loading, submitter = null, source = null) {
     const fields = commitFrom ? commitScope(commitFrom, formScope) : new Map();
     // Paired with its answer by ref when this server echoes refs: the answer
     // may reset the fields a committing action sends (#92), and ends the
@@ -1727,7 +1741,44 @@ class WireviewComponent {
     if (fields.size) boost.valueGuard.record(ref ?? null, fields);
     if (loading?.mark) connection.loading.send(loading.mark, ref ?? null);
     else if (loading) connection.loading.track(ref ?? null, this.id, loading.elements, loading.eventType);
-    connection.sendUserEvent(this.id, command, this.serialize(formScope, submitter), args, ref);
+    // Read now, as the fields are: a submit that waited for its uploads sends
+    // what was touched by then
+    const meta = connection.serverVsn >= EVENT_META_SINCE ? this.eventMeta(formScope, source) : undefined;
+    connection.sendUserEvent(this.id, command, this.serialize(formScope, submitter), args, ref, meta);
+  }
+
+  /**
+   * What an event says beyond its fields (#244): the name of the field it came
+   * from (`null` for a click, a submit), the names of the fields it sends that
+   * nobody has changed or left yet (FeedbackManager's touched, in their form),
+   * and the names of the fields whose input the browser could not read as a
+   * value -- "1e" in a number field, sent as "". The fields are the inputs,
+   * selects and textareas `serialize` reads, a hidden input or a button not.
+   * The server gives each to a handler that names a parameter for it.
+   * @param {HTMLElement} element - a form, or the component's element
+   * @param {Element|null} source - the element the event happened at
+   * @returns {EventMeta}
+   */
+  eventMeta(element, source) {
+    const thisElement = this.getElemenet();
+    /** @type {HTMLInputElement[]} */
+    const fields = [];
+    for (const node of namedIn(element)) {
+      const el = /** @type {HTMLInputElement} */ (node);
+      if (el.closest("[wireview-component]") !== thisElement) continue;
+      if (!FeedbackManager.isFormInput(el) || isButtonControl(el) || el.type === "hidden") continue;
+      if (el.matches(":disabled") || !el.getAttribute("name")) continue;
+      fields.push(el);
+    }
+    const target = source && fields.includes(/** @type {HTMLInputElement} */ (source)) ? source.getAttribute("name") : null;
+    const unused = new Set();
+    const badInput = new Set();
+    for (const el of fields) {
+      const name = /** @type {string} */ (el.getAttribute("name"));
+      if (name !== target && !FeedbackManager.isTouched(name, ownerForm(el))) unused.add(name);
+      if (el.validity?.badInput) badInput.add(name);
+    }
+    return { target, unused: Array.from(unused), bad_input: Array.from(badInput) };
   }
 
   /**
@@ -3857,6 +3908,8 @@ const EventBindings = {
           // after Enter). Anything else leaves them to the user (#91, #92).
           const commit = isCommitAction(event.type, binding.steps, { submitter: isSubmitter(element) });
           // The button that submitted: a submit's, or the submit button clicked (#244)
+          // The field a delegated binding's event came from (#244)
+          const source = event.target instanceof Element ? event.target : null;
           const submitter =
             event.type === "submit"
               ? /** @type {SubmitEvent} */ (event).submitter ?? null
@@ -3864,13 +3917,14 @@ const EventBindings = {
                 ? element
                 : null;
           if (value.js) {
-            window.wireview.exec(element, value.js, { commit, eventType: event.type, submitter });
+            window.wireview.exec(element, value.js, { commit, eventType: event.type, submitter, source });
           } else if (value.h !== undefined) {
             window.wireview.send(element, value.h, { ...(value.a || {}) }, {
               eventType: event.type,
               commit,
               target: value.t,
               submitter,
+              source,
             });
           }
         },
@@ -4155,7 +4209,7 @@ function keepStickyOps(item, next) {
  * stays through the renders that morph it (boost.sticky, #219).
  * @param {JSCommand} cmd - Command to execute
  * @param {HTMLElement} element - Context element (event target)
- * @param {{commit?: boolean, eventType?: string, submitter?: Element | null}} [options] - a `push` commits the fields it comes
+ * @param {{commit?: boolean, eventType?: string, submitter?: Element | null, source?: Element | null}} [options] - a `push` commits the fields it comes
  *   from (#92) and marks its element loading for `eventType`
  * @returns {Promise<void>}
  */
@@ -4298,7 +4352,8 @@ async function executeCommand(cmd, element, options = {}) {
               formScope,
               options.commit ? element : null,
               { elements: marked, eventType: options.eventType },
-              options.submitter ?? null
+              options.submitter ?? null,
+              options.source ?? element
             );
           }
         }
@@ -4391,12 +4446,14 @@ window.wireview = {
    * @param {HTMLElement} element
    * @param {string} name
    * @param {Object} [args]
-   * @param {{eventType?: string, commit?: boolean, target?: string, submitter?: Element | null}} [options] -
+   * @param {{eventType?: string, commit?: boolean, target?: string, submitter?: Element | null, source?: Element | null}} [options] -
    *   `eventType` picks the loading class; `commit` says whether the event commits
    *   the fields it comes from (their answer may reset them), by default decided
    *   from `eventType`; `target` is the id of the LiveComponent to send to;
    *   `submitter` is the submit button whose name and value go with the form,
-   *   by default `element` when it is one (#244)
+   *   by default `element` when it is one (#244); `source` is the element the
+   *   event happened at, `element` by default: when it is a field, its name goes
+   *   to a handler that asks for `_target` (#244)
    */
   send(element, name, args = {}, options = {}) {
     const { eventType, target: targetId } = options;
@@ -4422,7 +4479,15 @@ window.wireview = {
       // Start timing for profiling
       startEventTiming();
 
-      component.dispatch(name, args, formScope, commit ? element : null, { elements: marked, eventType }, submitter);
+      component.dispatch(
+        name,
+        args,
+        formScope,
+        commit ? element : null,
+        { elements: marked, eventType },
+        submitter,
+        options.source ?? element
+      );
     }
   },
 
@@ -4431,7 +4496,7 @@ window.wireview = {
    * Commands are executed sequentially in the order provided.
    * @param {HTMLElement} element - Context element (typically event.target)
    * @param {JSCommand[]} commands - Array of commands to execute
-   * @param {{commit?: boolean, eventType?: string, submitter?: Element | null}} [options] - whether a `push`
+   * @param {{commit?: boolean, eventType?: string, submitter?: Element | null, source?: Element | null}} [options] - whether a `push`
    *   in the chain commits its fields (#92), the event that started the chain, and the button that submitted (#244)
    * @returns {Promise<void>}
    */

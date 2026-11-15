@@ -287,3 +287,29 @@ def test_a_dropped_composition_does_not_hold_the_field(page, browser, server, dr
 
     expect_text(by(page, "tag-seen"), "하!")
     expect(field).to_have_value("하!")
+
+
+# --- what a composing field's events say (#244) --------------------------------------------
+
+
+def test_a_composing_fields_events_name_it_and_carry_what_it_shows(page, server):
+    # Every input of a composition goes, each from the field being composed in, the form's
+    # other field unused: the server's answers land mid-syllable and leave the composition be
+    open_live(page, f"{server}/imeprobe/")
+    ime = Ime(page)
+    by(page, "nick").focus()
+    ime.compose("ㅎ")
+    expect_text(by(page, "profiled"), "nick|city|ㅎ")
+    ime.compose("하")
+    expect_text(by(page, "profiled"), "nick|city|하")
+    ime.compose("한")
+    ime.commit("한")
+    ime.compose("ㄱ")
+    ime.compose("그")
+    expect_text(by(page, "profiled"), "nick|city|한그")
+    ime.compose("글")
+    ime.commit("글")
+    expect_text(by(page, "profiled"), "nick|city|한글")
+    assert ime.ended_with() == ["한", "글"], ime.boundaries()
+    assert ime.starts() == 2, ime.boundaries()
+    expect(by(page, "nick")).to_have_value("한글")

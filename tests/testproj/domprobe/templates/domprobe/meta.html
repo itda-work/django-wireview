@@ -1,0 +1,17 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-meta">{{ heard }}</output>
+  <form data-testid="meta-form"
+        {% on "input" "typed" %}
+        {% on "change" "changed" %}
+        {% on "submit.prevent" "saved" %}>
+    <input name="name" data-testid="meta-name">
+    <input name="email" data-testid="meta-email">
+    <input type="number" name="age" data-testid="meta-age">
+    <input type="hidden" name="token" value="t">
+    <input name="off" value="x" disabled>
+    <button data-testid="meta-save">Save</button>
+    <button type="reset" data-testid="meta-reset">Reset</button>
+  </form>
+</div>

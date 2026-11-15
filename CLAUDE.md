@@ -175,7 +175,8 @@ wireview/
 │                          tests/js/bindings.mjs 가 같은 입력에 클라이언트 함수를 돌려 맞춘다. 위임·소유 컴포넌트·필드 직렬화는 wireview.js의
 │                          EventBindings.run·wireview.send·Component.serialize를 따른다 — 클라이언트를 바꾸면 이것과 tests/test_dom_events_e2e.py 도.
 │                          키·포커스(keydown·keyup·focus·blur, 수정 키, Enter의 암묵적 제출)와 <label>의 클릭 이어 주기도 같은 규칙이다.
-│                          실리는 칸(serialize)은 브라우저의 FormData와 같다: disabled 제외, 보낸 submit 버튼만, form= 연결 포함(#244). wireview.js의 serialize·namedIn과 함께 고친다. reset 버튼의 클릭은 그 폼의 칸을 렌더의 값으로 되돌리고 input·change를 보낸다(wireview.js의 reset 리스너)
+│                          실리는 칸(serialize)은 브라우저의 FormData와 같다: disabled 제외, 보낸 submit 버튼만, form= 연결 포함(#244). wireview.js의 serialize·namedIn과 함께 고친다. reset 버튼의 클릭은 그 폼의 칸을 렌더의 값으로 되돌리고 input·change를 보낸다(wireview.js의 reset 리스너).
+│                          이벤트의 meta(event_meta: _target·_unused·_bad_input)는 Component.eventMeta의 사본이다. 건드림(Touched)은 MountedComponent가 액션을 건너 지닌다 — FeedbackManager처럼
 │                          hook_event()는 wire-hook 요소의 훅이 pushEvent로 보낼 것을 handle_hook_event에 보내고 응답을 돌려준다
 │                          page_problems는 설정 TEST_PAGE_CHECKS(기본 ignore)가 켜면 MountedComponent.render()가 부르는 페이지 검사다(중복 id, 같은 id의 컴포넌트, 복구하지 못하는 wire-auto-recover)
 │                          스트림 연산을 컨테이너에 넣는 것(apply_stream_ops)은 wireview.js의 _streamContainer·_applyStreamOp와 streams.mjs의 사본이고,
@@ -339,7 +340,7 @@ tests/
                            ?anon=1 은 id 없이 그린 컴포넌트, ?ignore=1 은 wire-update="ignore" 안에 그것을 그려 은퇴한 요소의 이벤트가 gone으로 답받고 다시 join하는지),
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처(폼은 컴포넌트 템플릿의 {% csrf_token %}을 싣고 뷰는 csrf_exempt 없이 그것을 검사한다, #206),
                            reconnectprobe/ 는 재연결 뒤 상태(같은 서버·재시작한 프로세스·다른 워커)를 보는 E2E(test_reconnect_state_e2e.py)의 픽스처,
-                           imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트·서버가 바꾼 칸 값)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,
+                           imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트·서버가 바꾼 칸 값)와 조합 중 이벤트의 `_target`·`_unused`(profile 폼, #244)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,
                            historyprobe/ 는 push_to·replace_to의 patch와 이동, boost 이동·새로고침 뒤 뒤로·앞으로 가기, follow_push()와 브라우저의 일치,
                            이동의 params를 누가 듣는가(HEARD, 모든 페이지의 sticky HistoryDock과 box 페이지에만 있는 HistoryTray. 첫 HTTP 렌더가 들은 것은 HTTP_HEARD, #177), 같은 URL로의 push,
                            조각 링크, 네트워크 오류로 실패한 가져오기(boost 폼 포함, post/ 는 받은 POST를 센다. ?away=1 은 다른 출처로 리다이렉트한다), 중지된(AbortError) 이동, method="put" 폼을 보는 E2E(test_history_e2e.py)와 이동마다 wireview:before-navigate·그 취소를 보는 E2E(test_before_navigate_e2e.py, #154)의 픽스처(members/ 는 ls-members 경계 안, bar-a/·bar-b/ 는 sticky가 아닌 HistoryBar를 같은 id로 그리는 두 페이지 — 뒤로 가기의 캐시 사본에서 떠나는 페이지의 것이 params를 듣지 않는지 본다. guarded/ 는 자기 필드와 비교해 일찍 돌아오는 params_changed를 가진 두 컴포넌트 — join이 첫 응답의 마운트 상태에서 다시 듣는지 본다, #177),
@@ -348,7 +349,7 @@ tests/
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
-                           domprobe/ 는 사용자의 클릭·change·input·submit·키·포커스가 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent·키 조건·암묵적 제출, DomTrap·DomChat은 바인딩을 지우거나 잘못 건 템플릿, DomHooked는 static/domprobe/hooks/dom.js의 훅이 누르면 pushEvent한다. streams/ 는 스트림 연산을 받을 컨테이너들의 페이지, payload/ 는 폼마다 제출이 싣는 칸(PAYLOADS)을 브라우저의 FormData와 헬퍼가 함께 맞추는 DomPayload),
+                           domprobe/ 는 사용자의 클릭·change·input·submit·키·포커스가 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent·키 조건·암묵적 제출, DomTrap·DomChat은 바인딩을 지우거나 잘못 건 템플릿, DomHooked는 static/domprobe/hooks/dom.js의 훅이 누르면 pushEvent한다. DomMeta는 핸들러가 이름으로 묻는 `_target`·`_unused`·`_bad_input`(meta-* 시나리오, #244). streams/ 는 스트림 연산을 받을 컨테이너들의 페이지, payload/ 는 폼마다 제출이 싣는 칸(PAYLOADS)을 브라우저의 FormData와 헬퍼가 함께 맞추는 DomPayload),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
                            endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),

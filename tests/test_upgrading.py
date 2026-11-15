@@ -122,6 +122,10 @@ UPGRADE_NOTE = {
         "조용히 달라짐: 폼의 reset이 그 폼의 `input`·`change`를 보낸다",
         "reset마다 핸들러가 한 번 더 불린다",
     ),
+    "A handler can ask what an event says beyond its fields": (
+        "새로 생김: 핸들러가 `_target`·`_unused`·`_bad_input`을 물을 수 있다",
+        "인자에 기본값을 둔다",
+    ),
 }
 
 NO_UPGRADE_NOTE: dict[str, str] = {}

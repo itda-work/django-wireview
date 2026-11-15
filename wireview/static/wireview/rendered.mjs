@@ -34,7 +34,7 @@
  * opens. The server never sends a newer form. Keep in step with
  * `PROTOCOL_VERSION` in wireview/core/rendered.py.
  */
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 /**
  * First server version that echoes a user event's `ref` on its render (#92).
@@ -62,6 +62,14 @@ export const JOIN_REFS_SINCE = 6;
  * know, so the client tells it with `params_changed` as before.
  */
 export const NAVIGATED_SINCE = 7;
+
+/**
+ * First server version that takes `meta` on `user_event`: the field the event
+ * came from, the fields of its form nobody has used and the ones whose input the
+ * browser could not read (#244). An older server rejects a user_event that
+ * carries it, so it goes only to a server that announced this version.
+ */
+export const EVENT_META_SINCE = 13;
 
 /**
  * The message that tells the server a boosted navigation put `uri` on screen

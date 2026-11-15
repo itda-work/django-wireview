@@ -658,6 +658,10 @@ class Fields:
         first = next((o for o in options if not o.has("disabled") and not _in_disabled_optgroup(o)), None)
         return [option_value(first)] if first is not None else []
 
+    def typed(self, el: Element) -> bool:
+        """Whether the test set the value of ``el``, rather than the render."""
+        return id(el) in self._values
+
     def set_value(self, el: Element, value: str) -> None:
         self._values[id(el)] = value
 
@@ -757,11 +761,103 @@ def serialize(
         elif kind == "select-multiple":
             value = fields.selected(el)
         elif el.tag in ("input", "select", "textarea"):
-            value = fields.value(el)
+            value = "" if _bad_input(el, fields) else fields.value(el)
         else:
             value = _non_field_value(el)
         result.setdefault(key, []).append(value)
     return result
+
+
+#: HTML's valid floating-point number: what a number field's value can be
+_FLOAT = re.compile(r"-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?")
+
+
+def _bad_input(el: Element, fields: Fields) -> bool:
+    """``el.validity.badInput``: a number field the test typed something into that is not a number.
+
+    The browser keeps the text on screen and gives ``""`` as the value, so the
+    form sends ``""`` (#244). Only what was typed: the render's own ``value``
+    attribute is sanitized away without a flag.
+    """
+    if not (el.tag == "input" and input_type(el) == "number" and fields.typed(el)):
+        return False
+    value = fields.value(el)
+    return value != "" and _FLOAT.fullmatch(value) is None
+
+
+def event_meta(
+    scope: Element, component: Element, fields: Fields, root: Element, touched: Touched, source: Element
+) -> dict[str, t.Any]:
+    """``Component.eventMeta(scope, source)`` in wireview.js (#244): what an event says beyond its fields.
+
+    The fields are the named inputs, selects and textareas the event sends --
+    not a hidden input nor a button, not a disabled one, not a nested
+    component's. ``target`` is ``source``'s name when it is one of them;
+    ``unused`` the names nobody touched in their form, ``target`` aside;
+    ``bad_input`` the number fields holding what is not a number.
+    """
+    named = [
+        el
+        for el in _named_in(scope, root)
+        if el.closest(is_component) is component
+        and el.tag in ("input", "select", "textarea")
+        and not _is_button_control(el)
+        and not (el.tag == "input" and input_type(el) == "hidden")
+        and disabled_by(el) is None
+        and el.get("name")
+    ]
+    target = source.get("name") if any(el is source for el in named) else None
+    unused: dict[str, None] = {}
+    bad: dict[str, None] = {}
+    for el in named:
+        name = el.get("name") or ""
+        if name != target and not touched.has(name, form_of(el, root), root):
+            unused[name] = None
+        if _bad_input(el, fields):
+            bad[name] = None
+    return {"target": target, "unused": list(unused), "bad_input": list(bad)}
+
+
+class Touched:
+    """``FeedbackManager.touched``: the names touched in each form, kept from one action to the next (#244).
+
+    A form is known by its ``id``, or by its place among the page's forms: the
+    helpers parse each render anew, where the browser's morph keeps the element.
+    """
+
+    def __init__(self) -> None:
+        self._names: dict[t.Any, set[str]] = {}
+
+    @staticmethod
+    def _key(form: Element | None, root: Element) -> t.Any:
+        if form is None:
+            return None
+        if form.get("id"):
+            return ("id", form.get("id"))
+        forms = [d for d in root.descendants() if d.tag == "form"]
+        return ("at", next(i for i, f in enumerate(forms) if f is form))
+
+    @staticmethod
+    def _field_name(el: Element) -> str | None:
+        # FeedbackManager.isFormInput and getFieldName
+        if el.tag not in ("input", "select", "textarea"):
+            return None
+        return el.get("name") or el.get("id") or None
+
+    def touch(self, el: Element, root: Element) -> None:
+        if (name := self._field_name(el)) is not None:
+            self._names.setdefault(self._key(form_of(el, root), root), set()).add(name)
+
+    def touch_form(self, form: Element, root: Element) -> None:
+        for el in root.descendants():
+            if el.tag in _LISTED and form_of(el, root) is form and (name := self._field_name(el)) is not None:
+                self._names.setdefault(self._key(form, root), set()).add(name)
+
+    def reset(self, form: Element, root: Element) -> None:
+        self._names.pop(self._key(form, root), None)
+
+    def has(self, name: str, form: Element | None, root: Element) -> bool:
+        return name in self._names.get(self._key(form, root), ())
 
 
 #: Elements with a form owner (HTML's listed elements)
@@ -838,6 +934,8 @@ class ServerEvent:
     explicit_args: dict[str, t.Any]
     event_type: str
     element: Element
+    #: ``Component.eventMeta``: the field the event came from, the unused fields, the unreadable ones (#244)
+    meta: dict[str, t.Any] = dataclasses.field(default_factory=dict)
 
 
 #: The events the helpers dispatch that do not bubble
@@ -900,6 +998,8 @@ class _EventState:
     late: bool = False
     #: The submit's ``event.submitter``
     submitter: Element | None = None
+    #: ``event.target``: where the event was dispatched
+    source: Element | None = None
 
 
 class _BindingRun:
@@ -943,7 +1043,7 @@ class _BindingRun:
         submitter = self.state.submitter if self.type == "submit" else None
         if self.type == "click" and is_submitter(self.el, self.action.page.root):
             submitter = self.el
-        self.action.fire(self.el, self.value, self.type, submitter)
+        self.action.fire(self.el, self.value, self.type, submitter, self.state.source)
 
 
 class _Dispatch:
@@ -971,8 +1071,10 @@ class _Dispatch:
         bindings alone: the client's capture listener on the root. ``submitter``
         is a submit's ``event.submitter``.
         """
-        state = _EventState(submitter=submitter)
+        state = _EventState(submitter=submitter, source=target)
         self.dispatched.append((type_, target))
+        # FeedbackManager's capture listeners on the document hear it first
+        self.touch(type_, target)
         path = [target] if type_ in NON_BUBBLING else [target, *(a for a in target.ancestors() if a.tag != "#document")]
         for el in path:
             state.stopped = False
@@ -994,6 +1096,14 @@ class _Dispatch:
                 break
         return state.prevented
 
+    def touch(self, type_: str, target: Element) -> None:
+        """What ``type_`` at ``target`` touches (FeedbackManager.init): a field left or changed, a submit's form."""
+        page = self.page
+        if type_ in ("blur", "change"):
+            page.touched.touch(target, page.root)
+        elif type_ == "submit" and target.tag == "form":
+            page.touched.touch_form(target, page.root)
+
     def run_timers(self) -> None:
         while self.timers:
             self.timers.sort(key=lambda timer: (timer[0], timer[1]))
@@ -1004,7 +1114,14 @@ class _Dispatch:
         modifier = failed.name if failed.arg is None else f"{failed.name} {failed.arg!r}"
         self.skipped.append(_Skipped(el, attribute, f"its {modifier} modifier does not hold for this event"))
 
-    def fire(self, el: Element, value: dict[str, t.Any], type_: str, submitter: Element | None = None) -> None:
+    def fire(
+        self,
+        el: Element,
+        value: dict[str, t.Any],
+        type_: str,
+        submitter: Element | None = None,
+        source: Element | None = None,
+    ) -> None:
         if "js" in value:
             pushes = [c for c in value["js"] or [] if isinstance(c, dict) and c.get("cmd") == "push"]
             if pushes:
@@ -1020,19 +1137,29 @@ class _Dispatch:
         handler = value.get("h")
         if handler is None:
             return
-        self.sent.append(self.page.server_event(el, handler, value.get("a") or {}, value.get("t"), type_, submitter))
+        self.sent.append(
+            self.page.server_event(el, handler, value.get("a") or {}, value.get("t"), type_, submitter, source)
+        )
 
 
 class Page:
     """The mounted component's render, as the browser holds it, and what each user action sends from it."""
 
-    def __init__(self, html: str, component_id: str, stream_ops: t.Iterable[t.Mapping[str, t.Any]] = ()) -> None:
+    def __init__(
+        self,
+        html: str,
+        component_id: str,
+        stream_ops: t.Iterable[t.Mapping[str, t.Any]] = (),
+        touched: Touched | None = None,
+    ) -> None:
         self.html = html
         self.root = parse(html)
         # The render carries its stream containers empty; the page has the items the operations put there
         apply_stream_ops(self.root, stream_ops)
         self.component_id = component_id
         self.fields = Fields()
+        # What the user touched outlives the render, as it does in the browser
+        self.touched = touched if touched is not None else Touched()
 
     # -- finding ------------------------------------------------------------
 
@@ -1068,8 +1195,13 @@ class Page:
         target: str | None,
         type_: str,
         submitter: Element | None = None,
+        source: Element | None = None,
     ) -> ServerEvent:
-        """``wireview.send(el, handler, args, {target})``: the component it goes to and the fields it carries."""
+        """``wireview.send(el, handler, args, {target})``: the component it goes to and the fields it carries.
+
+        ``source`` is where the event was dispatched (``el`` when not given): the
+        field it came from, for ``meta``.
+        """
         owner = el.closest(is_component)
         if owner is None:
             raise DomError(f"{el.describe()} is in no component's element: the client sends nothing for it")
@@ -1096,6 +1228,7 @@ class Page:
             explicit_args=dict(args),
             event_type=type_,
             element=el,
+            meta=event_meta(scope, target_el, self.fields, self.root, self.touched, source or el),
         )
 
     def hook_id(self, el: Element, hook: str | None) -> str:
@@ -1264,6 +1397,7 @@ class Page:
         stops it."""
         if action.dispatch(form, "reset"):
             return
+        self.touched.reset(form, self.root)
         for el in self.root.descendants():
             if el.tag in ("input", "select", "textarea") and form_of(el, self.root) is form:
                 self.fields.forget(el)
@@ -1443,7 +1577,18 @@ def _text_matches(el: Element, text: str | re.Pattern[str]) -> bool:
 class _Reaching(_Dispatch):
     """A dispatch that only asks whether a binding that talks to the server fires, whoever's it is."""
 
-    def fire(self, el: Element, value: dict[str, t.Any], type_: str, submitter: Element | None = None) -> None:
+    def touch(self, type_: str, target: Element) -> None:
+        # Asking is not doing: the page keeps what was touched
+        pass
+
+    def fire(
+        self,
+        el: Element,
+        value: dict[str, t.Any],
+        type_: str,
+        submitter: Element | None = None,
+        source: Element | None = None,
+    ) -> None:
         if value.get("h") is not None or "js" in value:
             self.sent.append(t.cast(ServerEvent, None))
 

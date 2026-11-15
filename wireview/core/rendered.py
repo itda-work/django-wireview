@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 12
+PROTOCOL_VERSION = 13
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -123,6 +123,13 @@ RENEW_SINCE = 11
 # (#222). A hook's pushEvent Promise is rejected then. An older client would
 # call the callback with no response, so it is answered with nothing, as before.
 HOOK_FAILURES_SINCE = 12
+# First version that takes ``meta`` on ``user_event``: the field the event came
+# from, the fields of its form nobody has used yet and the ones whose input the
+# browser could not read as a value (a number field holding "1e"). A handler gets
+# them only by naming ``_target``, ``_unused`` or ``_bad_input`` (#244). Like
+# REFS_SINCE it runs the other way: a client sends it only to a server that
+# announced this version -- an older one rejects a user_event it does not fit.
+EVENT_META_SINCE = 13
 
 
 def protocol_version(query_string: bytes | str) -> int:

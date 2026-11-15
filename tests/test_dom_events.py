@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from testproj.domprobe.live import (
@@ -125,8 +126,10 @@ class _Recorder:
         self.fired: list[list] = []
         # The chain is divs: none of them is a submit button, so nothing looks for its form
         self.root = None
+        # ...nor a field anyone touches
+        self.touched = SimpleNamespace(touch=lambda el, root: None, touch_form=lambda form, root: None)
 
-    def server_event(self, el, handler, args, target, type_, submitter=None):
+    def server_event(self, el, handler, args, target, type_, submitter=None, source=None):
         self.fired.append([self.elements.index(el), handler])
         return None
 

@@ -264,6 +264,37 @@ wireview.feedback.reset();
 `window.wireview.send(el, name, args, {submitter})`로 보낼 때는 `submitter`가 실을 버튼이다. 주지 않으면 `el`이 submit
 버튼일 때 그것이다. 1.6까지는 disabled 칸과 이름 있는 버튼이 모두 실렸다 — [업그레이드 가이드](../UPGRADING.md#16에서-17로).
 
+## 핸들러가 물을 수 있는 것
+
+칸의 값 말고도 이벤트가 알려 주는 것이 셋 있다(1.7부터, #244). 핸들러가 **그 이름의 인자를 적었을 때만** 받는다.
+`**data`로는 오지 않으므로, 받은 폼을 그대로 `Model(**data)`에 넘기는 핸들러는 그대로 둬도 된다.
+
+| 인자 | 값 |
+|------|----|
+| `_target` | 이벤트가 난 칸의 이름. 칸이 아닌 곳에서 났으면(제출, 버튼 클릭, 리셋) `None` |
+| `_unused` | 이 이벤트가 싣는 칸 가운데 아직 아무도 바꾸거나 떠나지 않은 것의 이름. `_target`인 칸은 빠진다 |
+| `_bad_input` | 브라우저가 값으로 읽지 못한 칸의 이름. number 칸에 `1e`처럼 숫자가 아닌 것이 들어 있으면 브라우저는 `""`를 보낸다 |
+
+```python
+class Signup(Component):
+    errors: dict[str, str] = {}
+
+    async def validate(self, _target: str | None = None, _unused: list[str] = [], _bad_input: list[str] = [], **data):
+        form = SignupForm(data)
+        form.is_valid()
+        self.errors = {
+            name: (["숫자를 입력하세요."] if name in _bad_input else errors)[0]
+            for name, errors in form.errors.items()
+            if name not in _unused
+        }
+```
+
+칸은 이벤트에 실리는 `input`·`select`·`textarea`다. hidden 칸과 버튼, disabled 칸은 아니다. 쓰였는지는
+[필드 추적](#필드-추적)의 건드림과 같은 기록이고 폼마다다. 그래서 제출 뒤에는 그 폼의 `_unused`가 비고, 리셋 뒤에는 다시 전부다.
+옛 클라이언트(1.6 이하의 번들로 열린 페이지)나 칸 없이 보낸 이벤트에서는 `None`과 빈 목록이 온다 — 기본값을 둔다.
+
+테스트 헬퍼(`input()`·`change()`·`blur()`·`submit()`·`click()`)도 같은 값을 보낸다([테스트](./testing.md)).
+
 ## Django 폼과 함께 쓰기
 
 ```python
@@ -460,27 +491,30 @@ async def check_email(self, email: str = ""):
 ## Phoenix LiveView 대응
 
 [Phoenix 1.2.12 폼](https://phoenix-live-view.hexdocs.pm/1.2.12/form-bindings.html)은 `_unused_` 파라미터와
-`used_input?`로 오류 표시 여부를 서버에서 판단한다. wireview의 `wire-feedback-for`·`wire-no-feedback`는
-브라우저에서 표시를 제어하는 방식이며 그 서버 API는 없다. 건드린 필드는 폼마다 이름으로 기억한다.
+`used_input?`로 오류 표시 여부를 서버에서 판단한다. wireview는 `wire-feedback-for`·`wire-no-feedback`로 브라우저에서
+표시를 제어하고, 서버에서 판단하려는 핸들러는 `_unused`를 인자로 받는다([핸들러가 물을 수 있는 것](#핸들러가-물을-수-있는-것)).
+건드린 필드는 폼마다 이름으로 기억한다.
 
 ## Phoenix LiveView와 다른 점
 
 - `{% on "change" %}`는 DOM change, 즉 보통 값 확정 시점에 반응한다. 타이핑마다 검사하려면 `input`을 바인딩한다.
   Phoenix의 `phx-change`와 이벤트 발생 시점이 같지 않다.
 - 일반 이벤트는 가까운 폼 또는 컴포넌트의 이름 있는 요소를 수집한다. 개별 input 바인딩도 그 필드만 보내는 것이 아니다.
-  바뀐 필드의 `_target`, `_unused_`를 자동으로 붙이지 않는다. 제출 버튼은 그 이름과 값으로 실린다([이벤트에 실리는 칸](#이벤트에-실리는-칸)).
-  `on` 내부의 대상 지정과 폼의 `_target`은 별개다.
+  `_target`·`_unused`·`_bad_input`은 폼 파라미터에 섞이지 않고 그 이름의 인자를 적은 핸들러만 받는다. `_target`은
+  Phoenix의 경로 목록(`["user", "email"]`)이 아니라 칸의 이름 그대로(`"user.email"`)이고, `_unused`는 `_unused_<이름>`
+  키가 아니라 이름 목록이다. 제출 버튼은 그 이름과 값으로 실린다([이벤트에 실리는 칸](#이벤트에-실리는-칸)).
+  `{% on %}`의 `_target=`(LiveComponent 대상 지정)과 핸들러의 `_target`은 별개다.
 - 중첩 이름은 wireview의 점 경로와 숫자 인덱스 규칙을 따른다. Phoenix의 `user[email]` 형식을 그대로 옮기지 않는다.
   실리는 칸은 HTML의 성공한 폼 컨트롤 규칙(`FormData`)을 따른다. 다만 폼 밖의 이벤트는 컴포넌트 안의 `name` 있는 요소를 모은다.
 - `phx-trigger-action`처럼 서버 렌더를 계기로 HTTP action 제출로 전환하는 속성은 없다.
   일반 `action` 폼이나 `wire-boost`는 사용자가 제출하는 경로이며 이 기능의 대체 속성이 아니다.
 - 복구는 `wire-auto-recover`를 단 폼의 소켓 재연결에만 적용한다. change 폼의 기본 자동 복구와 컴포넌트 오류 후
   재마운트 복구는 제공하지 않는다. `wire-auto-recover="ignore"`도 비활성화 값이 아니라 핸들러 이름으로 해석된다.
-- 폼 reset 뒤에는 그 폼의 `input`·`change`를 보낸다(Phoenix처럼). 다만 reset 대상 정보(`_target`)는 싣지 않고,
-  잘못된 number 입력의 change를 특별히 억제하는 처리는 없다.
+- 폼 reset 뒤에는 그 폼의 `input`·`change`를 보낸다(Phoenix처럼). 그 이벤트의 `_target`은 `None`이다.
+  잘못된 number 입력은 `""`로 실리고 `_bad_input`에 이름이 오며, 그 change를 억제하지는 않는다.
 - 제출 중 전체 입력 readonly·버튼 disabled 전환은 자동 제공하지 않는다. 현재 로딩 표시는
   [Optimistic UI](./optimistic-ui.md)의 `wire-disabled-with` 규칙이다.
 
-Phoenix 1.2의 `phx-no-unused-field`는 used-input 전송을 끄는 옵션이다. wireview는 원래 `_unused_`를
-전송하지 않으므로 대응 옵션도 없다. `phx-patch-focused`처럼 포커스된 폼 컨트롤에 서버 패치를
+Phoenix 1.2의 `phx-no-unused-field`는 used-input 전송을 끄는 옵션이다. wireview는 `_unused`를 폼 파라미터에
+섞지 않고 인자를 적은 핸들러에만 주므로 대응 옵션이 없다. `phx-patch-focused`처럼 포커스된 폼 컨트롤에 서버 패치를
 우선시키는 선택 속성도 없다. 기본 입력 보존과 IME 처리는 이미 지원한다.

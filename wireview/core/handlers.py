@@ -9,6 +9,7 @@ import of the whole package (#127).
 
 from __future__ import annotations
 
+import inspect
 import typing as t
 
 # Packages whose classes are framework surface, never client-callable handlers.
@@ -80,3 +81,53 @@ def is_client_callable(component: t.Any, command: str) -> bool:
         and callable(getattr(component, command, None))
         and is_user_defined_method(component, command)
     )
+
+
+#: What a user_event's ``meta`` carries, by the handler parameter that takes it (#244)
+EVENT_META_PARAMETERS = ("_target", "_unused", "_bad_input")
+
+
+def event_meta(meta: t.Any) -> dict[str, t.Any]:
+    """The values a user_event's ``meta`` gives the handler parameters that ask for them.
+
+    ``_target`` is the name of the field the event came from, or ``None`` (a
+    click, a submit); ``_unused`` the names of the fields the event sends that
+    the user has neither changed nor left yet; ``_bad_input`` the names of the
+    fields whose input the browser could not read as a value -- "1e" typed in a
+    number field, which it sends as "". A client older than ``EVENT_META_SINCE``
+    sends none of it, and the parameters get these defaults. Anything else in
+    ``meta`` is dropped: it comes from the page.
+    """
+    meta = meta if isinstance(meta, dict) else {}
+    target = meta.get("target")
+
+    def names(value: t.Any) -> list[str]:
+        return [name for name in value if isinstance(name, str)] if isinstance(value, list) else []
+
+    return {
+        "_target": target if isinstance(target, str) else None,
+        "_unused": names(meta.get("unused")),
+        "_bad_input": names(meta.get("bad_input")),
+    }
+
+
+def named_event_meta(handler: t.Callable[..., t.Any], meta: t.Mapping[str, t.Any] | None) -> dict[str, t.Any]:
+    """The part of ``meta`` that ``handler`` names a parameter for.
+
+    Only a parameter of that very name takes it, never ``**kwargs``: a handler
+    that passes the form on (``Model(**data)``) must not find keys in it that no
+    field of the form has. A form field called ``_target`` gives way to it.
+    """
+    if not meta:
+        return {}
+    try:
+        parameters = inspect.signature(handler).parameters
+    except (TypeError, ValueError):
+        return {}
+    return {
+        name: meta[name]
+        for name in EVENT_META_PARAMETERS
+        if name in meta
+        and name in parameters
+        and parameters[name].kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }

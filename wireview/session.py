@@ -22,7 +22,7 @@ from django.utils.datastructures import MultiValueDict
 from wireview.core.component import Component
 
 from . import settings, telemetry
-from .core import inbound, notifications, patches, template_reload
+from .core import handlers, inbound, notifications, patches, template_reload
 from .core.live_session import (
     AUTH_USER_ID_KEY,
     IDENTITY_CSRF,
@@ -1373,8 +1373,11 @@ class WireviewSession:
 
         await self.after_mutation_chores()
 
-    async def command_user_event(self, id, command, implicit_args, explicit_args, ref=None):
+    async def command_user_event(self, id, command, implicit_args, explicit_args, ref=None, meta=None):
         kwargs = dict(parse_request_data(MultiValueDict(implicit_args)), **explicit_args)
+        # What the page says of the event beyond the fields (EVENT_META_SINCE):
+        # only a handler that names a parameter for it gets it (#244)
+        event_meta = handlers.event_meta(meta)
         log.debug(f"<<< USER-EVENT {id} {command} {kwargs}")
         # The ref comes back on the render that answers this event: the client
         # reads it to know which of its fields the answer may reset (#92). Only
@@ -1390,12 +1393,12 @@ class WireviewSession:
         component = self.repo.get(id)
         if component is None:
             if (buried := self.repo.buried(id)) is not None:
-                await self._handle_on_tombstone(buried, command, kwargs, answer)
+                await self._handle_on_tombstone(buried, command, kwargs, answer, event_meta)
             else:
                 await self._answer_gone(id, answer)
             return
         try:
-            await self.repo.dispatch_event(id, command, [], kwargs)
+            await self.repo.dispatch_event(id, command, [], kwargs, meta=event_meta)
             with render_queries.reason(f"event {command}"):
                 await self.send_render(component, acknowledge=True, ref=answer)
         except InvalidEvent as e:
@@ -1409,7 +1412,12 @@ class WireviewSession:
         await self.after_mutation_chores()
 
     async def _handle_on_tombstone(
-        self, component: Component, command: str, kwargs: dict[str, t.Any], answer: int | None
+        self,
+        component: Component,
+        command: str,
+        kwargs: dict[str, t.Any],
+        answer: int | None,
+        meta: t.Mapping[str, t.Any] | None = None,
     ) -> None:
         """Run an event the page sent before it saw the render that retired ``component`` (``Tombstone``, #204).
 
@@ -1426,12 +1434,17 @@ class WireviewSession:
         Phoenix does the same for a component the client has yet to confirm
         destroyed, and its client drops the diff for an element no longer there.
         """
-        await self._run_on_tombstone(component, command, [], kwargs)
+        await self._run_on_tombstone(component, command, [], kwargs, meta)
         await self._answer_gone(component.id, answer)
         await self.after_mutation_chores()
 
     async def _run_on_tombstone(
-        self, component: Component, command: str, args: list[t.Any], kwargs: dict[str, t.Any]
+        self,
+        component: Component,
+        command: str,
+        args: list[t.Any],
+        kwargs: dict[str, t.Any],
+        meta: t.Mapping[str, t.Any] | None = None,
     ) -> None:
         """Run the handler ``command`` of ``component``, which a ``Tombstone`` keeps. Nothing of it is rendered.
 
@@ -1440,7 +1453,7 @@ class WireviewSession:
         LiveComponent kept with it, which that event ran.
         """
         try:
-            await self.repo.dispatch_event(component.id, command, args, kwargs, component=component)
+            await self.repo.dispatch_event(component.id, command, args, kwargs, component=component, meta=meta)
         except InvalidEvent as e:
             log.warning("Ignoring event for %s: %s", component.id, e)
         except Exception:

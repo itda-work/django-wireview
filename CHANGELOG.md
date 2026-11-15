@@ -12,6 +12,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- A handler can ask what an event says beyond its fields (GAP-048 #244) by naming the parameter: `_target`, the
+  name of the field the event came from (`None` for a submit, a click, a reset); `_unused`, the names of the fields it
+  sends that nobody has changed or left yet in their form -- Phoenix's `_unused_` -- so a server-side validation can
+  hold back the errors of fields the user has not reached; `_bad_input`, the names of the fields whose input the
+  browser could not read as a value (`1e` in a number field, which goes as `""`). Never through `**kwargs`: a handler
+  that passes the form on as `Model(**data)` finds no new keys. The page sends them on `user_event` as `meta`, only
+  to a server that announced protocol version 13 (`PROTOCOL_VERSION` is now 13); an older bundle sends none and the
+  parameters get `None` and empty lists. The DOM test helpers send the same, and keep what was touched across actions.
+
 ### Changed
 
 - An event sends a form's fields as the browser's own submission would (`FormData`, GAP-048 #244): a disabled field,

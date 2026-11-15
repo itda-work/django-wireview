@@ -13,7 +13,7 @@ import dataclasses
 import re
 import typing as t
 
-from .live import DomBubble, DomForm, DomKeys, DomLeaf, DomLive, DomNest
+from .live import DomBubble, DomForm, DomKeys, DomLeaf, DomLive, DomMeta, DomNest
 
 # The fields DomForm's form holds as the page draws it, as its handlers get them
 FORM = {
@@ -85,10 +85,112 @@ def _pick_and_reset(page: t.Any) -> None:
     expect_text(by(page, "heard-form"), "changed changed")
 
 
+# DomMeta's form as the page draws it: the hidden field goes, the disabled one stays home
+META_FORM = {"name": "", "email": "", "age": "", "token": "t"}
+
+
+def _meta(target: str | None, unused: list[str], bad: list[str] = [], age: str = "") -> dict[str, t.Any]:
+    return {"target": target, "unused": unused, "bad": bad, "age": age}
+
+
+async def _meta_leave_helper(view: t.Any) -> None:
+    await view.input("[data-testid=meta-name]", "a")
+    await view.change("[data-testid=meta-name]", "a")
+    await view.input("[data-testid=meta-email]", "b")
+
+
+def _meta_leave(page: t.Any) -> None:
+    from testproj.e2e_browser import expect_text
+
+    by(page, "meta-name").fill("a")
+    expect_text(by(page, "heard-meta"), "typed")
+    # Tab: change, then the blur that leaves the field used
+    by(page, "meta-name").press("Tab")
+    expect_text(by(page, "heard-meta"), "typed changed")
+    by(page, "meta-email").fill("b")
+
+
+async def _meta_number_helper(view: t.Any) -> None:
+    await view.input("[data-testid=meta-age]", "1")
+    await view.input("[data-testid=meta-age]", "1e")
+
+
+def _meta_number(page: t.Any) -> None:
+    # One keystroke, one input: "1", then "1e", which is no number -- the browser sends ""
+    by(page, "meta-age").press_sequentially("1e")
+
+
+async def _meta_reset_helper(view: t.Any) -> None:
+    await view.input("[data-testid=meta-name]", "a")
+    await view.change("[data-testid=meta-name]", "a")
+    await view.click("[data-testid=meta-reset]")
+
+
+def _meta_reset(page: t.Any) -> None:
+    from testproj.e2e_browser import expect_text
+
+    by(page, "meta-name").fill("a")
+    expect_text(by(page, "heard-meta"), "typed")
+    by(page, "meta-name").press("Tab")
+    expect_text(by(page, "heard-meta"), "typed changed")
+    by(page, "meta-reset").click()
+    expect_text(by(page, "heard-meta"), "typed changed typed changed")
+
+
 BUBBLE = {"note": "n1"}
 WRAPPED = ("wrapped", {**BUBBLE, "where": "section"})
 
 SCENARIOS = [
+    # A handler that names _target, _unused and _bad_input gets them; one that takes **data gets the form (#244).
+    # The field typed in is the target; the fields nobody has changed or left are unused, the target aside;
+    # the hidden and the disabled field are no one's
+    Scenario(
+        "meta-leave",
+        DomMeta,
+        "heard-meta",
+        _meta_leave_helper,
+        _meta_leave,
+        [
+            ("typed", _meta("name", ["email", "age"])),
+            ("changed", {**META_FORM, "name": "a"}),
+            ("typed", _meta("email", ["age"])),
+        ],
+    ),
+    # What a number field cannot read is sent as "", and named as bad input
+    Scenario(
+        "meta-number",
+        DomMeta,
+        "heard-meta",
+        _meta_number_helper,
+        _meta_number,
+        [
+            ("typed", _meta("age", ["name", "email"], age="1")),
+            ("typed", _meta("age", ["name", "email"], bad=["age"])),
+        ],
+    ),
+    # A reset forgets what was used in the form: its input comes from the form, no field's
+    Scenario(
+        "meta-reset",
+        DomMeta,
+        "heard-meta",
+        _meta_reset_helper,
+        _meta_reset,
+        [
+            ("typed", _meta("name", ["email", "age"])),
+            ("changed", {**META_FORM, "name": "a"}),
+            ("typed", _meta(None, ["name", "email", "age"])),
+            ("changed", META_FORM),
+        ],
+    ),
+    # A submit uses every field of its form, and comes from no field
+    Scenario(
+        "meta-save",
+        DomMeta,
+        "heard-meta",
+        lambda v: v.click("[data-testid=meta-save]"),
+        _click("meta-save"),
+        [("saved", {"target": None, "unused": [], **META_FORM})],
+    ),
     # A reset puts the fields back as the render drew them -- the size the change kept -- and the form's
     # change hears them (#244); the reset button itself never goes
     Scenario(

@@ -1252,10 +1252,21 @@ class ComponentRepository:
             self._carry(drawer_id, left)
         return removed
 
-    async def dispatch_event(self, id, command, args, kwargs, *, component: Component | None = None):
+    async def dispatch_event(
+        self,
+        id,
+        command,
+        args,
+        kwargs,
+        *,
+        component: Component | None = None,
+        meta: t.Mapping[str, t.Any] | None = None,
+    ):
         """Run the handler ``command`` of the instance under ``id``: the one ``reachable`` finds, or ``component``.
 
         ``component`` is one a ``Tombstone`` keeps, which nothing else reaches.
+        ``meta`` is a user_event's (``handlers.event_meta``): the handler gets
+        the part it names a parameter for, and the hooks none of it.
         """
         # Security: Validate command name to prevent unauthorized method access
         # This replaces `assert` which can be disabled with `python -O`
@@ -1293,7 +1304,8 @@ class ComponentRepository:
                 event=command,
             ) as span:
                 span.measure(kwargs)
-                await handler(*args, **filter_parameters(handler, kwargs))  # type: ignore[misc]
+                given = {**filter_parameters(handler, kwargs), **handlers.named_event_meta(handler, meta)}
+                await handler(*args, **given)  # type: ignore[misc]
         return component
 
     @staticmethod

@@ -706,9 +706,9 @@ def user_events(monkeypatch):
     names: list[str] = []
     handle = WireviewSession.command_user_event
 
-    async def recording(self, id, command, implicit_args, explicit_args, ref=None):
+    async def recording(self, id, command, implicit_args, explicit_args, ref=None, meta=None):
         names.append(command)
-        return await handle(self, id, command, implicit_args, explicit_args, ref)
+        return await handle(self, id, command, implicit_args, explicit_args, ref, meta)
 
     monkeypatch.setattr(WireviewSession, "command_user_event", recording)
     return names

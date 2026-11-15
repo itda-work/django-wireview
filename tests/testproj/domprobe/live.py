@@ -247,6 +247,31 @@ class DomTrap(_Recording, Component):
         self._heard("archive", {"id": id})
 
 
+class DomMeta(_Recording, Component):
+    """What an event says beyond its fields: the field it came from, the unused ones, the unreadable ones (#244).
+
+    ``typed`` and ``saved`` name ``_target``, ``_unused`` and ``_bad_input`` and
+    record them; ``changed`` takes the form as ``**data`` and records it, so a
+    handler that does not name them is seen not to get them.
+    """
+
+    class Meta:
+        template_name = "domprobe/meta.html"
+
+    heard: str = ""
+
+    async def typed(
+        self, _target: str | None = None, _unused: list[str] = [], _bad_input: list[str] = [], age: str = ""
+    ) -> None:
+        self._heard("typed", {"target": _target, "unused": _unused, "bad": _bad_input, "age": age})
+
+    async def changed(self, **data: t.Any) -> None:
+        self._heard("changed", data)
+
+    async def saved(self, _target: str | None = None, _unused: list[str] = [], **data: t.Any) -> None:
+        self._heard("saved", {"target": _target, "unused": _unused, **data})
+
+
 class DomPayload(_Recording, Component):
     """What a form's submit sends, form by form: the fields a browser's submission would (#244).
 

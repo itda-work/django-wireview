@@ -6,7 +6,9 @@ renders the composing text back -- and ``memo`` sends nothing. ``pings`` moves
 when anyone on the page's topic presses ``ping``: a render the user composing
 did not ask for. ``tag`` sends what is in it like ``q``, and a ping marks it
 ("하" becomes "하!"): the server changing a field that shows exactly what the
-server last rendered (#169).
+server last rendered (#169). ``profile`` is a form whose every ``input`` --
+composing ones included -- tells the server which field it came from and which
+of the form's fields are unused (#244); ``profiled`` shows the last.
 """
 
 from wireview import Component
@@ -21,6 +23,7 @@ class ImeBox(Component):
     notes: str = ""
     tag: str = ""
     pings: int = 0
+    profiled: str = ""
 
     async def search(self, q: str = "", **_rest):
         self.q = q
@@ -30,6 +33,9 @@ class ImeBox(Component):
 
     async def tagged(self, tag: str = "", **_rest):
         self.tag = tag
+
+    async def profile(self, _target: str | None = None, _unused: list[str] = [], nick: str = "", **_rest):
+        self.profiled = f"{_target}|{','.join(_unused)}|{nick}"
 
     async def ping(self, **_rest):
         await self.broadcast("imeprobe")

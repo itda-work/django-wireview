@@ -14,6 +14,11 @@
          value="{{ this.tag }}"
          {% on "input.debounce.100" "tagged" %}>
   <span data-testid="tag-seen">{{ this.tag }}</span>
+  <form data-testid="profile" {% on "input" "profile" %}>
+    <input data-testid="nick" name="nick">
+    <input data-testid="city" name="city">
+  </form>
+  <span data-testid="profiled">{{ this.profiled }}</span>
   <span data-testid="pings">{{ this.pings }}</span>
   <button data-testid="ping" {% on "click" "ping" %}>ping</button>
 </div>
