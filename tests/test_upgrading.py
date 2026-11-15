@@ -109,6 +109,15 @@ def test_every_row_reads_every_section_from_its_own_up():
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
+    # 1.6.1 (#272) narrowed these two: the note says what 1.6.0 did and what 1.6.1 changed back
+    "`{% wireview_header %}` left its nonces out": (
+        "헤더의 CSP nonce는 정책이 nonce를 쓸 때만 만든다",
+        "헤더가 페이지에서 처음 nonce를 읽어도 정책에 들어갔다",
+    ),
+    "`{% wireview_header %}` reads the CSP nonce where each middleware publishes it": (
+        "헤더의 CSP nonce는 정책이 nonce를 쓸 때만 만든다",
+        "django-csp의 `CONTENT_SECURITY_POLICY[_REPORT_ONLY]`",
+    ),
     "A page joining with a state an older version of the component signed": (
         "필드를 바꾸는 배포 뒤의 열린 페이지는 이어지거나 한 번 새로고침한다",
         "사유 `stale`이 하나 늘어난다",
@@ -269,8 +278,6 @@ NO_UPGRADE_NOTE = {
         "문서의 예만 바뀌었다 — 그 예를 옮겨 쓴 앱은 같은 고침을 한다"
     ),
     "`wireview.W025`: a model `AUTO_BROADCAST` broadcasts": "경고가 하나 늘 뿐 동작은 그대로다",
-    "`{% wireview_header %}` left its nonces out": "빠지던 nonce가 붙을 뿐이다",
-    "`{% wireview_header %}` reads the CSP nonce where each middleware publishes it": "빠지던 nonce가 붙을 뿐이다",
     "`docs/features/react-islands.md`": "문서만 더해졌다",
     "A page whose tab is shown again": "클라이언트만 바뀌고 설정·서버·앱 코드에 할 일이 없다",
     "A hook a morph handed to another component": "마운트되지 않던 훅이 마운트될 뿐이다",

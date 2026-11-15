@@ -33,7 +33,7 @@
 > 괄호 안이 영향받는 버전이다. 해당하면 링크한 절의 할 일을 한다.
 >
 > - [GHSA-82mx-9qrx-gqcv](https://github.com/itda-work/django-wireview/security/advisories/GHSA-82mx-9qrx-gqcv)
->   (1.5.1 이하, 1.6.0 릴리스와 함께 공개): 이동 목적지를 검증하지 않아 `BOOST_PAGES`를 끈 페이지에서
+>   (1.5.1 이하, 1.6.0에서 고침): 이동 목적지를 검증하지 않아 `BOOST_PAGES`를 끈 페이지에서
 >   `wireview.visit("javascript:…")`가 스크립트를 실행했고, 서버의 `redirect_to`·`push_to`·`replace_to`·`JS().navigate`도
 >   `javascript:` 같은 스킴을 그대로 보냈다. boost는 다른 출처로 리다이렉트하는 같은 출처 주소를 따라가 그 응답을
 >   읽었다. 요청에서 온 목적지(`?next=`)를 이동에 넘긴다면 [1.5→1.6 절의 보안](#보안)을 읽는다.
@@ -399,6 +399,15 @@ dependencies = ["django-wireview>=1.5,<2"]
   - `shared_render`를 선언한 클래스의 템플릿에 페이지의 쿼리를 읽는 `{% querystring %}`이 있으면 `wireview.W019`가 알리고
     공유하지 않는다. 1.5에서는 그 템플릿이 렌더되지 않았으므로 새로 공유를 잃는 `{% querystring %}`은 없다. Django 5.2의
     `{% querystring None page=2 %}`도 읽음으로 본다.
+- **헤더의 CSP nonce는 정책이 nonce를 쓸 때만 만든다(1.6.1, #224·#265·#272).** 1.6.0의 `{% wireview_header %}`는
+  아무것도 읽지 않은 nonce도 만들어 붙여, 헤더가 페이지에서 처음 nonce를 읽어도 정책에 들어갔다(1.5에서는 빠져 헤더의
+  `<style>`이 거부됐다). 그 대신 nonce 없는 정책의 페이지에도 요청마다 새 nonce가 붙어 공개 캐시 페이지의 ETag·304가
+  사라졌다. 1.6.1은 설정의 정책(`SECURE_CSP`·`SECURE_CSP_REPORT_ONLY`, django-csp의 `CONTENT_SECURITY_POLICY[_REPORT_ONLY]`)에
+  nonce가 있을 때만 만든다. 1.6.0을 거치지 않고 1.6.1로 오면 할 일이 없다.
+  - **조용함:** 설정의 정책에는 nonce가 없고 뷰의 정책(Django의 `csp_override`, django-csp의 데코레이터)만 nonce를 쓰는
+    페이지는 1.6.0에서 헤더가 nonce를 붙였지만 1.6.1에서는 붙이지 않는다 — 헤더의 `<style>`(연결이 끊겼을 때의 표시)이
+    거부된다. 그 페이지는 `<head>`에서 헤더보다 앞에 `{{ csp_nonce }}`를 읽어 nonce를 만든다([CSP](./features/csp.md)).
+
 ### JS 명령
 
 - **조용히 달라짐: `JS()` 명령이 바꾼 것이 렌더 뒤에도 남는다(#219).** 명령이 더하거나 뺀 클래스, 바꾼 속성, 보이거나

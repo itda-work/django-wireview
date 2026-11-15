@@ -12,6 +12,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-15
+
 ### Fixed
 
 - `{% wireview_header %}` makes a CSP nonce only for a policy that asks for one (#272). Since 1.6.0 it made one on
@@ -3415,7 +3417,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/itda-work/django-wireview/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/itda-work/django-wireview/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/itda-work/django-wireview/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/itda-work/django-wireview/compare/v1.4.0...v1.5.0

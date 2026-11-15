@@ -358,6 +358,7 @@ def button(text: str, variant: str = "primary"):
 | v1.5.0 | ✅ | 템플릿이 읽는 것만 계산한다. `Meta.lazy_properties`를 켠 컴포넌트는 sync property를 템플릿이 그 이름을 읽을 때 렌더마다 한 번 계산하므로 쓰지 않는 property의 SQL이 돌지 않는다(#187). 렌더 SQL 로그와 편집기 기록이 라이브 렌더와 그 `LiveComponent`들(#189), 뷰 템플릿이 그린 컴포넌트들(#193)을 한 일로 묶어 형제 사이의 N+1을 반복으로 보인다. 초기화된 temporary assign 뒤에 남긴 블록이 `{% class %}`·extends 부모 등으로 읽은 바뀐 값을 다시 그리지 않던 결함 수정(#194). ASGI 서버 비교 벤치(#191). 할 일은 [업그레이드 가이드](./UPGRADING.md#14에서-15로) |
 | v1.5.1 | ✅ | 문서 사이트만 바뀐 패치. 모든 페이지 헤더가 그 문서가 설명하는 릴리스를 태그 배지로 보이고, 그 릴리스의 CHANGELOG 절로 잇는다(#196). 라이브러리 코드는 1.5.0과 같다. 할 일 없음 |
 | v1.6.0 | ✅ | 연결과 테스트를 단단히 한다. 연결마다 받는 것의 상한(`INBOUND_*`, 1 MiB 넘는 프레임은 1009, W024, #230), 이동 목적지를 브라우저 URL 파서로 판정(GHSA-82mx-9qrx-gqcv, #262), 탭이 돌아올 때의 재연결과 확인(#228), `{% island %}`와 훅 `pushEvent`의 Promise(#221·#222), JS 명령의 sticky(#219), presence의 프로듀서별 meta(#202·#212), mount한 컴포넌트가 알림을 받는 테스트와 pytest 플러그인(#201), DOM 바인딩을 읽는 테스트 헬퍼(GAP-056, #252), 배포 뒤의 join(#231), Python 3.15·Django 6.1(#265). 깨지는 것이 넷이다(Python 3.13 이상, 1 MiB 상한, 컴포넌트 템플릿은 Django 엔진만, presence 프로듀서의 id). 할 일은 [업그레이드 가이드](./UPGRADING.md#15에서-16으로) |
+| v1.6.1 | ✅ | 1.6.0을 실사용 앱에 올리며 나온 결함 수정. 앞선 `change`의 늦은 렌더가 그 뒤 고른 체크박스·라디오·select를 되돌리던 것(#271), `{% wireview_header %}`가 nonce 없는 CSP 정책에도 요청마다 nonce를 만들어 공개 캐시 페이지의 ETag·304를 없애던 것(#272). 뷰의 정책만 nonce를 쓰는 페이지는 조용히 달라진다. 할 일은 [업그레이드 가이드](./UPGRADING.md#템플릿) |
 
 ### 릴리스 절차
 
@@ -468,4 +469,4 @@ Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올�
 
 ---
 
-*마지막 업데이트: 2026-11-14*
+*마지막 업데이트: 2026-11-15*
