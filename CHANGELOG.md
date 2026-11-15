@@ -12,6 +12,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-15
+
 ### Added
 
 - A handler can ask what an event says beyond its fields (GAP-048 #244) by naming the parameter: `_target`, the
@@ -3446,7 +3448,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/itda-work/django-wireview/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/itda-work/django-wireview/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/itda-work/django-wireview/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/itda-work/django-wireview/compare/v1.5.0...v1.5.1
