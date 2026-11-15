@@ -12,6 +12,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- A render answering an older event no longer undoes a checkbox, radio or `<select>` pick the user made after it
+  (#271). The value guard kept only what the user typed; it now compares a toggle's check and a select's options
+  with what the server last rendered, under the same rules, and puts them back after the morph. A form sending a
+  `change` per pick lost the later picks whenever an earlier answer arrived after them, which also made
+  `test_dom_events_e2e[submit-values]` fail on slow runners.
+
 ## [1.6.0] - 2026-11-14
 
 ### Added

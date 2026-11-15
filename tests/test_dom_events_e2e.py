@@ -20,7 +20,7 @@ import pytest
 from playwright.sync_api import expect
 from testproj.domprobe.live import HEARD, DomHooked
 from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, SCENARIOS, by, heard
-from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, WAIT_TIMEOUT, expect_text, open_live
+from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, WAIT_TIMEOUT, expect_text, open_live, wait_joined
 from testproj.e2e_server import serve
 
 from wireview.testing_dom import Selector, apply_stream_ops, element_children, parse
@@ -46,6 +46,53 @@ def test_a_browser_hears_what_the_helpers_send(page, server, scenario):
     scenario.browser(page)
     expect_text(by(page, scenario.output), scenario.done)  # type: ignore[arg-type]
     assert heard(scenario.component, scenario.expected, HEARD) == scenario.expected
+
+
+SHOWN = """() => {
+  const form = document.querySelector("[data-testid=form]");
+  return {
+    agree: form.querySelector("[data-testid=agree]").checked,
+    tags: [...form.querySelector("[data-testid=tags]").selectedOptions].map((o) => o.value),
+    size: form.querySelector("[data-testid=size]").value,
+    free: form.querySelector("[data-testid=plan-free]").checked,
+    pro: form.querySelector("[data-testid=plan-pro]").checked,
+    x: form.querySelector("[data-testid=opt-x]").checked,
+  };
+}"""
+
+PICKED = {"agree": True, "tags": ["b"], "size": "s", "free": False, "pro": True, "x": False}
+
+
+def test_the_answer_to_an_older_change_leaves_newer_picks_alone(page, server):
+    """A render answering a change sent before the user's newer picks does not undo them (#271).
+
+    The tag run of 1.6.0 failed ``[submit-values]`` this way on a slow runner:
+    each pick sends a change, and an answer that lands after the next pick
+    carries the form as it was before it. The radio is the hard case: the
+    morph checks the server's radio first, which unchecks the user's.
+    """
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/domprobe/")
+    wait_joined(page)
+    renders = "window.__inbox.seen.concat(window.__inbox.held).filter((m) => m.command === 'render').length"
+    before = page.evaluate(renders)
+    page.evaluate("window.__inbox.holding = true")
+
+    by(page, "agree").check()
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'render')", timeout=WAIT_TIMEOUT * 1000)
+    by(page, "tags").select_option(["b"])
+    by(page, "size").select_option("s")
+    by(page, "plan-pro").check()
+    by(page, "opt-x").uncheck()
+
+    # Only the answer to the tick: the server's form from before the other picks
+    page.evaluate("window.__inbox.release(window.__inbox.held.findIndex((m) => m.command === 'render') + 1)")
+    assert page.evaluate(SHOWN) == PICKED
+
+    # Every answer: the last one is the server's form after every pick
+    page.evaluate("window.__inbox.release()")
+    page.wait_for_function(f"{renders} >= {before + 5}", timeout=WAIT_TIMEOUT * 1000)
+    assert page.evaluate(SHOWN) == PICKED
 
 
 # What stream items can be: a plain one, one with an id inside it (an insert of

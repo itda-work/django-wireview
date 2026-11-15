@@ -22,6 +22,17 @@
 `values.mjs`의 `keepsUserValue`가 이 표의 정본이다. 이 메모가 바꾸는 것은 1의 세 단어다: **어떤 액션이 확정인가**,
 **어느 렌더가 그 응답인가**, **응답이 무엇을 덮어도 되는가.**
 
+**고르는 칸(#271, 2026-11-15).** 체크박스·라디오·select도 같은 표를 따른다. `values.mjs`의 `shownState`·`serverState`가
+칸마다 비교할 문자열을 만든다 — 텍스트는 `value`·`defaultValue`, 토글은 `checked`·`defaultChecked`, select는 고른 옵션 값들과
+`selected` 속성이 고르는 옵션들(속성이 없는 드롭다운은 첫 활성 옵션). 지키는 방법은 텍스트와 다르다. 텍스트는 `value` 속성
+갱신을 막고 `defaultValue`만 쓰지만, 토글·옵션의 속성은 막을 수 없다: 사용자가 건드리지 않은 라디오·옵션은 `checked`·`selected`
+속성을 따라가므로(HTML의 dirty 플래그), 속성을 쓰면 그룹의 선택이 함께 옮겨 간다. 그래서 morph가 속성과 상태를 모두 서버의
+것으로 쓰게 두고, morph가 끝난 뒤 지킨 칸의 상태를 되돌린다(`holdShown`). 라디오는 morph가 서버의 라디오를 체크하는 순간
+나머지가 풀려 차례가 늦은 라디오가 "고치지 않은 칸"으로 보이므로, morph 전에 읽은 상태(`radiosShown`)로 판단한다.
+토글은 상태가 둘뿐이라 "고친 칸에 서버가 새 값"은 서버가 사용자와 같은 값을 그린 경우다 — 포커스 조건은 토글에서 할 일이 없다.
+그룹 단위의 판단은 하지 않는다: 사용자가 A를, 서버가 그와 다른 C를 새로 고르면 A가 남는다. 1.6.0 태그 실행의 `[submit-values]`
+실패가 이것이었다(`tests/test_dom_events_e2e.py`의 `test_the_answer_to_an_older_change_leaves_newer_picks_alone`).
+
 ## 1. 어느 렌더가 응답인가 — `ref`
 
 #91은 액션이 나간 필드를 집합에 넣고 **처음 닿는 morph가 소비**하게 했다. 그러면 액션 B를 보낸 뒤 먼저 도착한 A의

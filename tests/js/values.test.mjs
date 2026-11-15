@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isEditableField, keepsUserValue } from "../../wireview/static/wireview/values.mjs";
+import { fieldKind, keepsUserValue } from "../../wireview/static/wireview/values.mjs";
 
 const field = (over = {}) => ({ edited: true, focused: false, committing: false, serverChanged: false, ...over });
 
@@ -25,15 +25,19 @@ test("a new server value lands in an unfocused field but not under the cursor", 
   assert.equal(keepsUserValue(field({ serverChanged: true, focused: true })), true);
 });
 
-test("editable fields are text-like inputs and textareas", () => {
+test("the guard knows text the user types, toggles and selects they pick, and nothing else (#271)", () => {
   for (const type of [undefined, "text", "search", "email", "number", "password", "date", "range", "TEXT"]) {
-    assert.equal(isEditableField("INPUT", type), true, String(type));
+    assert.equal(fieldKind("INPUT", type), "text", String(type));
   }
-  for (const type of ["checkbox", "radio", "file", "hidden", "submit", "button", "reset", "image"]) {
-    assert.equal(isEditableField("INPUT", type), false, type);
+  assert.equal(fieldKind("TEXTAREA"), "text");
+  assert.equal(fieldKind("INPUT", "checkbox"), "toggle");
+  assert.equal(fieldKind("INPUT", "RADIO"), "toggle");
+  assert.equal(fieldKind("SELECT"), "select");
+  for (const type of ["file", "hidden", "submit", "button", "reset", "image"]) {
+    assert.equal(fieldKind("INPUT", type), null, type);
   }
-  assert.equal(isEditableField("TEXTAREA"), true);
-  assert.equal(isEditableField("SELECT"), false);
+  assert.equal(fieldKind("OPTION"), null);
+  assert.equal(fieldKind("BUTTON"), null);
 });
 
 test("submit, change, leaving a field and Enter commit; other events do not (#92)", async () => {

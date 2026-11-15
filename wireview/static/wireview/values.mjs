@@ -18,6 +18,12 @@
  *   user's cursor, as in Phoenix LiveView; the server can still set it with
  *   `JS().set_value` (push_js), which does not go through a morph.
  *
+ * The same holds for what the user picks rather than types (#271): a
+ * checkbox's or a radio's check and a select's options. A render answering an
+ * older event carries the server's state from before the newer pick, and the
+ * morph would put it back; the pick stands until its own committing action's
+ * answer, or until the server renders a different state for it.
+ *
  * Neither applies to a field an IME is composing in (#169): writing its value
  * ends the composition under the IME, and the next keystroke starts another,
  * doubling the syllable. That holds even when the field still shows exactly
@@ -83,22 +89,137 @@ export function isCommitAction(type, steps = [], { submitter = false } = {}) {
   return false;
 }
 
-/** Input types whose value the user types or picks, as opposed to toggles and buttons. */
-const NOT_EDITABLE = new Set(["checkbox", "radio", "file", "hidden", "submit", "button", "reset", "image"]);
+/** Input types with nothing for the user to type or pick. */
+const NOT_GUARDED = new Set(["file", "hidden", "submit", "button", "reset", "image"]);
 
 /**
+ * What the user sets in a field: `text` they type (its `value`), a `toggle`'s
+ * check (checkbox, radio) or a `select`'s options. Null for an element whose
+ * state no render needs to guard.
  * @param {string} tagName - `element.tagName`
  * @param {string} [type] - the input's `type`
- * @returns {boolean}
+ * @returns {"text" | "toggle" | "select" | null}
  */
-export function isEditableField(tagName, type) {
-  if (tagName === "TEXTAREA") return true;
-  return tagName === "INPUT" && !NOT_EDITABLE.has((type || "text").toLowerCase());
+export function fieldKind(tagName, type) {
+  if (tagName === "TEXTAREA") return "text";
+  if (tagName === "SELECT") return "select";
+  if (tagName !== "INPUT") return null;
+  const kind = (type || "text").toLowerCase();
+  if (kind === "checkbox" || kind === "radio") return "toggle";
+  return NOT_GUARDED.has(kind) ? null : "text";
+}
+
+/**
+ * The values of a select's options picked by `picked`, as one string.
+ * @param {any} select
+ * @param {(option: any) => boolean} picked
+ * @returns {string}
+ */
+function optionValues(select, picked) {
+  return JSON.stringify(Array.from(select.options).filter(picked).map((option) => option.value));
+}
+
+/**
+ * The options a select shows before the user picks: the ones marked `selected`,
+ * or for a single select the last of them, and without any the first enabled
+ * option of a drop-down (HTML's selectedness setting algorithm).
+ * @param {any} select
+ * @returns {string}
+ */
+function defaultOptions(select) {
+  const options = Array.from(select.options);
+  let picked = options.filter((option) => option.defaultSelected);
+  if (!select.multiple) {
+    if (picked.length) picked = picked.slice(-1);
+    else if (!(select.size > 1)) picked = options.filter((option) => !option.disabled).slice(0, 1);
+  }
+  return JSON.stringify(picked.map((option) => option.value));
+}
+
+/**
+ * What the field shows now, as a string to compare: the text, the check, the
+ * picked options.
+ * @param {any} field
+ * @returns {string}
+ */
+export function shownState(field) {
+  const kind = fieldKind(field.tagName, field.type);
+  if (kind === "toggle") return field.checked ? "checked" : "";
+  if (kind === "select") return optionValues(field, (option) => option.selected);
+  return field.value;
+}
+
+/**
+ * What the server last rendered for the field, in shownState's terms: its
+ * `defaultValue`, `defaultChecked`, or options marked `selected`.
+ * @param {any} field - a field in the page, or the element a render would morph it into
+ * @returns {string}
+ */
+export function serverState(field) {
+  const kind = fieldKind(field.tagName, field.type);
+  if (kind === "toggle") return field.defaultChecked ? "checked" : "";
+  if (kind === "select") return defaultOptions(field);
+  return field.defaultValue;
+}
+
+/**
+ * For a toggle or a select the guard keeps: puts back what it shows after the
+ * morph. The morph is left to copy the render's attributes, so the field's
+ * defaults become the server's, and then sets the checks and options the
+ * render has; this undoes the second half. Its attributes cannot be held
+ * instead: a radio, or a select's option, that the user did not touch follows
+ * its `checked` or `selected` attribute, and moves the group's pick with it.
+ * Text fields need none: the guard keeps their value attribute (keep()).
+ * @param {any} field
+ * @param {string} [shown] - what it showed before the morph began (radiosShown)
+ * @returns {(() => void) | null} call after the morph; null for a text field
+ */
+export function holdShown(field, shown = shownState(field)) {
+  const kind = fieldKind(field.tagName, field.type);
+  if (kind === "toggle") {
+    const checked = shown === "checked";
+    return () => {
+      if (field.isConnected) field.checked = checked;
+    };
+  }
+  if (kind === "select") {
+    const values = new Set(JSON.parse(shown));
+    return () => {
+      if (!field.isConnected) return;
+      const options = Array.from(field.options);
+      if (field.multiple) {
+        for (const option of options) option.selected = values.has(option.value);
+      } else {
+        const option = options.find((each) => values.has(each.value));
+        if (option) option.selected = true;
+      }
+    };
+  }
+  return null;
+}
+
+/**
+ * What every radio under `root` shows before a morph begins. A morph that
+ * checks the server's radio unchecks the group's others before it reaches
+ * them, so a radio the user checked reads as unchecked, and unedited, by the
+ * time the guard looks at it: keep() and holdShown() take this instead.
+ * Checkboxes and selects change only when the morph reaches them.
+ * @param {any} root - the element about to be morphed
+ * @returns {Map<any, string>}
+ */
+export function radiosShown(root) {
+  /** @type {Map<any, string>} */
+  const shown = new Map();
+  const radios = root.querySelectorAll ? Array.from(root.querySelectorAll("input[type=radio i]")) : [];
+  if (root.tagName === "INPUT" && String(root.type).toLowerCase() === "radio") radios.push(root);
+  for (const radio of radios) shown.set(radio, shownState(radio));
+  return shown;
 }
 
 /**
  * @typedef {{tagName: string, type?: string, value: string, defaultValue: string, isConnected: boolean}} Field
- * @typedef {Map<Field, string>} Sent - fields and the values a committing action sent
+ *   a text field; a toggle has `checked` and `defaultChecked`, a select `options` and `multiple`
+ * @typedef {Map<Field, string>} Sent - fields and what a committing action sent from them (shownState)
  */
 
 /**
@@ -117,7 +238,7 @@ export function commitScope(element, formScope) {
   /** @type {Sent} */
   const sent = new Map();
   for (const field of fields) {
-    if (isEditableField(field.tagName, field.type)) sent.set(field, field.value);
+    if (fieldKind(field.tagName, field.type)) sent.set(field, shownState(field));
   }
   return sent;
 }
@@ -219,35 +340,40 @@ export class ValueGuard {
   }
 
   /**
-   * Decide for one field about to be morphed. When it keeps the user's value,
-   * the server's value still goes to `defaultValue`: a field the user edited
-   * does not change what it shows when that changes, and the next render
-   * compares against what the server actually sent.
+   * Decide for one field about to be morphed. When a text field keeps the
+   * user's value, the server's value still goes to `defaultValue`: a field
+   * the user edited does not change what it shows when that changes, and the
+   * next render compares against what the server actually sent. A toggle or
+   * a select the guard keeps takes the server's state the same way, through
+   * the morph's attributes; holdShown() puts back what it shows.
    * @param {any} field - the element in the page
    * @param {any} next - the element the render would morph it into
    * @param {Sent} [permission] - from answer(), for the morph of the answering render only
-   * @returns {boolean} true when the value must not be touched
+   * @param {string} [shown] - what it showed before the morph began, for a radio (radiosShown)
+   * @returns {boolean} true when what the field shows must not be touched
    */
-  keep(field, next, permission) {
-    if (!isEditableField(field.tagName, field.type) || field.tagName !== next.tagName) return false;
+  keep(field, next, permission, shown) {
+    const kind = fieldKind(field.tagName, field.type);
+    if (!kind || field.tagName !== next.tagName || fieldKind(next.tagName, next.type) !== kind) return false;
+    shown ??= shownState(field);
     let sent = permission?.get(field);
     if (sent === undefined && this.unpaired.has(field)) {
       sent = this.unpaired.get(field);
       this.unpaired.delete(field);
     }
-    const committing = sent !== undefined && sent === field.value;
+    const committing = sent !== undefined && sent === shown;
     const covering = sent ?? this.lastSent(field);
     const keep = keepsUserValue({
-      edited: field.value !== field.defaultValue,
+      edited: shown !== serverState(field),
       focused: field === this.activeElement(),
       committing,
-      serverChanged: next.defaultValue !== field.defaultValue,
-      typedSinceSent: covering !== undefined && covering !== field.value,
+      serverChanged: serverState(next) !== serverState(field),
+      typedSinceSent: covering !== undefined && covering !== shown,
       // Only under the user's cursor: a composition a script's write to the
       // value or a re-insertion dropped ends without compositionend (#169)
-      composing: this.composing.has(field) && field === this.activeElement(),
+      composing: kind === "text" && this.composing.has(field) && field === this.activeElement(),
     });
-    if (keep) field.defaultValue = next.defaultValue;
+    if (keep && kind === "text") field.defaultValue = next.defaultValue;
     return keep;
   }
 }

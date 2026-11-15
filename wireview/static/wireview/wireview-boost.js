@@ -32,7 +32,7 @@ import {
 import { isIslandPair, syncAttributes } from "./islands.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { StickyOps } from "./sticky.mjs";
-import { ValueGuard } from "./values.mjs";
+import { ValueGuard, holdShown, radiosShown } from "./values.mjs";
 
 /**
  * Callback function type for onBeforeElUpdated.
@@ -167,6 +167,9 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
   const kept = new WeakSet();
   /** @type {Element[]} */
   const stuck = [];
+  /** @type {(() => void)[]} what kept toggles and selects show, put back after the morph (#271) */
+  const shown = [];
+  const radios = radiosShown(oldNode);
   const options = {
     callbacks: {
       beforeNodeMorphed(fromEl, toEl) {
@@ -197,7 +200,12 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
           else sticky.apply(fromEl, /** @type {HTMLElement} */ (toEl));
         }
 
-        if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
+        const before = radios.get(fromEl);
+        if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission, before)) {
+          const hold = holdShown(fromEl, before);
+          if (hold) shown.push(hold);
+          else kept.add(fromEl);
+        }
 
         // Only call for elements, not text nodes
         if (fromEl.nodeType === Node.ELEMENT_NODE) {
@@ -230,7 +238,11 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
   // A component's render; a navigation's new page has new lists anyway
   const content = navigation ? newNode : pinStreamContainers(oldNode, newNode);
   if (navigation) pagesShown += 1;
-  applying(() => Idiomorph.morph(oldNode, content, options));
+  applying(() => {
+    Idiomorph.morph(oldNode, content, options);
+    // After the whole morph: a radio checked later in it unchecks the group's others
+    for (const hold of shown) hold();
+  });
   return stuck;
 }
 
