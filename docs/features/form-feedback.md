@@ -81,8 +81,21 @@
 - 그 필드가 든 폼을 제출했다 — 건드리지 않은 필드의 오류도 이때 보인다
 - 코드로 직접 표시했다
 
-건드림 상태는 필드 이름 단위이고 페이지 전체에서 하나다. 한 페이지의 두 폼에 같은 이름의 필드가 있으면
-한쪽을 건드리면 다른 쪽도 건드린 것이 된다.
+건드림은 **폼마다** 기억한다(#244). 필드는 자기 폼에서 건드린 것이 된다 — 폼 안에 있거나 `form="id"`로 그 폼에
+연결된 칸이면 그 폼, 어느 폼에도 속하지 않으면 폼 밖. 한 페이지의 두 폼에 `email`이 있어도 한쪽을 건드리면 그 폼의
+`email`만 건드린 것이다. 페이지에서 사라진 폼의 건드림은 함께 잊는다.
+
+### 폼을 리셋하면
+
+폼의 reset(`<button type="reset">`, `form.reset()`)은 칸들을 페이지가 그린 값으로 되돌린다. wireview는 이어서
+
+1. 그 폼의 건드림을 지운다 — 그 폼의 피드백이 다시 감춰진다. 다른 폼은 그대로다
+2. 그 폼에서 `input`과 `change`를 차례로 보낸다 — 폼의 `{% on "change" %}`·`{% on "input" %}` 바인딩이 되돌린 값으로
+   불린다. 사용자가 칸을 되돌린 것과 같다. 이것이 없으면 컴포넌트는 리셋 전의 값을 들고 있다
+
+reset 버튼은 이벤트에 실리지 않는다. `reset` 이벤트를 취소하면(`{% on "reset.prevent" ... %}`나 리스너의
+`preventDefault()`) 둘 다 하지 않는다. 되돌리는 값은 **마지막 렌더가 그린 값**이다: 칸의 값을 상태에서 그리는
+컴포넌트(`value="{{ this.title }}"`)라면 마지막으로 확정된 값이다.
 
 ### 피드백 표시
 
@@ -91,6 +104,9 @@
 1. 처음에는 `wire-no-feedback` 클래스를 갖는다 (감춰짐)
 2. 대응하는 필드를 건드리면 그 클래스가 제거된다 (보임)
 3. DOM이 갱신되어 새 피드백 엘리먼트가 들어와도 건드림 상태를 그대로 따른다
+
+폼 안의 피드백 엘리먼트는 **그 폼의** 필드를 따른다. 어느 폼에도 들지 않은 피드백 엘리먼트(폼 밖에 모아 둔 오류
+요약)는 그 이름의 필드가 어디서든 건드려지면 보인다.
 
 ### 필드 이름 매칭
 
@@ -196,41 +212,38 @@ class XRegistrationForm(Component):
 ### 필드를 직접 건드림 처리
 
 ```javascript
-// 건드린 것으로 표시한다
+const form = document.getElementById("signup");
+
+// 그 폼의 email을 건드린 것으로 표시한다
+wireview.feedback.touch("email", form);
+// 폼을 주지 않으면 email이 있는 모든 폼과 폼 밖에서
 wireview.feedback.touch("email");
 
-// 건드렸는지 확인한다
-if (wireview.feedback.isTouched("email")) {
+// 그 폼에서 건드렸는지, 폼을 주지 않으면 어디서든 건드렸는지
+if (wireview.feedback.isTouched("email", form)) {
   console.log("Email field has been touched");
 }
 ```
 
+`form` 자리에 `null`을 주면 어느 폼에도 속하지 않은 필드다.
+
 ### 건드린 필드 전부 보기
 
 ```javascript
-const touched = wireview.feedback.getTouched();
+const touched = wireview.feedback.getTouched(form); // 그 폼의 것, 폼을 빼면 페이지 전체
 console.log("Touched fields:", touched);
 ```
 
 ### 상태 초기화
 
-폼을 제출했거나 리셋했으면 건드림 상태를 지우고 싶을 수 있다.
+제출에 성공했으면 건드림 상태를 지우고 싶을 수 있다. 폼의 reset은 그 폼의 것을 스스로 지운다
+([폼을 리셋하면](#폼을-리셋하면)) — 1.6까지 쓰던 `reset` 리스너 훅은 필요 없다.
 
 ```javascript
-// 전부 초기화한다 (오류 메시지를 모두 감춘다)
+// 그 폼의 것을 초기화한다 (그 폼의 오류 메시지를 감춘다)
+wireview.feedback.reset(form);
+// 페이지 전체
 wireview.feedback.reset();
-```
-
-훅에서 부를 수 있다.
-
-```javascript
-window.wireview.hooks.FormReset = {
-  mounted() {
-    this.el.addEventListener("reset", () => {
-      wireview.feedback.reset();
-    });
-  }
-};
 ```
 
 ## 이벤트에 실리는 칸
@@ -448,22 +461,23 @@ async def check_email(self, email: str = ""):
 
 [Phoenix 1.2.12 폼](https://phoenix-live-view.hexdocs.pm/1.2.12/form-bindings.html)은 `_unused_` 파라미터와
 `used_input?`로 오류 표시 여부를 서버에서 판단한다. wireview의 `wire-feedback-for`·`wire-no-feedback`는
-브라우저에서 표시를 제어하는 방식이며 그 서버 API는 없다. 건드린 필드는 페이지 전체에서 이름으로 기억하므로
-서로 다른 폼에 같은 필드 이름이 있으면 피드백 상태를 공유한다.
+브라우저에서 표시를 제어하는 방식이며 그 서버 API는 없다. 건드린 필드는 폼마다 이름으로 기억한다.
 
 ## Phoenix LiveView와 다른 점
 
 - `{% on "change" %}`는 DOM change, 즉 보통 값 확정 시점에 반응한다. 타이핑마다 검사하려면 `input`을 바인딩한다.
   Phoenix의 `phx-change`와 이벤트 발생 시점이 같지 않다.
 - 일반 이벤트는 가까운 폼 또는 컴포넌트의 이름 있는 요소를 수집한다. 개별 input 바인딩도 그 필드만 보내는 것이 아니다.
-  바뀐 필드의 `_target`, `_unused_`, 제출 버튼 식별을 자동으로 붙이지 않는다. `on` 내부의 대상 지정과 폼의 `_target`은 별개다.
+  바뀐 필드의 `_target`, `_unused_`를 자동으로 붙이지 않는다. 제출 버튼은 그 이름과 값으로 실린다([이벤트에 실리는 칸](#이벤트에-실리는-칸)).
+  `on` 내부의 대상 지정과 폼의 `_target`은 별개다.
 - 중첩 이름은 wireview의 점 경로와 숫자 인덱스 규칙을 따른다. Phoenix의 `user[email]` 형식을 그대로 옮기지 않는다.
-  일반 이벤트의 수집은 HTML의 성공한 폼 컨트롤 규칙과도 다르며, disabled 입력이나 제출하지 않은 버튼을 자동 제외하지 않는다.
+  실리는 칸은 HTML의 성공한 폼 컨트롤 규칙(`FormData`)을 따른다. 다만 폼 밖의 이벤트는 컴포넌트 안의 `name` 있는 요소를 모은다.
 - `phx-trigger-action`처럼 서버 렌더를 계기로 HTTP action 제출로 전환하는 속성은 없다.
   일반 `action` 폼이나 `wire-boost`는 사용자가 제출하는 경로이며 이 기능의 대체 속성이 아니다.
 - 복구는 `wire-auto-recover`를 단 폼의 소켓 재연결에만 적용한다. change 폼의 기본 자동 복구와 컴포넌트 오류 후
   재마운트 복구는 제공하지 않는다. `wire-auto-recover="ignore"`도 비활성화 값이 아니라 핸들러 이름으로 해석된다.
-- 폼 reset 뒤 change와 reset 대상 정보를 자동 전송하거나, 잘못된 number 입력의 change를 특별히 억제하는 처리는 없다.
+- 폼 reset 뒤에는 그 폼의 `input`·`change`를 보낸다(Phoenix처럼). 다만 reset 대상 정보(`_target`)는 싣지 않고,
+  잘못된 number 입력의 change를 특별히 억제하는 처리는 없다.
 - 제출 중 전체 입력 readonly·버튼 disabled 전환은 자동 제공하지 않는다. 현재 로딩 표시는
   [Optimistic UI](./optimistic-ui.md)의 `wire-disabled-with` 규칙이다.
 

@@ -243,6 +243,42 @@ async def test_a_submit_sends_what_a_browsers_submission_would(payload):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_a_reset_sends_the_fields_as_the_render_drew_them():
+    """What was typed and not committed goes with the reset: the form's change hears the drawn values (#244)."""
+    view = await mount(DomForm, id="form")
+    page = Page(view.render(), "form")
+    page.fields.set_value(page.find("[data-testid=title]"), "typed")
+    page.fields.set_checked(page.find("[data-testid=agree]"), True, page.root)
+
+    events = page.click(page.find("[data-testid=reset]"))
+
+    assert [(e.handler, e.event_type) for e in events] == [("changed", "change")]
+    assert events[0].implicit_args["title"] == ["t0"]
+    assert "agree" not in events[0].implicit_args
+    assert "undo" not in events[0].implicit_args
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_reset_a_binding_prevents_sends_nothing():
+    class DomResetKept(Component):
+        class Meta:
+            template_name = "domprobe/reset_kept.html"
+
+        async def kept(self, **_kwargs):
+            pass
+
+        async def changed(self, **_kwargs):
+            pass
+
+    view = await mount(DomResetKept, id="kept")
+    page = Page(view.render(), "kept")
+
+    assert [e.handler for e in page.click(page.find("button"))] == ["kept"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_it_returns_the_render_after_the_events():
     view = await mount(DomBubble)
     html = await view.click("[data-testid=bare]")

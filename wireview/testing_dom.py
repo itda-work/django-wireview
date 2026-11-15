@@ -680,6 +680,11 @@ class Fields:
         self._selected[id(select)] = values
         self._values.pop(id(select), None)
 
+    def forget(self, el: Element) -> None:
+        """A form reset: the field holds what the render drew again."""
+        for held in (self._values, self._checked, self._selected):
+            held.pop(id(el), None)
+
 
 def _in_disabled_optgroup(option: Element) -> bool:
     return option.parent is not None and option.parent.tag == "optgroup" and option.parent.has("disabled")
@@ -802,6 +807,11 @@ def disabled_by(el: Element) -> Element | None:
             if legend is None or not legend.contains(el):
                 return ancestor
     return None
+
+
+def is_reset_button(el: Element, root: Element) -> bool:
+    """A reset button with a form: its click resets that form."""
+    return el.tag in ("button", "input") and field_type(el) == "reset" and form_of(el, root) is not None
 
 
 def is_submitter(el: Element, root: Element) -> bool:
@@ -1140,6 +1150,10 @@ class Page:
             form = form_of(el, self.root)
             assert form is not None
             self._submit(action, form, el)
+        elif not prevented and is_reset_button(el, self.root):
+            form = form_of(el, self.root)
+            assert form is not None
+            self._reset(action, form)
         if not prevented and (control := self._labelled_by_click(el)) is not None:
             # The label's activation: a click of its own on the field, which ticks and submits as one does
             self._click(action, control, {})
@@ -1243,6 +1257,18 @@ class Page:
                 'action and load that page. Bind it with {% on "submit.prevent" ... %}; a submit button\'s '
                 'click is the same with {% on "click.prevent" ... %}.'
             )
+
+    def _reset(self, action: _Dispatch, form: Element) -> None:
+        """A form reset, as wireview.js answers it: the fields hold what the render drew again, and the form's
+        bindings hear ``input`` then ``change`` with those values (#244). A ``reset`` binding that prevents it
+        stops it."""
+        if action.dispatch(form, "reset"):
+            return
+        for el in self.root.descendants():
+            if el.tag in ("input", "select", "textarea") and form_of(el, self.root) is form:
+                self.fields.forget(el)
+        action.dispatch(form, "input")
+        action.dispatch(form, "change")
 
     def _finish(self, action: _Dispatch, el: Element, type_: str) -> list[ServerEvent]:
         action.run_timers()

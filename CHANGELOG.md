@@ -21,6 +21,14 @@ The django-reactor era changelog (2.x) is preserved in
   form from outside it goes with it, and one inside that names another form goes with that one. Until now every
   named button and every disabled field went. `window.wireview.send()` takes `submitter` for the button to send.
   The test helpers (`submit()`, `click()`) send the same.
+- `wire-feedback-for` keeps what was touched per form (GAP-048 #244): a field is touched in its form owner
+  (`form="id"` included), and feedback inside a form follows that form's fields, so two forms with an `email`
+  field no longer show each other's errors. Feedback outside every form still follows the name wherever it was
+  touched. `wireview.feedback.touch()`, `isTouched()`, `getTouched()` and `reset()` take the form as an optional
+  second (or only) argument; without it they keep their page-wide meaning.
+- A form's reset hides its feedback and sends the form's `input` and `change` with the values it put back
+  (GAP-048 #244), so the component no longer keeps what the fields held before; cancelling the `reset` event
+  stops both. The test helpers' `click()` on a reset button does the same.
 
 ## [1.6.1] - 2026-11-15
 

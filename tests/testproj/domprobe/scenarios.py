@@ -71,10 +71,34 @@ def _type_and_leave(page: t.Any) -> None:
     by(page, "title").press("Tab")
 
 
+async def _pick_and_reset_helper(view: t.Any) -> None:
+    await view.change("[data-testid=size]", "s")
+    await view.click("[data-testid=reset]")
+
+
+def _pick_and_reset(page: t.Any) -> None:
+    from testproj.e2e_browser import expect_text
+
+    by(page, "size").select_option("s")
+    expect_text(by(page, "heard-form"), "changed")
+    by(page, "reset").click()
+    expect_text(by(page, "heard-form"), "changed changed")
+
+
 BUBBLE = {"note": "n1"}
 WRAPPED = ("wrapped", {**BUBBLE, "where": "section"})
 
 SCENARIOS = [
+    # A reset puts the fields back as the render drew them -- the size the change kept -- and the form's
+    # change hears them (#244); the reset button itself never goes
+    Scenario(
+        "reset",
+        DomForm,
+        "heard-form",
+        _pick_and_reset_helper,
+        _pick_and_reset,
+        [("changed", {**FORM, "size": "s"}), ("changed", {**FORM, "size": "s"})],
+    ),
     # A binding on the element, then the one on its ancestor
     Scenario(
         "inner",

@@ -42,3 +42,23 @@ class FormProbe(Component):
 
     async def throttle(self, **_rest):
         self.throttled += 1
+
+
+class FeedbackProbe(Component):
+    """Two forms with a field of the same name, a field tied to one with ``form=``, feedback outside both, and a
+    reset (#244). ``changed`` keeps what form a sent and draws nothing from it, so a value the page shows after a
+    reset is the reset's."""
+
+    class Meta:
+        template_name = "formprobe/feedback.html"
+
+    heard: list[str] = []
+
+    async def changed(self, which: str, **data):
+        self.heard = [*self.heard, f"{which}:{data.get('email', '')}"]
+
+    async def check(self, which: str, **_data):
+        self.heard = [*self.heard, f"submit-{which}"]
+
+    async def ping(self):
+        self.heard = [*self.heard, "ping"]

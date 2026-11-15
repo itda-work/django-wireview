@@ -1,0 +1,41 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form id="fa"
+        data-testid="form-a"
+        {% on "submit.prevent" "check" which="a" %}
+        {% on "change" "changed" which="a" %}>
+    <input name="email" data-testid="a-email" value="seed">
+    <ul data-testid="a-errors"
+        wire-feedback-for="email"
+        class="wire-no-feedback">
+      <li>a: not an email</li>
+    </ul>
+    <button type="submit" data-testid="a-submit">check</button>
+    <button type="reset" data-testid="a-reset">reset</button>
+  </form>
+  <form id="fb"
+        data-testid="form-b"
+        {% on "submit.prevent" "check" which="b" %}>
+    <input name="email" data-testid="b-email">
+    <ul data-testid="b-errors"
+        wire-feedback-for="email"
+        class="wire-no-feedback">
+      <li>b: not an email</li>
+    </ul>
+    <ul data-testid="b-code-errors"
+        wire-feedback-for="code"
+        class="wire-no-feedback">
+      <li>b: no such code</li>
+    </ul>
+    <button type="submit" data-testid="b-submit">check</button>
+  </form>
+  <input name="code" form="fb" data-testid="b-code">
+  <ul data-testid="loose-errors"
+      wire-feedback-for="email"
+      class="wire-no-feedback">
+    <li>some email is wrong</li>
+  </ul>
+  <button type="button" data-testid="ping" {% on "click" "ping" %}>ping</button>
+  <output data-testid="heard">{{ this.heard|join:" " }}</output>
+</div>

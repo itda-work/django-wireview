@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form {% on "reset.prevent" "kept" %} {% on "change" "changed" %}>
+    <input name="q" value="a">
+    <button type="reset">r</button>
+  </form>
+</div>

@@ -3420,10 +3420,19 @@ initUploadDropZones();
  * Elements with wire-feedback-for="field_name" initially have wire-no-feedback
  * class which hides them. When the corresponding field is touched (blurred or
  * changed), the class is removed to show the feedback.
+ *
+ * A field is touched in its form (its form owner, `form="id"` included), so two
+ * forms with an `email` field do not show each other's errors (#244). Feedback
+ * inside a form follows that form's fields; feedback outside every form follows
+ * the field of that name wherever it was touched, as all feedback did before.
  */
 const FeedbackManager = {
-  /** @type {Set<string>} */
-  touchedFields: new Set(),
+  /**
+   * The names touched in each form; the `null` key holds the fields of no form.
+   * A form that leaves the document is forgotten with what was touched in it.
+   * @type {Map<HTMLFormElement|null, Set<string>>}
+   */
+  touched: new Map(),
 
   /**
    * Initialize the feedback system.
@@ -3434,26 +3443,14 @@ const FeedbackManager = {
     document.addEventListener("blur", (e) => {
       // A field the render removes is blurred, but nobody touched it
       if (isRenderEcho(e.type, boost.inServerChange())) return;
-      const target = /** @type {HTMLElement} */ (e.target);
-      if (this.isFormInput(target)) {
-        const name = this.getFieldName(target);
-        if (name) {
-          this.markTouched(name);
-        }
-      }
+      this.touchField(/** @type {HTMLElement} */ (e.target));
     }, true);  // Use capture to ensure we get the event
 
     // Track change events (for select, checkbox, radio)
     document.addEventListener("change", (e) => {
       // A typed-in field the render removes is sent change first: nobody's either
       if (isRenderEcho(e.type, boost.inServerChange())) return;
-      const target = /** @type {HTMLElement} */ (e.target);
-      if (this.isFormInput(target)) {
-        const name = this.getFieldName(target);
-        if (name) {
-          this.markTouched(name);
-        }
-      }
+      this.touchField(/** @type {HTMLElement} */ (e.target));
     }, true);
 
     // A submit shows every field's feedback, touched or not: the user asked for
@@ -3463,23 +3460,21 @@ const FeedbackManager = {
       for (const field of e.target.elements) {
         const el = /** @type {HTMLElement} */ (field);
         const name = this.isFormInput(el) ? this.getFieldName(el) : null;
-        if (name) this.markTouched(name);
-      }
-    }, true);
-
-    // Track input events (for immediate feedback on typing)
-    document.addEventListener("input", (e) => {
-      const target = /** @type {HTMLElement} */ (e.target);
-      if (this.isFormInput(target)) {
-        const name = this.getFieldName(target);
-        if (name && this.touchedFields.has(name)) {
-          // Already touched - ensure feedback is shown
-          this.showFeedback(name);
-        }
+        if (name) this.markTouched(name, e.target);
       }
     }, true);
 
     debugLog("feedback", "Feedback system initialized");
+  },
+
+  /**
+   * Mark the field an event came from as touched, in its form.
+   * @param {HTMLElement} target
+   */
+  touchField(target) {
+    if (!this.isFormInput(target)) return;
+    const name = this.getFieldName(target);
+    if (name) this.markTouched(name, ownerForm(target));
   },
 
   /**
@@ -3503,60 +3498,112 @@ const FeedbackManager = {
   },
 
   /**
-   * Mark a field as touched and show its feedback.
+   * Mark a field as touched and show its feedback. Without a form it is touched
+   * in every form of the page that has a field of that name, and outside them.
    * @param {string} name
+   * @param {HTMLFormElement|null|undefined} [form] - the field's form, `null` for a field of no form
    */
-  markTouched(name) {
-    if (this.touchedFields.has(name)) return;
-
-    this.touchedFields.add(name);
-    this.showFeedback(name);
+  markTouched(name, form) {
+    const forms = form !== undefined ? [form] : [null, ...this.formsWith(name)];
+    for (const each of forms) {
+      let names = this.touched.get(each);
+      if (!names) this.touched.set(each, (names = new Set()));
+      names.add(name);
+    }
+    this.updated();
     debugLog("feedback", `Field touched: ${name}`);
   },
 
   /**
-   * Show feedback for a field by removing wire-no-feedback class.
+   * The forms of the page that have a field called `name`.
    * @param {string} name
+   * @returns {HTMLFormElement[]}
    */
-  showFeedback(name) {
-    // Find all feedback elements for this field
-    const feedbackEls = document.querySelectorAll(`[wire-feedback-for="${name}"]`);
-    feedbackEls.forEach((el) => {
-      el.classList.remove("wire-no-feedback");
-    });
+  formsWith(name) {
+    return Array.from(document.forms).filter((form) =>
+      Array.from(form.elements).some((el) => this.isFormInput(/** @type {HTMLElement} */ (el)) && this.getFieldName(/** @type {HTMLElement} */ (el)) === name)
+    );
   },
 
   /**
-   * Reset touched state (called on form reset or navigation).
+   * Whether `name` was touched: in `form` (`null`: outside every form), or
+   * anywhere when no form is given.
+   * @param {string} name
+   * @param {HTMLFormElement|null} [form]
+   * @returns {boolean}
    */
-  reset() {
-    this.touchedFields.clear();
-    // Re-add wire-no-feedback to all feedback elements
-    const feedbackEls = document.querySelectorAll("[wire-feedback-for]");
-    feedbackEls.forEach((el) => {
-      el.classList.add("wire-no-feedback");
-    });
+  isTouched(name, form) {
+    if (form !== undefined) return this.touched.get(form)?.has(name) ?? false;
+    for (const names of this.touched.values()) if (names.has(name)) return true;
+    return false;
+  },
+
+  /**
+   * The names touched in `form`, or anywhere when no form is given.
+   * @param {HTMLFormElement|null} [form]
+   * @returns {string[]}
+   */
+  touchedNames(form) {
+    if (form !== undefined) return Array.from(this.touched.get(form) ?? []);
+    const all = new Set();
+    for (const names of this.touched.values()) for (const name of names) all.add(name);
+    return Array.from(all);
+  },
+
+  /**
+   * Forget what was touched -- in `form`, or everywhere -- and hide its feedback.
+   * @param {HTMLFormElement|null} [form]
+   */
+  reset(form) {
+    if (form !== undefined) this.touched.delete(form);
+    else this.touched.clear();
+    this.updated();
     debugLog("feedback", "Feedback state reset");
   },
 
   /**
-   * Called after DOM morph to handle new feedback elements.
-   * New elements should have wire-no-feedback unless their field is touched.
+   * Show each feedback element whose field is touched and hide the others.
+   * Runs after every touch and every DOM morph: a new element starts hidden
+   * unless its field is touched.
    */
   updated() {
-    const feedbackEls = document.querySelectorAll("[wire-feedback-for]");
-    feedbackEls.forEach((el) => {
-      const fieldName = el.getAttribute("wire-feedback-for");
-      if (fieldName && this.touchedFields.has(fieldName)) {
-        // Field is touched - show feedback
-        el.classList.remove("wire-no-feedback");
-      } else {
-        // Field not touched - ensure feedback is hidden
-        el.classList.add("wire-no-feedback");
-      }
+    for (const form of this.touched.keys()) {
+      if (form && !form.isConnected) this.touched.delete(form);
+    }
+    document.querySelectorAll("[wire-feedback-for]").forEach((el) => {
+      const name = el.getAttribute("wire-feedback-for");
+      const form = el.closest("form");
+      const shown = !!name && (form ? this.isTouched(name, form) : this.isTouched(name));
+      el.classList.toggle("wire-no-feedback", !shown);
     });
   }
 };
+
+/**
+ * The form a field belongs to: its form owner (`form="id"` included), or `null`.
+ * @param {HTMLElement} el
+ * @returns {HTMLFormElement|null}
+ */
+function ownerForm(el) {
+  return /** @type {HTMLInputElement} */ (el).form ?? null;
+}
+
+// A form's reset puts its fields back to what the page drew. The fields'
+// feedback goes back to hidden, and the form's input and change bindings hear
+// the values the reset left, as if the user had put them back -- the
+// component would otherwise keep what the fields held before (#244). The
+// reset event comes before the fields are reset, and a listener may cancel it:
+// both are known once the task that dispatched it is over.
+document.addEventListener("reset", (e) => {
+  const form = e.target;
+  if (!(form instanceof HTMLFormElement) || !form.closest("[wireview-component]")) return;
+  setTimeout(() => {
+    if (e.defaultPrevented || !form.isConnected) return;
+    FeedbackManager.reset(form);
+    form.dispatchEvent(new Event("input", { bubbles: true }));
+    form.dispatchEvent(new Event("change", { bubbles: true }));
+  }, 0);
+}, true);
 
 // Initialize feedback system
 FeedbackManager.init();
@@ -4682,36 +4729,41 @@ window.wireview = {
    */
   feedback: {
     /**
-     * Mark a field as touched (show its feedback).
+     * Mark a field as touched (show its feedback). Without `form` the field is
+     * touched in every form that has one of that name, and outside them.
      * @param {string} fieldName - The name of the field
+     * @param {HTMLFormElement|null} [form] - The field's form; `null` for a field of no form
      */
-    touch(fieldName) {
-      FeedbackManager.markTouched(fieldName);
+    touch(fieldName, form) {
+      FeedbackManager.markTouched(fieldName, form);
     },
 
     /**
-     * Check if a field has been touched.
+     * Check if a field has been touched: in `form`, or in any form when it is not given.
      * @param {string} fieldName - The name of the field
+     * @param {HTMLFormElement|null} [form]
      * @returns {boolean}
      */
-    isTouched(fieldName) {
-      return FeedbackManager.touchedFields.has(fieldName);
+    isTouched(fieldName, form) {
+      return FeedbackManager.isTouched(fieldName, form);
     },
 
     /**
-     * Get all touched field names.
+     * Get the touched field names: of `form`, or of every form when it is not given.
+     * @param {HTMLFormElement|null} [form]
      * @returns {string[]}
      */
-    getTouched() {
-      return Array.from(FeedbackManager.touchedFields);
+    getTouched(form) {
+      return FeedbackManager.touchedNames(form);
     },
 
     /**
-     * Reset all feedback (hide all feedback elements).
-     * Useful after form submission or reset.
+     * Reset feedback (hide its elements): of `form`, or of the whole page.
+     * A form's own reset does this for that form.
+     * @param {HTMLFormElement|null} [form]
      */
-    reset() {
-      FeedbackManager.reset();
+    reset(form) {
+      FeedbackManager.reset(form);
     },
   },
 

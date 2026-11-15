@@ -114,6 +114,14 @@ UPGRADE_NOTE = {
         "조용히 달라짐: 폼 이벤트는 브라우저의 제출이 싣는 칸만 싣는다",
         "기본값을 준다",
     ),
+    "`wire-feedback-for` keeps what was touched per form": (
+        "조용히 달라짐: 건드림은 폼마다다",
+        "오류를 폼 밖에 둔다",
+    ),
+    "A form's reset hides its feedback and sends the form's `input` and `change`": (
+        "조용히 달라짐: 폼의 reset이 그 폼의 `input`·`change`를 보낸다",
+        "reset마다 핸들러가 한 번 더 불린다",
+    ),
 }
 
 NO_UPGRADE_NOTE: dict[str, str] = {}

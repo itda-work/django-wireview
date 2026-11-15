@@ -175,7 +175,7 @@ wireview/
 │                          tests/js/bindings.mjs 가 같은 입력에 클라이언트 함수를 돌려 맞춘다. 위임·소유 컴포넌트·필드 직렬화는 wireview.js의
 │                          EventBindings.run·wireview.send·Component.serialize를 따른다 — 클라이언트를 바꾸면 이것과 tests/test_dom_events_e2e.py 도.
 │                          키·포커스(keydown·keyup·focus·blur, 수정 키, Enter의 암묵적 제출)와 <label>의 클릭 이어 주기도 같은 규칙이다.
-│                          실리는 칸(serialize)은 브라우저의 FormData와 같다: disabled 제외, 보낸 submit 버튼만, form= 연결 포함(#244). wireview.js의 serialize·namedIn과 함께 고친다
+│                          실리는 칸(serialize)은 브라우저의 FormData와 같다: disabled 제외, 보낸 submit 버튼만, form= 연결 포함(#244). wireview.js의 serialize·namedIn과 함께 고친다. reset 버튼의 클릭은 그 폼의 칸을 렌더의 값으로 되돌리고 input·change를 보낸다(wireview.js의 reset 리스너)
 │                          hook_event()는 wire-hook 요소의 훅이 pushEvent로 보낼 것을 handle_hook_event에 보내고 응답을 돌려준다
 │                          page_problems는 설정 TEST_PAGE_CHECKS(기본 ignore)가 켜면 MountedComponent.render()가 부르는 페이지 검사다(중복 id, 같은 id의 컴포넌트, 복구하지 못하는 wire-auto-recover)
 │                          스트림 연산을 컨테이너에 넣는 것(apply_stream_ops)은 wireview.js의 _streamContainer·_applyStreamOp와 streams.mjs의 사본이고,
@@ -355,7 +355,7 @@ tests/
                            csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
-                           formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
+                           formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처(feedback/ 는 같은 이름의 칸을 가진 두 폼·form= 연결 칸·폼 밖 피드백·reset — 건드림이 폼마다인지, #244),
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지, form/ 에서 auto_upload=False 파일이 폼 제출 때 올라가고 실패·취소·끊김에는 제출이 가지 않는지(#264)를 보는 E2E(test_uploads_e2e.py)의 픽스처,
                            inheritprobe/ 는 다중 테이블 상속 모델들이다(3단, pk를 따로 둔 자식, 키 타입이 다른 부모). mutation()이 받은 자식 인스턴스가 부모 컬럼을 덮지 않고 제 부모 행에 붙어 있는지 본다(test_mutation_instance.py, 마이그레이션 없음),
                            cascadeprobe/ 는 Django 6.1의 DB_CASCADE·DB_SET_NULL·DB_SET_DEFAULT로 부모를 가리키는 모델들이다(6.1 전에는 부모 Post만). AUTO_BROADCAST가 그 행의 삭제·변경을 알리지 않는지(test_unannounced_changes.py), W025가 그 모델을 알리는지(test_checks.py) 본다(#265, 마이그레이션 없음),

@@ -119,3 +119,88 @@ def test_throttle_lets_one_through_per_window(probe):
     probe.wait_for_timeout(600)  # the 500ms window is over
     probe.evaluate(fire)
     expect_text(by(probe, "throttled-count"), "2")
+
+
+# -- feedback per form, and a form's reset (#244) ----------------------------
+#
+# Fixture: formprobe/feedback/ -- forms a and b both have an `email` field, b
+# also owns `code` from outside it (form="fb"), and one `email` feedback sits
+# outside every form.
+
+
+@pytest.fixture
+def feedback(page, server):
+    open_live(page, f"{server}/formprobe/feedback/")
+    return page
+
+
+def test_a_field_touched_in_one_form_shows_that_forms_feedback_only(feedback):
+    by(feedback, "a-email").fill("x")
+    by(feedback, "a-email").press("Tab")
+
+    expect(by(feedback, "a-errors")).not_to_have_class(HIDDEN)
+    # Before #244 the touched names were the page's: form b showed a's
+    expect(by(feedback, "b-errors")).to_have_class(HIDDEN)
+    # Feedback outside every form follows the name wherever it was touched
+    expect(by(feedback, "loose-errors")).not_to_have_class(HIDDEN)
+    assert feedback.evaluate("""() => [
+        wireview.feedback.isTouched("email", document.getElementById("fa")),
+        wireview.feedback.isTouched("email", document.getElementById("fb")),
+        wireview.feedback.isTouched("email"),
+    ]""") == [True, False, True]
+
+
+def test_a_submit_shows_its_own_forms_feedback_and_the_fields_it_owns_from_outside(feedback):
+    by(feedback, "b-submit").click()
+    expect_text(by(feedback, "heard"), "submit-b")
+
+    expect(by(feedback, "b-errors")).not_to_have_class(HIDDEN)
+    expect(by(feedback, "b-code-errors")).not_to_have_class(HIDDEN)
+    expect(by(feedback, "a-errors")).to_have_class(HIDDEN)
+
+
+def test_a_field_tied_to_a_form_from_outside_is_touched_in_that_form(feedback):
+    by(feedback, "b-code").fill("zz")
+    by(feedback, "b-code").press("Tab")
+
+    expect(by(feedback, "b-code-errors")).not_to_have_class(HIDDEN)
+    expect(by(feedback, "b-errors")).to_have_class(HIDDEN)
+
+
+def test_a_reset_hides_its_forms_feedback_and_sends_what_it_left(feedback):
+    by(feedback, "b-submit").click()
+    by(feedback, "a-email").fill("typed")
+    by(feedback, "a-email").press("Tab")
+    expect_text(by(feedback, "heard"), "submit-b a:typed")
+    expect(by(feedback, "a-errors")).not_to_have_class(HIDDEN)
+
+    by(feedback, "a-reset").click()
+
+    expect_text(by(feedback, "heard"), "submit-b a:typed a:seed")
+    expect(by(feedback, "a-email")).to_have_value("seed")
+    expect(by(feedback, "a-errors")).to_have_class(HIDDEN)
+    # The other form keeps what was touched in it
+    expect(by(feedback, "b-errors")).not_to_have_class(HIDDEN)
+
+
+def test_a_reset_sends_the_values_it_put_back(feedback):
+    """Typed but not committed: only the reset's change goes, with the drawn value."""
+    by(feedback, "a-email").fill("typed")
+    feedback.evaluate("() => document.getElementById('fa').reset()")
+
+    expect_text(by(feedback, "heard"), "a:seed")
+    expect(by(feedback, "a-email")).to_have_value("seed")
+
+
+def test_a_cancelled_reset_sends_nothing_and_keeps_the_feedback(feedback):
+    by(feedback, "a-email").fill("typed")
+    by(feedback, "a-email").press("Tab")
+    expect_text(by(feedback, "heard"), "a:typed")
+    feedback.evaluate("() => document.getElementById('fa').addEventListener('reset', (e) => e.preventDefault())")
+
+    by(feedback, "a-reset").click()
+    by(feedback, "ping").click()
+
+    # No change of the reset's between the two
+    expect_text(by(feedback, "heard"), "a:typed ping")
+    expect(by(feedback, "a-errors")).not_to_have_class(HIDDEN)
