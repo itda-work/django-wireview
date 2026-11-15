@@ -14,6 +14,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `{% wireview_header %}` makes a CSP nonce only for a policy that asks for one (#272). Since 1.6.0 it made one on
+  every request whatever the policy, so a page under a policy without a nonce -- the one `react-islands.md` gives for
+  a page a public cache keeps -- carried a new `nonce="..."` each time: its HTML and ETag changed with every request
+  and its 304s were gone. A nonce nothing has made yet is now made only when `SECURE_CSP`, `SECURE_CSP_REPORT_ONLY`
+  or django-csp's `CONTENT_SECURITY_POLICY[_REPORT_ONLY]` names it; one already made is used as before. A view's own
+  policy is not known while the page renders: a page whose nonce only that policy asks for reads it before the
+  header.
 - A render answering an older event no longer undoes a checkbox, radio or `<select>` pick the user made after it
   (#271). The value guard kept only what the user typed; it now compares a toggle's check and a select's options
   with what the server last rendered, under the same rules, and puts them back after the morph. A form sending a

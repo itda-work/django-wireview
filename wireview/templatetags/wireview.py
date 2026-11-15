@@ -9,6 +9,7 @@ from importlib import metadata
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django import template
+from django.conf import settings as django_settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.template.base import FilterExpression, Node, NodeList, Parser, TextNode, Token, VariableNode, token_kwargs
 from django.template.context import Context
@@ -89,7 +90,9 @@ def wireview_header(context):
 
 try:
     from django.middleware.csp import get_nonce as _django_csp_nonce  # type: ignore[import-not-found]
+    from django.utils.csp import CSP as _DJANGO_CSP  # type: ignore[import-not-found]
 except ImportError:  # Django < 6.0 has no CSP of its own
+    _DJANGO_CSP = None
 
     def _django_csp_nonce(request: t.Any) -> t.Any:
         # What django.middleware.csp.get_nonce reads, and where django-csp keeps a nonce once it is made
@@ -97,26 +100,68 @@ except ImportError:  # Django < 6.0 has no CSP of its own
 
 
 def _csp_nonce(request: t.Any) -> str | None:
-    """The request's CSP nonce as a string, generated if nothing has used it yet.
+    """The request's CSP nonce as a string, made here only for a policy that carries one.
 
     Read where each middleware publishes it (#265): Django's own (6.0+) through
     ``django.middleware.csp.get_nonce``, django-csp through ``request.csp_nonce``.
     A request neither middleware saw has neither, and no nonce is made for it.
 
     Both are lazy: false until something turns them into a string, and the
-    middleware puts the nonce in the policy only then. Tested for truth as it
-    came, Django's was false whenever the header was the first to want it -- the
-    header went out without nonces, the policy without the nonce, and its
-    ``<style>`` was refused (#224). django-csp's ``_csp_nonce`` does not exist
-    until ``csp_nonce`` is read, so the header found it only on a page that had
-    read it first.
+    middleware puts the nonce in the policy only then, and only where the
+    policy asks for one. A nonce something already made is used as it is. One
+    nothing made yet is made here when a configured policy asks for a nonce:
+    tested for truth alone, Django's was false whenever the header was the first
+    to want it, and the header went out without nonces, the policy without the
+    nonce, and its ``<style>`` was refused (#224). Made for any policy, every
+    response of a page a public cache keeps under a hash policy carried a new
+    one: its ETag changed with each request and its 304s were gone (#272).
+
+    A view's own policy (Django's ``csp_override``, django-csp's decorators) is
+    unknown while the page renders. A page whose nonce only such a policy asks
+    for reads it before the header does.
     """
     if request is None:
         return None
     nonce = _django_csp_nonce(request)
-    if nonce is None:
+    if nonce is not None:
+        asked = _django_policy_asks_for_a_nonce
+    else:
         nonce = getattr(request, "csp_nonce", None)
-    return str(nonce) if nonce is not None else None
+        asked = _django_csp_policy_asks_for_a_nonce
+    if nonce is None or not (nonce or asked()):
+        return None
+    return str(nonce) or None
+
+
+def _django_policy_asks_for_a_nonce() -> bool:
+    if _DJANGO_CSP is None:
+        return False
+    policies = (getattr(django_settings, "SECURE_CSP", None), getattr(django_settings, "SECURE_CSP_REPORT_ONLY", None))
+    return any(_directives_hold(policy, _DJANGO_CSP.NONCE) for policy in policies)
+
+
+def _django_csp_policy_asks_for_a_nonce() -> bool:
+    try:
+        from csp.constants import NONCE  # type: ignore[import-not-found]
+    except ImportError:  # django-csp is not installed: whatever set csp_nonce made it
+        return False
+    policies = (
+        getattr(django_settings, "CONTENT_SECURITY_POLICY", None),
+        getattr(django_settings, "CONTENT_SECURITY_POLICY_REPORT_ONLY", None),
+    )
+    return any(_directives_hold((policy or {}).get("DIRECTIVES"), NONCE) for policy in policies)
+
+
+def _directives_hold(directives: t.Any, nonce: t.Any) -> bool:
+    """Whether a policy's directives (name to source or sources) name the middleware's nonce sentinel."""
+    if not directives:
+        return False
+    for sources in directives.values():
+        if isinstance(sources, str) or not hasattr(sources, "__iter__"):
+            sources = [sources]
+        if any(source == nonce for source in sources):
+            return True
+    return False
 
 
 def _signed_state(component: Component, repo: ComponentRepository) -> str:
