@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% if this.is_live_component %}{% live_tag_header %}{% else %}{% tag_header %}{% endif %}>
+  <span data-testid="{{ this.id }}-secret">secret</span>
+  <button type="button"
+          data-testid="{{ this.id }}-hit"
+          {% on "click" "hit" myself=this.is_live_component %}>hit</button>
+</div>

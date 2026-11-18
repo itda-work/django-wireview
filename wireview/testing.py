@@ -53,12 +53,15 @@ from .repository import ComponentRepository
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.base_user import AbstractBaseUser
+    from django.http import HttpResponse
+    from django.test import Client
 
     from .core.component import Component
 
 
 __all__ = (
     "MountedComponent",
+    "MountedChild",
     "Navigation",
     "mount",
     "ComponentTestCase",
@@ -373,6 +376,161 @@ class MockRepository(ComponentRepository):
         return repo
 
 
+class _HeldWire(MockWireviewMeta):
+    """The wire of a component a mounted page holds beside the mounted one (GAP-056, #252).
+
+    Built with a real wire's arguments (``Component._build``). What it sends
+    goes to the mount's connection as the mounted component's does, so its
+    stream operations, pushed events and navigations are in ``sent_messages``,
+    and its mail to another component -- ``send_to_parent()``, ``send_update()``,
+    a render it asks for -- is handled there, as a session handles it. Unlike
+    the mounted component's, it keeps ``joined()``'s operations until its
+    render, as a session's components do.
+    """
+
+    def __init__(self, **kwargs: t.Any) -> None:
+        WireviewMeta.__init__(self, **kwargs)
+        self._mock_channel_layer = kwargs.get("channel_layer") or MockChannelLayer()
+        self.sent_messages = _SentMessages()
+        self._post = None
+
+    async def send(self, _command: str, **kwargs: t.Any) -> bool:
+        return await WireviewMeta.send(self, _command, **kwargs)
+
+    async def _do_send(self, _command: str, **kwargs: t.Any) -> bool:
+        return await MockWireviewMeta.send(self, _command, **kwargs)
+
+
+class _PageRepository(MockRepository):
+    """The repository of a mounted component's page, held from one render to the next (GAP-056, #252).
+
+    A connection keeps the components a page draws: the nested ones the page
+    joins, the LiveComponents their parents own. This keeps them the same way,
+    and its renders are a socket's -- a LiveComponent is a reference, settled
+    after its parent's pass -- so the lifecycle the session runs runs here
+    (``MountedComponent._settle``). What it renders is not the page's HTML:
+    ``render()`` draws that from the instances held here (:meth:`redraw`).
+    """
+
+    wire_class = _HeldWire
+
+    def __init__(self, mounted: "MountedComponent", repo: MockRepository) -> None:
+        super().__init__(
+            user=repo.user,
+            params=repo.params,
+            session=repo.session,
+            live_session=repo.live_session,
+            is_live=True,
+            page_csrf=repo._page_csrf,
+        )
+        self._mounted = weakref.ref(mounted)
+        self._told_query = repo._told_query
+        self.channel_name = "test-channel"
+        self.channel_layer = mounted.wire._mock_channel_layer
+        # The passes of joined nested components that ran within the pass at hand,
+        # with what each named: their LiveComponents settle with it (end_inline_pass)
+        self.inline_passes: list[tuple[str, set[str]]] = []
+        # For each drawer, the components its latest pass drew without an id, in
+        # order: what a redraw draws there (a new pass would mint new ids)
+        self.anonymous: dict[str, list[str]] = {}
+
+    def _build_from(
+        self, base: type["Component"], name: str, state: t.Any, id_given: bool | None = None
+    ) -> "Component":
+        component = super()._build_from(base, name, state, id_given=id_given)
+        mounted = self._mounted()
+        if mounted is not None:
+            mounted._hold(component)
+        return component
+
+    def build(
+        self,
+        name: str,
+        state: t.Any,
+        drawer: "Component | None" = None,
+        id_given: bool | None = None,
+    ) -> "Component":
+        component = super().build(name, state, drawer, id_given)
+        if drawer is not None and not state.get("id"):
+            self.anonymous.setdefault(drawer.id, []).append(component.id)
+        return component
+
+    def begin_render(self, parent_id: str) -> None:
+        super().begin_render(parent_id)
+        self.anonymous.pop(parent_id, None)
+
+    def end_inline_pass(self, component_id: str, drawer_id: str | None, shown: t.Iterable[str] = ()) -> None:
+        # A joined component drawn again within its drawer's pass: its
+        # LiveComponents settle with the drawer's batch. One the page has yet
+        # to join is left to that join, as on a connection.
+        rendered = self.end_pass(component_id, shown)
+        component = self.components.get(component_id)
+        if component is not None and component.wire.has_joined:
+            self.inline_passes.append((component_id, rendered))
+
+    def redraw(self) -> "_RedrawRepository":
+        """A repository for one HTTP render of the page as it is: these instances, as they are."""
+        return _RedrawRepository(self)
+
+
+class _RedrawRepository(MockRepository):
+    """One ``render()`` of a held page: it draws the instances the page holds and changes none of them.
+
+    A pass on a connection hands a nested component the props its drawer
+    passes and queues a LiveComponent's ``update()``. A redraw is not a render
+    the session makes, only the page as the browser shows it: a nested
+    component shows what its own last render drew, its props included, until
+    its drawer renders again. So the instances are drawn as they are. One the
+    page does not hold yet -- the test changed the mounted component by hand --
+    is drawn anew, as the first response draws it.
+    """
+
+    def __init__(self, held: _PageRepository) -> None:
+        super().__init__(
+            user=held.user,
+            params=held.params,
+            session=held.session,
+            live_session=held.live_session,
+            is_live=False,
+            page_csrf=held._page_csrf,
+        )
+        self._told_query = held._told_query
+        self.components = dict(held.components)
+        self._anonymous = {drawer: list(ids) for drawer, ids in held.anonymous.items()}
+
+    def build(
+        self,
+        name: str,
+        state: t.Any,
+        drawer: "Component | None" = None,
+        id_given: bool | None = None,
+    ) -> "Component":
+        from .core.component import Component
+        from .live_component import LiveComponent
+
+        component_id = state.get("id")
+        if not component_id and drawer is not None and (drawn := self._anonymous.get(drawer.id)):
+            component_id = drawn.pop(0)
+        held = self.components.get(component_id) if component_id else None
+        if held is not None and not isinstance(held, LiveComponent) and type(held) is Component._resolve(name):
+            return held
+        return super().build(name, state, drawer, id_given)
+
+    def build_live_component(
+        self,
+        name: str,
+        state: t.Any,
+        parent_id: str,
+        slots: t.Any = None,
+    ) -> t.Any:
+        from .live_component import LiveComponent
+
+        held = self.components.get(state.get("id") or "")
+        if isinstance(held, LiveComponent) and type(held) is LiveComponent._resolve_live(name):
+            return held
+        return super().build_live_component(name, state, parent_id, slots)
+
+
 class _Connection:
     """``notifications.Host`` for one mounted component: the connection it would be on."""
 
@@ -386,19 +544,27 @@ class _Connection:
         return mounted
 
     def _subscribed_to(self, channel: str) -> t.Iterator["Component"]:
-        # Asked when its turn comes, as a session asks (notifications.deliver)
-        component = self.mounted.component
-        if channel in component.get_subscriptions() or channel in presence.presence_channels(component):
-            yield component
+        # Asked when its turn comes, as a session asks (notifications.deliver),
+        # of every component the page holds
+        for component in self.mounted._held_components():
+            if channel in component.get_subscriptions() or channel in presence.presence_channels(component):
+                yield component
 
     def _holds(self, component: "Component") -> bool:
         return not self.mounted.is_frozen
 
     async def send_render(self, component: "Component") -> None:
         """As a session renders after a notification: the diff goes out, when there is one."""
-        if (diff := await self.mounted.render_diff()) is not None:
+        mounted = self.mounted
+        if component is not mounted.component:
+            # A component the page holds besides the mounted one: its render settles what it draws
+            await mounted._settle(component)
+            return
+        if (diff := await mounted.render_diff()) is not None:
             # Written at once, not mailed: ahead of what the receiver mailed
             self._record("render", id=component.id, diff=diff)
+        if mounted._kept is not None:
+            await mounted._settle(component)
 
     def _record(self, command: str, **payload: t.Any) -> None:
         self.mounted.wire.sent_messages.append({"type": command, **payload})
@@ -458,6 +624,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # What the DOM helpers' user touched, form by form, as the page keeps it
         # across renders (FeedbackManager): an event's ``_unused`` (#244)
         self._touched = testing_dom.Touched()
+        # The page as a connection holds it -- the nested components and
+        # LiveComponents it draws, their lifecycle run -- from the first time a
+        # helper reads it (_keep_page); until then render() draws anew each time
+        self._kept: _PageRepository | None = None
         self._host = _Connection(self)
         wire._post = self._post
         wire.patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
@@ -473,13 +643,32 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             if not self._handling:
                 await self._read_channel()
 
-    def _post(self, message: dict[str, t.Any] | None, hold: int | None) -> None:
-        """Mail from the component: ``message`` for the page, ``hold`` the Broadcast token it lets go."""
+    def _post(self, message: dict[str, t.Any] | None, hold: int | None, sender: "Component | None" = None) -> None:
+        """Mail from the component: ``message`` for the page, ``hold`` the Broadcast token it lets go.
+
+        ``sender`` is a component the page holds beside the mounted one. Its
+        mail to a component -- ``send_to_parent()``, a render it asks for -- and
+        any ``send_update()`` once the page is held are handled as a session
+        handles them, in their turn (:meth:`_handle_mail`).
+        """
+        kind = message.get("type") if message is not None else None
+        if self._kept is not None and (
+            kind == "update_live_component" or (sender is not None and kind in ("dispatch_event", "send_render"))
+        ):
+            self._channel.append(("page", message, hold))
+            if not self._handling:
+                # Sent from no handler -- a task of the component's: its turn comes now
+                asyncio.ensure_future(self._take_turn())
+            return
         if self._handling:
             self._channel.append(("mail", message, hold))
         else:
             # Sent from no handler -- a test calling a method itself: nothing is ahead of it
             self._write(message, hold)
+
+    async def _take_turn(self) -> None:
+        async with self._handling_message():
+            pass
 
     def _write(self, message: dict[str, t.Any] | None, hold: int | None) -> None:
         if message is not None:
@@ -493,6 +682,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             kind, item, hold = self._channel.popleft()
             if kind == "mail":
                 self._write(item, hold)
+            elif kind == "page":
+                await self._handle_mail(item)
             else:
                 await self._handle_notification(item)
 
@@ -538,8 +729,11 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         and after each event: through the recorded layer, which refuses the names a
         real one refuses (``Meta.subscriptions = {"room:42"}`` fails the join)."""
         layer = self.wire._mock_channel_layer
-        # A joined presence producer's connection hears its presence channel too (#202)
-        subscriptions = self._component.get_subscriptions() | presence.presence_channels(self._component)
+        # A joined presence producer's connection hears its presence channel too (#202),
+        # and every component the page holds subscribes on the one connection
+        subscriptions: set[str] = set()
+        for component in self._held_components():
+            subscriptions |= component.get_subscriptions() | presence.presence_channels(component)
         for group in subscriptions - self._subscriptions:
             await layer.group_add(group, "mounted")
         for group in self._subscriptions - subscriptions:
@@ -552,17 +746,17 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         The frames land in :attr:`sent_messages` as the component's own operations
         do, so :meth:`stream_ops`, :meth:`stream_html` and the rest read them alike.
         """
-        component = self._component
-        if self.is_frozen or type(component)._fqn != message["target"]:
+        if self.is_frozen:
             return
-        if message["topic"] not in component.get_subscriptions():
-            return
-        for frame in message["frames"]:
-            if not patches.reaches(frame, self._repo.vsn):
+        for component in self._held_components():
+            if type(component)._fqn != message["target"] or message["topic"] not in component.get_subscriptions():
                 continue
-            sent = json.loads(patches.join(frame, component.id))
-            received = {"type": sent["command"], **sent["payload"]}
-            (self._held_frames if self._held_tokens else self.wire.sent_messages).append(received)
+            for frame in message["frames"]:
+                if not patches.reaches(frame, self._repo.vsn):
+                    continue
+                sent = json.loads(patches.join(frame, component.id))
+                received = {"type": sent["command"], **sent["payload"]}
+                (self._held_frames if self._held_tokens else self.wire.sent_messages).append(received)
 
     async def _receive_notification(self, message: dict[str, t.Any]) -> None:
         """A notification or model mutation published in this process (#201).
@@ -922,6 +1116,14 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._repo.tell_query(urlsplit(nav.url).query)
         async with self._handling_message():
             await self._component._handle_params(params, nav.url)
+            if self._kept is not None:
+                # Every component the page holds hears the params, each rendered after (command_params_changed)
+                others = [c for c in self._held_components()[1:] if c.wire.has_joined]
+                await self._settle(self._component)
+                for component in others:
+                    if self._kept.reachable(component.id) is component:
+                        await component._handle_params(params, nav.url)
+                        await self._settle(component)
             # The session subscribes after params_changed as after any event
             await self._update_subscriptions()
 
@@ -996,50 +1198,310 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         return await self._handle(handler_name, kwargs)
 
     async def _handle(
-        self, handler_name: str, kwargs: dict[str, t.Any], meta: t.Mapping[str, t.Any] | None = None
+        self,
+        handler_name: str,
+        kwargs: dict[str, t.Any],
+        meta: t.Mapping[str, t.Any] | None = None,
+        component: "Component | None" = None,
+        args: t.Sequence[t.Any] = (),
     ) -> t.Any:
         """Run an event's handler as a session does: ``call()`` and the DOM helpers' one way in.
 
         ``meta`` is what a DOM helper's event says beyond the fields
         (``handlers.event_meta``): the handler gets the part it names.
+        ``component`` is the one the event goes to, the mounted one unless a
+        held page's element sent it to another (GAP-056, #252). On a held page
+        the component renders after the handler, as a session renders it,
+        and that settles what its render draws.
         """
         from .repository import ComponentRepository
         from .utils import filter_parameters
 
-        handler = getattr(self._component, handler_name, None)
+        component = component if component is not None else self._component
+        handler = getattr(component, handler_name, None)
         if handler is None:
-            raise AttributeError(f"Component {self._component._name} has no handler '{handler_name}'")
+            raise AttributeError(f"Component {component._name} has no handler '{handler_name}'")
         if not callable(handler):
-            raise AssertionError(f"'{handler_name}' on {self._component._name} is not callable")
+            raise AssertionError(f"'{handler_name}' on {component._name} is not callable")
         # The checks a browser's event meets (repository.dispatch_event): a test must
         # not be able to call what no client can (#110).
         if not ComponentRepository._is_valid_event_handler(
             handler_name
-        ) or not ComponentRepository._is_user_defined_method(self._component, handler_name):
+        ) or not ComponentRepository._is_user_defined_method(component, handler_name):
             raise AssertionError(
-                f"'{handler_name}' on {self._component._name} is not an event handler: a client cannot call it. "
+                f"'{handler_name}' on {component._name} is not an event handler: a client cannot call it. "
                 f"Call the component's method directly if the test means the method, not the event."
             )
 
         async with self._handling_message():
-            self._unrendered_event = True
+            if component is self._component:
+                self._unrendered_event = True
             # The server runs attached handle_event hooks first, in the same
             # message: what they mail waits with the handler's. A test must not
             # get past one.
-            if (await self._component._run_hooks("handle_event", handler_name, kwargs)).get("halt"):
+            if (await component._run_hooks("handle_event", handler_name, kwargs)).get("halt"):
                 return None
             # Arguments the handler does not take are dropped, as they are for an event
             # that carries a form's other fields.
-            with render_queries.scope("handler", self._component, handler_name):
-                result = handler(**{**filter_parameters(handler, kwargs), **handlers.named_event_meta(handler, meta)})
+            with render_queries.scope("handler", component, handler_name):
+                result = handler(
+                    *args, **{**filter_parameters(handler, kwargs), **handlers.named_event_meta(handler, meta)}
+                )
                 # Handle async handlers
                 import inspect
 
                 if inspect.iscoroutine(result):
                     result = await result
+            if self._kept is not None:
+                await self._settle(component)
             # Inside the event, as a session subscribes before it reads the next message
             await self._update_subscriptions()
         return result
+
+    # The page it holds (GAP-056, #252)
+
+    def _hold(self, component: "Component") -> None:
+        """Connect a component the page's repository built to this mount's connection (``_HeldWire``)."""
+        wire = component.wire
+        if not isinstance(wire, _HeldWire):
+            return
+        wire.sent_messages = self._wire.sent_messages
+        wire._mock_channel_layer = self._wire._mock_channel_layer
+        wire.patch_gate = self._wire.patch_gate
+        mounted = weakref.ref(self)
+
+        def post(message: dict[str, t.Any] | None, hold: int | None) -> None:
+            if (owner := mounted()) is not None:
+                owner._post(message, hold, component)
+
+        wire._post = post
+
+    def _held_components(self) -> list["Component"]:
+        """The mounted component, then every other one the page holds that a connection would reach."""
+        if self._kept is None:
+            return [self._component]
+        others = [c for c in self._kept.reachable_components() if c is not self._component]
+        return [self._component, *others]
+
+    async def _keep_page(self) -> None:
+        """Hold the page from here on, as a connection holds it: what the render draws, joined.
+
+        The page's first response draws the nested components and the
+        LiveComponents; then the page joins each nested component, and each
+        render settles the LiveComponents its pass names (``send_render``). This
+        does that once, the first time a helper reads the page; from then on each
+        event renders the component it went to and settles what that draws.
+        """
+        if self._kept is not None or self.is_frozen:
+            return
+        self._kept = _PageRepository(self, self._repo)
+        self._kept.register_component(self._component)
+        async with self._handling_message():
+            await self._settle(self._component)
+            await self._update_subscriptions()
+
+    def _target(self, component_id: str, what: str) -> "Component":
+        """The component the page holds under ``component_id``, which an event from the page goes to."""
+        if component_id == self._component.id:
+            return self._component
+        held = self._kept.reachable(component_id) if self._kept is not None else None
+        if held is None or not held.wire.has_joined:
+            raise testing_dom.DomError(
+                f"{what} goes to {component_id!r}, which the page shows and no component is joined under: "
+                "its join was refused, or it left the page"
+            )
+        return held
+
+    async def _settle(self, component: "Component") -> None:
+        """Render ``component`` as a session renders it after it handled something, and settle what it draws.
+
+        ``WireviewSession.send_render``: its pass names its LiveComponents; a
+        new one is mounted and joined (``joined()``, then the page's params), one
+        whose props changed gets ``update()`` (``update_many()`` per class), one
+        no longer named gets ``leaving()``, and each that ran a hook renders in
+        turn. A nested component its pass draws for the first time is joined, as
+        the page joins it; one it no longer draws leaves. A joined nested
+        component drawn again gets the props its drawer passes.
+        """
+        from collections import deque
+
+        from .live_component import LiveComponent, run_updates
+        from .session import WireviewSession
+
+        repo = self._kept
+        assert repo is not None
+        # Each render with how deep it is under a component the page joined: a
+        # LiveComponent renders one deeper than its parent, as the session's
+        # _render_level counts. Siblings are not counted: a list of a thousand rows is a page.
+        limit = WireviewSession.MAX_LIVE_COMPONENT_DEPTH
+        queue: deque[tuple[Component, int]] = deque([(component, 0)])
+        while queue:
+            current, depth = queue.popleft()
+            if current is not self._component and repo.components.get(current.id) is not current:
+                continue
+            if current.wire._is_frozen:
+                continue
+            if depth >= limit:
+                # Where the session logs and renders no further, the test fails: the page it would show is cut off
+                raise AssertionError(
+                    f"LiveComponents nest deeper than {limit} under {component._name}, at {current._name} "
+                    f"{current.id!r} (WireviewSession.MAX_LIVE_COMPONENT_DEPTH): a template that draws a "
+                    "component inside itself? The session renders nothing further down"
+                )
+            repo.inline_passes = []
+            evaluated = await sync_to_async(self._pass)(current, repo)
+            if isinstance(current.wire, _HeldWire):
+                # What its joined() or update() sent goes behind its render
+                await current.wire.flush_pending()
+            if not evaluated:
+                continue
+            batch = repo.take_lifecycle(current.id)
+            for inner_id, rendered in repo.inline_passes:
+                repo._settle(inner_id, rendered, batch)
+            leaving = list(batch.retired)
+            for kept in batch.entombed:
+                # The page lets go of what the render took away, and leaves it
+                leaving += repo.bury(kept.id)
+            await self._leave(leaving)
+            refused: set[str] = set()
+            for child in batch.new:
+                if not await self._join(child):
+                    refused.add(child.id)
+            if batch.updates:
+                for child, _props in batch.updates:
+                    child.wire.enter_pending_mode()
+
+                def _raise(_cls: t.Any, _component: t.Any, error: BaseException) -> None:
+                    raise error
+
+                await run_updates(batch.updates, _raise)
+            # Then each child renders, and what it draws, before its next sibling: the session's _render_level
+            # goes depth first through to_render (each child once)
+            queue.extendleft(reversed([(c, depth + 1) for c in batch.to_render if c.id not in refused]))
+            for nested in list(repo.components.values()):
+                if nested is self._component or isinstance(nested, LiveComponent) or nested.wire.has_joined:
+                    continue
+                # The page joins what the render brought, in the order it is on the page: each join is a
+                # render tree of its own, as the session's command_join is
+                if await self._join(nested):
+                    queue.append((nested, 0))
+
+    def _pass(self, component: "Component", repo: _PageRepository) -> bool:
+        """One template pass of ``component`` on the held page, as a socket renders it. Whether it ran."""
+        repo.begin_render(component.id)
+        try:
+            component.wire.render(component, repo)
+        except BaseException:
+            # Nothing of it reached the page: what it stopped drawing is still there
+            repo.render_failed()
+            raise
+        return component.wire.template_evaluated
+
+    async def _join(self, component: "Component") -> bool:
+        """Join ``component`` as the session does: its mount hooks, ``joined()``, then the page's params.
+
+        Whether it joined. A refusal gives it up, as a session does; what
+        ``joined()`` or a hook raises fails the test, where a session logs it.
+        """
+        repo = self._kept
+        assert repo is not None
+        component.wire.enter_pending_mode()
+        try:
+            mounted = await component._mount(repo.params, repo.session)
+        except Exception:
+            repo.abandon(component)
+            component.wire.has_joined = True
+            raise
+        if not mounted:
+            repo.abandon(component)
+            component.wire.has_joined = True
+            await component.wire.flush_pending()
+            return False
+        try:
+            with render_queries.scope("joined", component):
+                await component.joined()
+        finally:
+            component.wire.has_joined = True
+        if repo.params:
+            await component._handle_params(dict(repo.params), f"?{repo.get_query_string()}")
+        return True
+
+    async def _leave(self, components: list["Component"]) -> None:
+        """``leaving()`` for each component the page let go that had joined, then its tasks cancelled."""
+        for component in components:
+            try:
+                if component.wire.has_joined:
+                    await component.leaving()
+            finally:
+                component._cancel_async_tasks()
+                await presence.left(component, None)
+
+    async def _handle_mail(self, message: dict[str, t.Any]) -> None:
+        """Mail between the components of a held page, handled as a session handles it.
+
+        ``send_to_parent()`` and ``wire.defer()`` (``dispatch_event``) run the
+        handler on the instance they were sent for; ``send_update()`` runs the
+        LiveComponent's ``update()`` (and is kept in ``sent_messages``, as it
+        was); a render a component asks for renders it. Each renders what it
+        changed and settles that.
+        """
+        from .live_component import LiveComponent
+
+        repo = self._kept
+        assert repo is not None
+        kind = message["type"]
+        async with self._handling_message():
+            if kind == "dispatch_event":
+                target = repo.reachable(message["id"])
+                if target is None or target.wire.instance != message.get("instance"):
+                    return
+                await self._handle(
+                    message["command"],
+                    dict(message.get("kwargs") or {}),
+                    component=target,
+                    args=message.get("args") or (),
+                )
+            elif kind == "send_render":
+                target = repo.reachable(message["id"])
+                if target is not None and target.wire.instance == message.get("instance"):
+                    await self._settle(target)
+                    await self._update_subscriptions()
+            elif kind == "update_live_component":
+                self.wire.sent_messages.append(message)
+                target = repo.reachable(message["live_component_id"])
+                if (
+                    not isinstance(target, LiveComponent)
+                    or target.wire.instance != message.get("instance")
+                    or target._parent_id != message["parent_id"]
+                ):
+                    return
+                with render_queries.scope("handler", target, "update"):
+                    await target.update(**message["assigns"])
+                await self._settle(target)
+                await self._update_subscriptions()
+
+    async def child(self, component_id: str, /) -> "MountedChild":
+        """The component the page holds under ``component_id``: a nested one, or a LiveComponent.
+
+        Phoenix's ``find_live_child``. The page is held from here on, as the DOM
+        helpers hold it: what the mounted component draws is joined and its
+        LiveComponents' lifecycle runs. ``call()`` on what this returns runs a
+        handler of that component as an event the page sends it; the page's
+        elements reach it through :meth:`click` and the other helpers too.
+
+        Raises:
+            AssertionError: the page holds no component under that id. The
+                message lists the ones it holds.
+        """
+        await self._keep_page()
+        held = self._kept.reachable(component_id) if self._kept is not None else None
+        if held is None or held is self._component:
+            names = ", ".join(f"{c.id!r} ({c._name})" for c in self._held_components()[1:]) or "none"
+            raise AssertionError(
+                f"The page {self._component._name} draws holds no component under {component_id!r} "
+                f"besides the mounted one. It holds: {names}"
+            )
+        return MountedChild(self, component_id)
 
     # The page's elements (GAP-056)
 
@@ -1228,6 +1690,52 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
         return await self._act(act)
 
+    async def submit_form(
+        self,
+        selector: str = "form",
+        /,
+        *,
+        values: dict[str, t.Any] | None = None,
+        submitter: str | None = None,
+        text: str | re.Pattern[str] | None = None,
+        client: "Client | None" = None,
+        follow: bool = False,
+    ) -> "HttpResponse":
+        """Send the form ``selector`` picks to its action over HTTP, as the browser's own submission does.
+
+        The request is the one a page without script makes -- or one whose code
+        calls ``form.submit()``: the form's method and action (the submit
+        button's ``formmethod``/``formaction``/``formenctype`` win), against the
+        page's address (``mount(..., path=...)`` and its params), and the fields
+        in the order the page has them, each a field of its own even when two
+        share a name. ``values`` and ``submitter`` as :meth:`submit` takes them; a
+        submit button sends its name only when it is the one pressed. No submit
+        event goes to a handler.
+
+        It runs through Django's test ``Client`` -- the project's URLconf,
+        middleware and view -- with CSRF checks on: the page's CSRF cookie (or
+        session secret, with ``CSRF_USE_SESSIONS``) is the one the rendered
+        ``{% csrf_token %}`` was masked from, the mount's user is logged in and
+        its session data is in the session. Pass ``client`` to send with your own
+        (its cookies are kept; the CSRF secret and login are added to them).
+
+        Returns the response (``follow=True`` follows redirects, as the client
+        does). A file field is sent empty: uploads are not driven here.
+
+        Example:
+            response = await view.submit_form("form#signup", values={"email": "a@example.com"})
+            assert response.status_code == 302
+        """
+        page = await self._page()
+        form = page.find(selector, text, what="form")
+        button = page.find(submitter, what="submit button") if submitter is not None else None
+        page_url = None
+        if self._path is not None:
+            query = self._repo.get_query_string()
+            page_url = f"http://testserver{self._path}{'?' + query if query else ''}"
+        sent = page.http_submission(form, values, button, page_url)
+        return await sync_to_async(_send_submission)(sent, self, client, follow)
+
     async def hook_event(
         self,
         selector: str,
@@ -1258,16 +1766,19 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
         page = await self._page()
         el = page.find(selector, text)
-        hook_id = page.hook_id(el, hook)
+        owner_id, hook_id = page.hook_id(el, hook)
         try:
             sent = json.loads(json.dumps(payload or {}))
         except (TypeError, ValueError) as error:
             raise TypeError(f"A hook pushes JSON, and {payload!r} is not: {error}") from None
-        component = self._component
+        component = self._target(owner_id, f"the hook of {el.describe()}")
         async with self._handling_message():
-            self._unrendered_event = True
+            if component is self._component:
+                self._unrendered_event = True
             with render_queries.scope("handler", component, f"handle_hook_event({event!r})"):
                 response = await component.handle_hook_event(hook_id, event, sent)
+            if self._kept is not None:
+                await self._settle(component)
             await self._update_subscriptions()
         try:
             return json.loads(json.dumps(response))
@@ -1279,6 +1790,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
     async def _page(self) -> testing_dom.Page:
         """The page as the browser holds it now: the render, with the stream items in it."""
+        await self._keep_page()
         # Off the loop, as a page's render is: a template may await an async property
         html = await sync_to_async(self.render)()
         if html is None:
@@ -1296,10 +1808,15 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         page = await self._page()
         # Every event of one action is read from the page before any answer, as
         # the browser dispatches them all before the server's render comes back
-        for event in action(page):
+        events = action(page)
+        targets = [
+            self._target(event.component_id, f"the {event.event_type} binding of {event.element.describe()}")
+            for event in events
+        ]
+        for event, target in zip(events, targets, strict=True):
             # What the session does with a user_event's two halves (command_user_event)
             kwargs = dict(parse_request_data(MultiValueDict(event.implicit_args)), **event.explicit_args)
-            await self._handle(event.handler, kwargs, handlers.event_meta(event.meta))
+            await self._handle(event.handler, kwargs, handlers.event_meta(event.meta), component=target)
         return await sync_to_async(self.render)()
 
     def render(self) -> str | None:
@@ -1313,7 +1830,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         Returns:
             The rendered HTML string, or None if frozen/redirected
         """
-        html = self._wire.render(self._component, self._repo.for_render(self._component))
+        repo = self._kept.redraw() if self._kept is not None else self._repo.for_render(self._component)
+        html = self._wire.render(self._component, repo)
         if html is not None:
             self._check_page(html)
         return html
@@ -1322,29 +1840,29 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         """``TEST_PAGE_CHECKS``: say what is wrong with the page's structure, or nothing (the default)."""
         import warnings
 
-        from django.core.exceptions import ImproperlyConfigured
-
-        from . import settings as wireview_settings
         from .core.handlers import is_client_callable
 
-        policy = wireview_settings.TEST_PAGE_CHECKS
-        if policy == "ignore":
+        policies, skip_forms = _page_check_policy()
+        if not any(policy != "ignore" for policy in policies.values()):
             return
-        if policy not in ("warn", "raise"):
-            raise ImproperlyConfigured(
-                f'WIREVIEW["TEST_PAGE_CHECKS"] is {policy!r}; it takes "ignore", "warn" or "raise"'
-            )
+
+        def callable_handler(component_id: str, name: str) -> bool | None:
+            if component_id == self._component.id:
+                return is_client_callable(self._component, name)
+            held = self._kept.reachable(component_id) if self._kept is not None else None
+            return is_client_callable(held, name) if held is not None else None
+
         page = testing_dom.Page(html, self._component.id, self._wire.sent_messages.stream_ops)
-        problems = testing_dom.page_problems(page, lambda name: is_client_callable(self._component, name))
-        if not problems:
-            return
-        if policy == "raise":
+        problems = testing_dom.page_problems(page, callable_handler, skip_forms)
+        for check, problem in problems:
+            if policies[check] == "warn":
+                warnings.warn(f"wireview TEST_PAGE_CHECKS: {problem}", UserWarning, stacklevel=3)
+        raised = [f"{problem} ({check})" for check, problem in problems if policies[check] == "raise"]
+        if raised:
             raise AssertionError(
-                f"The page {self._component._name} draws has {len(problems)} problem(s) "
-                '(WIREVIEW["TEST_PAGE_CHECKS"] = "raise"):\n- ' + "\n- ".join(problems)
+                f"The page {self._component._name} draws has {len(raised)} problem(s) "
+                '(WIREVIEW["TEST_PAGE_CHECKS"]):\n- ' + "\n- ".join(raised)
             )
-        for problem in problems:
-            warnings.warn(f"wireview TEST_PAGE_CHECKS: {problem}", UserWarning, stacklevel=3)
 
     async def render_diff(self) -> dict[str, t.Any] | None:
         """What the next live render sends the client (#117).
@@ -1391,6 +1909,137 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             q.assert_no_repeats()
         """
         return render_queries.Queries()
+
+
+class MountedChild:
+    """A component the page of a mounted one holds: ``await view.child(id)`` (GAP-056, #252).
+
+    It names the component by id and finds it on the page each time: a render
+    that draws it anew under the id hands over the new instance, and one that
+    takes it off the page leaves this naming nothing.
+    """
+
+    def __init__(self, mounted: MountedComponent, component_id: str) -> None:
+        self._mounted = mounted
+        self.id = component_id
+
+    @property
+    def component(self) -> "Component":
+        """The instance the page holds under the id now."""
+        held = self._mounted._kept.reachable(self.id) if self._mounted._kept is not None else None
+        if held is None:
+            raise AssertionError(f"The page holds no component under {self.id!r} any more: a render took it away")
+        return held
+
+    async def call(self, handler_name: str, **kwargs: t.Any) -> t.Any:
+        """Run a handler of this component as the page's event does, then render it (``MountedComponent.call``)."""
+        return await self._mounted._handle(handler_name, kwargs, component=self.component)
+
+
+def _page_check_policy() -> tuple[dict[str, str], list[testing_dom.Selector]]:
+    """``WIREVIEW["TEST_PAGE_CHECKS"]`` read: each check's policy, and the forms the recover check skips.
+
+    One word sets every check; a dict sets each by name (a check it leaves out
+    is ``"ignore"``) and may name, under ``"skip_forms"``, selectors of forms the
+    ``recover_form`` check does not look at.
+    """
+    from django.core.exceptions import ImproperlyConfigured
+
+    from . import settings as wireview_settings
+
+    setting = wireview_settings.TEST_PAGE_CHECKS
+    policies = ("ignore", "warn", "raise")
+    if isinstance(setting, str):
+        if setting not in policies:
+            raise ImproperlyConfigured(
+                f'WIREVIEW["TEST_PAGE_CHECKS"] is {setting!r}; it takes "ignore", "warn" or "raise", '
+                "or a dict of them by check"
+            )
+        return dict.fromkeys(testing_dom.PAGE_CHECKS, setting), []
+    if not isinstance(setting, dict):
+        raise ImproperlyConfigured(
+            f'WIREVIEW["TEST_PAGE_CHECKS"] is {setting!r}; it takes "ignore", "warn" or "raise", or a dict of them'
+        )
+    unknown = sorted(set(setting) - {*testing_dom.PAGE_CHECKS, "skip_forms"})
+    if unknown:
+        raise ImproperlyConfigured(
+            f'WIREVIEW["TEST_PAGE_CHECKS"] names {unknown}, which are not checks; the checks are '
+            f"{list(testing_dom.PAGE_CHECKS)}, and skip_forms lists forms the recover_form check skips"
+        )
+    chosen = {check: setting.get(check, "ignore") for check in testing_dom.PAGE_CHECKS}
+    if wrong := {check: policy for check, policy in chosen.items() if policy not in policies}:
+        raise ImproperlyConfigured(
+            f'WIREVIEW["TEST_PAGE_CHECKS"] sets {wrong}; each check takes "ignore", "warn" or "raise"'
+        )
+    skip = setting.get("skip_forms", [])
+    if isinstance(skip, str) or not isinstance(skip, (list, tuple)):
+        raise ImproperlyConfigured('WIREVIEW["TEST_PAGE_CHECKS"]["skip_forms"] is a list of CSS selectors')
+    try:
+        selectors = [testing_dom.Selector(each) for each in skip]
+    except ValueError as error:
+        raise ImproperlyConfigured(f'WIREVIEW["TEST_PAGE_CHECKS"]["skip_forms"]: {error}') from None
+    return chosen, selectors
+
+
+def _send_submission(
+    sent: testing_dom.Submission, mounted: MountedComponent, client: "Client | None", follow: bool
+) -> "HttpResponse":
+    """Make the request of ``sent`` with a test client that holds the mounted page's cookies."""
+    import uuid
+    from urllib.parse import urlencode, urlsplit
+
+    from django.conf import settings as django_settings
+    from django.middleware.csrf import CSRF_SESSION_KEY
+    from django.test import Client
+
+    if client is None:
+        client = Client(enforce_csrf_checks=True)
+    user = mounted._repo.user
+    from django.contrib.auth.base_user import AbstractBaseUser
+
+    if isinstance(user, AbstractBaseUser) and user.is_authenticated:
+        client.force_login(user)
+    data = dict(mounted._repo.session or {})
+    secret = mounted._repo._page_csrf.secret
+    if data or django_settings.CSRF_USE_SESSIONS:
+        session = client.session
+        session.update(data)
+        if django_settings.CSRF_USE_SESSIONS:
+            session[CSRF_SESSION_KEY] = secret
+        session.save()
+        # Signed-cookie sessions get a new cookie value when their contents change.
+        if session.session_key is not None:
+            client.cookies[django_settings.SESSION_COOKIE_NAME] = session.session_key
+    if not django_settings.CSRF_USE_SESSIONS:
+        client.cookies[django_settings.CSRF_COOKIE_NAME] = secret
+
+    flat = [(name, "" if value is None else value) for name, value in sent.entries]
+    if sent.method == "get":
+        path = urlsplit(sent.action)._replace(query=urlencode(flat)).geturl()
+        return t.cast("HttpResponse", client.get(path, follow=follow))
+    if sent.enctype == "multipart/form-data":
+        boundary = f"----wireview{uuid.uuid4().hex}"
+        parts: list[bytes] = []
+        for name, value in sent.entries:
+            quoted = name.replace("\r", "%0D").replace("\n", "%0A").replace('"', "%22")
+            if value is None:
+                parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="{quoted}"; filename=""\r\n'
+                    "Content-Type: application/octet-stream\r\n\r\n\r\n".encode()
+                )
+            else:
+                parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="{quoted}"\r\n\r\n{value}\r\n'.encode()
+                )
+        body = b"".join(parts) + f"--{boundary}--\r\n".encode()
+        content_type = f"multipart/form-data; boundary={boundary}"
+    elif sent.enctype == "text/plain":
+        body = "".join(f"{name}={value}\r\n" for name, value in flat).encode()
+        content_type = "text/plain"
+    else:
+        body = urlencode(flat).encode()
+        content_type = "application/x-www-form-urlencoded"
+    return t.cast("HttpResponse", client.post(sent.action, data=body, content_type=content_type, follow=follow))
 
 
 async def mount(

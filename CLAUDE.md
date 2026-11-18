@@ -161,7 +161,7 @@ wireview/
 ├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W025)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
-├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
+├── testing.py             mount(), MountedComponent, ComponentTestCase. DOM 헬퍼와 child()는 중첩 인스턴스의 생명주기를 유지한다. submit_form()은 Django 테스트 클라이언트로 폼을 제출한다(#252). mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
 │                          구독한 채널의 알림·모델 변경도 세션의 규칙(core/notifications.deliver)으로 받고 render를 sent_messages에 남긴다(#201).
 │                          핸들러(이벤트·joined()·params_changed·알림)가 보낸 메일은 연결의 채널처럼 핸들러가 끝난 뒤 쓰고, 그 사이 온 알림도 그 줄에 선다.
 │                          Broadcast 패치는 기다리지 않고 바로 쓴다 — 브라우저와 같은 순서(#205). joined()는 세션처럼 pending 모드라 그 broadcast는

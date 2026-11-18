@@ -22,7 +22,7 @@ async def test_increment():
 `mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, path=None, state=None, **initial_state)`.
 옵션은 모두 키워드로 준다. `params`를 주면 페이지 로드의 join처럼 `joined()` 뒤에 `params_changed()`가 그 값으로
 돈다. `LiveComponent`를 마운트해도 같다 — 페이지에서 처음 그려질 때 그 순서로 듣는다(#170). 마운트한 컴포넌트의
-템플릿이 그리는 자식 LiveComponent의 수명주기는 돌지 않는다(`render()` 참고). `path`는 컴포넌트가 놓인 페이지의 경로(`"/items/"`)이고, `follow_push()`가 patch인지 가린다(아래).
+템플릿이 그리는 자식의 수명주기는 DOM 헬퍼나 `child()`가 페이지를 처음 읽을 때부터 돈다([페이지를 지니기](#페이지를-지니기)). `path`는 컴포넌트가 놓인 페이지의 경로(`"/items/"`)이고, `follow_push()`가 patch인지 가린다(아래).
 필드 초깃값은 키워드(`count=0`)나 `state={"count": 0}`로 준다. 옵션과 이름이 같은
 필드(`params` 같은)는 `state=`로만 줄 수 있다 — 이후 릴리스가 옵션을 더해도 그 필드는 `state=`로 계속 줄 수 있다.
 같은 필드를 두 곳에 주면 `TypeError`다.
@@ -33,11 +33,45 @@ async def test_increment():
 `None`이거나 리다이렉트 메타뿐이고, `view.is_frozen`이 참이다. 컴포넌트 인스턴스는 그대로
 돌려주므로 훅이 무엇을 했는지는 검사할 수 있다.
 
-**`view.render()`는 페이지의 첫 응답(HTTP 렌더)과 같게 그린다.** 템플릿의 `{% component %}`와
+**`view.render()`는 처음에는 페이지의 첫 응답(HTTP 렌더)과 같게 그린다.** 템플릿의 `{% component %}`와
 `{% live_component %}` 자식도 그 자리에 함께 그려지고, 자식의 `Meta.on_mount` 훅도 돈다. 첫 응답이
-그렇듯 **LiveComponent 자식의 `joined()`·`update()`는 돌지 않는다** — 소켓에서 그것을 돌리는 것은
-컨슈머이고 `mount()`에는 컨슈머가 없다. 그래서 자식은 부모가 넘긴 props와 기본값으로 그려진다.
+그렇듯 자식의 `joined()`·`update()`는 돌지 않고, 자식은 부모가 넘긴 props와 기본값으로 그려진다.
 `render()`를 부를 때마다 처음부터 다시 그리므로, 부모가 바뀐 뒤의 `render()`는 바뀐 props로 그린다.
+DOM 헬퍼(`click()` 등)나 `child()`가 페이지를 한 번 읽으면 그때부터는 연결처럼 페이지를 지닌다(아래).
+
+### 페이지를 지니기
+
+DOM 헬퍼(`click()`·`change()`·`input()`·`submit()`·키·포커스·`hook_event()`·`submit_form()`)나 `child()`가 페이지를 처음
+읽을 때 `mount()`는 브라우저가 연 연결처럼 그 페이지를 지니기 시작한다(#252). 그 뒤로는 소켓의 세션과 같다.
+
+- 페이지가 그린 중첩 `{% component %}`는 페이지가 join한다: `on_mount` 훅, `joined()`, 페이지의 params면 `params_changed()`.
+  LiveComponent는 부모의 렌더가 자리를 잡는다 — 새것은 마운트되고 `joined()`, props가 바뀐 것은 `update()`
+  (클래스마다 `update_many()`), 더는 그리지 않는 것은 `leaving()`이 돌고 그 비동기 작업은 취소되며 구독도 풀린다.
+- 인스턴스와 그 상태는 렌더 사이에 남는다. 이벤트는 그 요소가 속한 컴포넌트(가장 가까운 컴포넌트 요소, `myself=True`면
+  그 LiveComponent)에게 가고, 그 컴포넌트가 세션처럼 다시 그려진 뒤 그 렌더가 그린 것의 수명주기가 돈다. 중첩 컴포넌트는
+  부모가 다시 그릴 때 부모가 넘기는 props를 받고 자기 필드는 지킨다. `view.call()`도 페이지를 지닌 뒤에는 부모를
+  다시 그리고 자식을 정리한다.
+- 컴포넌트 사이의 메일은 연결처럼 핸들러가 끝난 뒤 돈다: `send_to_parent()`·`wire.defer()`는 보낸 인스턴스의 것에,
+  `send_update()`는 부모가 그린 그 인스턴스에, `send_render()`는 그 컴포넌트를 다시 그린다. 같은 id로 새로 그려진
+  인스턴스는 옛 인스턴스의 메일을 받지 않는다(#233). 알림·`Broadcast`·params 변경도 페이지가 지닌 모든 컴포넌트가 받는다.
+- 거절된 자식(`on_mount` 훅의 halt, `Meta.live_sessions`)은 첫 응답에서처럼 그려지지 않고 페이지에 남지 않는다 —
+  그 id로는 이벤트도 `child()`도 닿지 않는다. 훅이나 `joined()`가 던지면 루트 `mount()`처럼 테스트가 실패한다(세션은
+  기록하고 넘어간다).
+- 중첩 깊이는 세션과 같다: LiveComponent가 `MAX_LIVE_COMPONENT_DEPTH`(8)보다 깊게 들어가면 세션은 더 그리지 않고
+  기록하지만, 여기서는 그 자리를 말하며 실패한다. 형제의 수에는 상한이 없다.
+
+```python
+view = await mount(Family, id="family")
+pet = await view.child("pet")                # Phoenix의 find_live_child: 페이지가 그 id로 지닌 컴포넌트
+await pet.call("pet")                        # 그 컴포넌트에게 가는 이벤트. 그 뒤 다시 그린다
+assert pet.component.pets == 1
+await view.click("[data-testid=rename]")     # 부모의 이벤트: 자식의 update()가 돈다
+```
+
+`child(id)`는 `MountedChild`를 돌려준다. `.component`는 지금 그 id의 인스턴스이고(렌더가 새로 그렸으면 새것,
+치웠으면 `AssertionError`), `.call(handler, **kwargs)`는 `view.call()`처럼 핸들러를 이벤트로 부른다. 페이지에 그 id가 없으면
+지닌 컴포넌트를 나열하며 실패한다. 페이지를 지니기 전의 `render()`·`call()`은 예전과 같다 — 첫 응답만 보는 테스트는
+바뀌지 않는다. `render_diff()`는 언제나 마운트한 컴포넌트의 다음 라이브 렌더다.
 
 ## MountedComponent
 
@@ -45,8 +79,10 @@ async def test_increment():
 |------|------|
 | `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로. 템플릿의 바인딩은 보지 않는다 — 그것까지 보려면 아래 행 |
 | `await view.click(selector, *, text=None)` 외 `change`·`input`·`submit`·`keydown`·`keyup`·`focus`·`blur` | 렌더의 요소를 골라 그 이벤트를 보낸다. 요소의 `wire-on-*` 바인딩대로 핸들러가 불린다 — 아래 "페이지의 요소로 이벤트 보내기" |
+| `await view.child(id)` | 페이지가 그 id로 지닌 중첩 컴포넌트·LiveComponent(`MountedChild`: `.component`, `.call()`). 페이지를 지니기 시작한다 — [페이지를 지니기](#페이지를-지니기) |
+| `await view.submit_form(selector="form", *, values=None, submitter=None, text=None, client=None, follow=False)` | 폼을 HTTP로 그 `action`에 보내고 응답을 돌려준다 — [폼의 HTTP 제출](#폼의-http-제출) |
 | `view.component` | 컴포넌트 인스턴스 |
-| `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
+| `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 처음에는 페이지의 첫 응답처럼, 페이지를 지닌 뒤에는 지닌 인스턴스로 그린다 — 아래 참고 |
 | `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. **약속하는 것은 `None`인지 아닌지뿐이고**, diff의 모양은 와이어 프로토콜이라 공개가 아니다. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 단 컴포넌트가 알림을 받으면 그 렌더도 기준선을 옮긴다 — 페이지가 이미 받은 것이므로 알림이 그린 것은 `sent_messages`의 `render`에 있고, 그 뒤의 `render_diff()`는 알림 뒤의 변화만 본다(바뀐 것이 없으면 `None`, 아래 "알림 받기"). `render_diff()`로 기준선을 잡은 뒤 `call()`한 이벤트가 있으면, 다음 알림이 그 이벤트의 렌더를 먼저 해 `render`로 남긴다(세션이 이벤트마다 렌더하듯. `skip_render()`했으면 남기지 않는다). 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다. `Meta.shared_render`를 선언한 컴포넌트는 `DEBUG`와 상관없이 검사한다 — 렌더가 `user`·`session`·`request` 등을 읽으면 `SharedRenderError`다(`VERIFY_SHARED_RENDER = False`로 끈다, [shared-render](./shared-render.md#틀린-선언-잡기)) |
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.redirected_to` | `wire.redirect_to()`로 간 URL. 없으면 `None`. 단언은 `assert_redirected_to()`가 낫다 — 실패하면 일어난 이동을 나열한다 |
@@ -135,8 +171,8 @@ assert "3번 점" in view.render()
 ```
 
 고른 요소에 `wire-hook`이 있어야 하고, `hook=`은 그 이름 중 하나여야 한다(`wire-hook="Chart Tooltip"`처럼 여럿이면
-꼭 준다). 훅은 그 요소를 품은 컴포넌트의 것이라 그것이 마운트한 컴포넌트여야 한다(중첩 컴포넌트의 훅이면 그 컴포넌트를
-마운트하라며 실패한다). `handle_hook_event(hook_id, event, payload)`가 세션에서처럼 돈다 — `hook_id`는
+꼭 준다). 훅은 그 요소를 품은 컴포넌트의 것이고, 중첩 컴포넌트의 것이면 그 컴포넌트의 `handle_hook_event`에 간다.
+`handle_hook_event(hook_id, event, payload)`가 세션에서처럼 돈다 — `hook_id`는
 `"<컴포넌트 id>:<훅 이름>:test"`이고, `payload`와 응답은 JSON을 지난 값이다(튜플은 리스트가 된다). JSON으로 보낼 수 없는
 응답은 소켓에서처럼 실패한다(`TypeError`). 훅이 이벤트를 보내는지, 언제 보내는지는 JavaScript의 일이라 브라우저 E2E로 본다.
 
@@ -181,12 +217,7 @@ assert "3번 점" in view.render()
 - 포커스를 받을 수 없는 요소에 `focus`·`blur`를 했다(칸·버튼·`href` 있는 링크·`tabindex`·`contenteditable` 밖).
 - 요소가 disabled다(자신, 감싼 `<button disabled>`, `<fieldset disabled>` — 그 첫 `<legend>` 안은 아니다). readonly·
   `type=hidden` 칸에 값을 넣으려 했다. 칸이 아닌 요소에 값을 주었다. 값의 타입이 칸과 맞지 않다.
-- 바인딩이 다른 컴포넌트(중첩 `{% component %}`, LiveComponent)의 것이다. `mount()`는 마운트한 컴포넌트의 핸들러만
-  돌리므로, 그 컴포넌트를 따로 `mount()`해 시험한다. `mount()`의 `render()`는 페이지의 첫 응답처럼 렌더마다 자식을
-  새로 그리고 자식의 `joined()`·`update()`·`leaving()`을 돌리지 않는다 — 자식의 핸들러가 바꾼 상태는 다음 렌더에
-  남지 않고, `send_to_parent()`는 부모에게 가지 않는다. 그래서 부모를 마운트한 채 자식의 요소를 누르는 것은 지원하지
-  않는다(그러려면 `mount()`가 소켓의 세션처럼 저장소를 렌더 사이에 지니고 자식의 수명주기를 돌려야 한다, #252).
-  자식과 부모가 함께 움직이는 것(`send_to_parent`, 부모의 다시 그리기가 자식에 주는 props)은 브라우저 E2E로 본다.
+- 바인딩이 가는 컴포넌트가 페이지에 join되어 있지 않다(거절된 자식, 이미 떠난 자식).
 - `submit`이 막히지 않는다(`.prevent`가 없다). 브라우저는 그 폼을 `action`으로 보내 페이지를 떠난다. 폼 안의
   `<button>`(기본 type이 submit)에 `{% on "click" %}`만 걸고 `.prevent`를 잊은 경우도 여기서 잡힌다.
 - `JS()` 체인이 `push`로 서버 이벤트를 보낸다. 헬퍼는 JavaScript를 돌리지 않으므로 무엇이 갈지 말할 수 없다.
@@ -208,14 +239,62 @@ WIREVIEW = {"TEST_PAGE_CHECKS": "raise"}
 | 같은 id의 컴포넌트 둘 이상 | 페이지는 id마다 컴포넌트 하나만 지닌다 — join·이벤트·렌더가 섞인다 |
 | 아무것도 복구하지 못하는 `wire-auto-recover` 폼 | 값 없는 것은 재연결 뒤 폼의 `change`를 다시 보내는데 그것을 받는 `{% on "change" %}`가 폼과 그 위에 없다. 핸들러 이름을 단 것은 그 이름이 마운트한 컴포넌트에서 클라이언트가 부를 수 있는 핸들러가 아니다 |
 
+검사마다 정책을 따로 두려면 dict로 준다(Phoenix 1.2의 `test_warnings`). 빠진 검사는 `"ignore"`이고, `skip_forms`는
+`recover_form` 검사가 보지 않을 폼의 CSS 선택자 목록이다 — 일부러 복구하지 않는 폼에 쓴다.
+
+```python
+WIREVIEW = {
+    "TEST_PAGE_CHECKS": {
+        "duplicate_component": "raise",
+        "duplicate_id": "warn",
+        "recover_form": "raise",
+        "skip_forms": ["form.search"],
+    }
+}
+```
+
+| 검사 | 실수 |
+|------|------|
+| `duplicate_id` | 같은 `id`의 요소 둘 이상 |
+| `duplicate_component` | 같은 id의 컴포넌트 둘 이상 |
+| `recover_form` | 아무것도 복구하지 못하는 `wire-auto-recover` 폼. 페이지를 지닌 뒤에는 중첩 컴포넌트의 폼도 그 컴포넌트의 핸들러로 본다 |
+
+모르는 검사 이름, 정책이 아닌 값, 목록이 아닌 `skip_forms`, 읽을 수 없는 선택자는 `ImproperlyConfigured`다.
 `"warn"`은 실수마다 `wireview TEST_PAGE_CHECKS: `로 시작하는 `UserWarning`이다(`pytest -W "error:wireview TEST_PAGE_CHECKS"`로
-오류로 바꿀 수 있다). `"raise"`는 실수를 모두 나열하는 `AssertionError`다. `render()`를 거치는 DOM 헬퍼(`click()` 등)도
+오류로 바꿀 수 있다). `"raise"`는 그 정책의 실수를 모두 검사 이름과 함께 나열하는 `AssertionError`다. `render()`를 거치는 DOM 헬퍼(`click()` 등)도
 같은 검사를 받는다. 자리를 `mount()`의 인자가 아니라 설정으로 둔 것은 페이지 구조가 한 테스트가 아니라 프로젝트의
 정책이기 때문이다 — 인자였다면 모든 `mount()`와 픽스처를 고쳐야 한다.
 
 **하지 않는 것.** JavaScript는 돌지 않는다: `JS()` 체인(push가 없으면 건너뛴다), 훅의 코드(`hook_event()`는 훅이 보낼
 것을 대신 보낼 뿐이다), 로딩 클래스, `wire-disabled-with`는
-없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. 중첩 컴포넌트에 보내기, 폼의 HTTP 제출, 업로드는 아직 없다(#252 2단계, GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
+없다. 브라우저의 폼 검증(`required`·`pattern`)도 하지 않는다. 업로드는 아직 없다(GAP-057). 그런 것은 `call()`과 브라우저 E2E로 본다.
+
+### 폼의 HTTP 제출
+
+`await view.submit_form(selector="form", *, values=None, submitter=None, text=None, client=None, follow=False)`는 폼을
+브라우저가 스크립트 없이 제출할 때(또는 페이지 코드가 `form.submit()`할 때) 보내는 HTTP 요청을 Django 테스트 `Client`로
+보내고 응답을 돌려준다(Phoenix의 `submit_form`). 프로젝트의 URLconf·미들웨어·뷰를 그대로 지난다. 제출 이벤트는 핸들러에
+가지 않는다.
+
+```python
+view = await mount(Signup, path="/signup/")
+response = await view.submit_form("form#signup", values={"email": "a@example.com"}, submitter="button[name=plan]")
+assert response.status_code == 302
+```
+
+- **목적지.** 폼의 `method`·`action`·`enctype`, 누른 버튼의 `formmethod`·`formaction`·`formenctype`이 이긴다. 상대 주소와
+  빈 `action`은 페이지 주소(`mount(..., path=...)`와 그 params)에 대해 푼다 — `path`가 없는데 그것이 필요하면 실패한다.
+  GET은 `action`의 쿼리를 칸으로 바꾼다. 다른 출처로 가는 폼은 테스트 클라이언트가 닿지 않으므로 실패한다.
+- **칸.** HTML의 제출 목록 그대로다: 문서 순서, `form=` 연결 칸 포함, disabled 제외, 버튼은 누른 것만, checkbox·radio는 체크된 것,
+  select는 선택된 옵션마다, 줄바꿈은 CRLF. **같은 이름의 칸은 자리마다 따로 간다** — 칸, 같은 이름의 누른 버튼, 칸이면 뷰의
+  `request.POST.getlist(name)`이 그 순서다. `application/x-www-form-urlencoded`·`multipart/form-data`·`text/plain`을 쓴다.
+  파일 칸은 파일 없이 빈 파트로 간다(업로드는 GAP-057).
+- **CSRF.** 기본 클라이언트는 `Client(enforce_csrf_checks=True)`다. 렌더한 `{% csrf_token %}`을 마스킹한 페이지의 시크릿을
+  CSRF 쿠키로(`CSRF_USE_SESSIONS`면 세션에) 둔다 — 토큰을 그리지 않은 폼은 브라우저처럼 403이다. `mount()`의 `user`는
+  로그인되고 `session` 데이터는 세션에 들어간다. `client=`로 자기 클라이언트를 주면 그 쿠키에 이것들을 더한다.
+- `follow=True`는 클라이언트처럼 리다이렉트를 따라간다.
+
+같은 폼들을 브라우저가 제출해 뷰가 받은 것과 비교하는 것은 `tests/test_dom_events_e2e.py`다.
 
 ## 내비게이션 단언
 
@@ -472,17 +551,16 @@ daphne 서버 자체는 따로 띄운 프로세스에서 돌고 그 프로세스
 - **마커는 등록해서 쓴다.** `--strict-markers`에서는 등록하지 않은 마커가 수집 오류다(등록 방법은
   [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
   중 하나를 반드시 붙인다.
-- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다(구독은 기록되고, 받는 것은 같은 프로세스의 알림·`Broadcast`다). 렌더는 첫 응답의 것이라 자식이
-  그려지지만, 컨슈머 경로 전체(join, 재접속, 자식 LiveComponent의 `joined()`·`update()`·`leaving()`)를
-  검사하려면 `tests/test_live_component_render.py`나 `tests/test_live_session_contract.py`처럼
-  컨슈머를 직접 만든다. `view.call()`은 부모의 핸들러만 부른다.
+- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다(구독은 기록되고, 받는 것은 같은 프로세스의 알림·`Broadcast`다).
+  페이지를 지닌 뒤에는 자식의 수명주기가 돌지만 재접속·와이어 프로토콜은 없다 — 그것은
+  `tests/test_live_component_render.py`나 `tests/test_live_session_contract.py`처럼 컨슈머를 직접 만들어 본다.
 - **`mount()`는 CSRF 쿠키를 가진 페이지다.** 컴포넌트 템플릿의 `{% csrf_token %}`은 브라우저처럼
   `csrfmiddlewaretoken` 입력을 그린다(#206). 시크릿은 `mount()`마다 새것이다. `render()`는 응답 하나라 부를 때마다 새로
   마스킹하고, 라이브 렌더(`render_diff()`, 이벤트·알림 뒤)는 연결처럼 토큰 하나를 함께 쓴다. 스트림 항목은 삽입마다
   새로 마스킹한다. 값은 테스트마다 다르므로 HTML을 통째로 비교하는 단언은 그 입력을 빼고 비교한다
   ([폼의 CSRF 토큰](./dead-view.md#폼의-csrf-토큰)).
 - 자식은 `mount()`가 만든 것이 아니라 렌더가 만든 것이다. 자식이 낸 브로드캐스트는
-  `view.broadcasts`에 남지 않는다.
+  `view.broadcasts`에 남지 않는다. 페이지를 지닌 뒤 자식이 보낸 메시지는 `view.wire.sent_messages`에 함께 남는다.
 
 ## 관련 기능
 
@@ -494,14 +572,13 @@ daphne 서버 자체는 따로 띄운 프로세스에서 돌고 그 프로세스
 
 [LiveViewTest](https://phoenix-live-view.hexdocs.pm/1.2.12/Phoenix.LiveViewTest.html)의 모든 헬퍼가 있는 것은 아니다.
 `mount`·`call`·렌더·내비게이션 단언·스트림 검사, 선택자로 고른 요소의 바인딩을 읽는 `click`·`change`·`input`·`submit`
-(Phoenix의 `element`·`render_click`·`render_change`·`render_submit`, submitter 포함)은 지원한다. 다음은 공개 헬퍼가 없다.
+(Phoenix의 `element`·`render_click`·`render_change`·`render_submit`, submitter 포함), 키·포커스 이벤트, `hook_event`(`render_hook`),
+`child`(`find_live_child`), `submit_form`, 검사별 `TEST_PAGE_CHECKS`(`test_warnings`)는 지원한다. 다음은 공개 헬퍼가 없다.
 
-- key·focus·blur 이벤트, `render_hook`, 중첩 컴포넌트에 보내기(`find_live_child`), 폼의 HTTP 제출(`submit_form`)
 - `file_input`·`preflight_upload`·`render_upload`로 업로드 프로토콜을 구동하는 헬퍼
 - `render_async`처럼 관리 중인 비동기 작업이 끝날 때까지 기다리는 헬퍼
-- `assert_push_event`·`assert_reply`·page title 전용 단언, hook 이벤트·자식 탐색·HTTP action 제출 헬퍼
+- `assert_push_event`·`assert_reply`·page title 전용 단언
 
 `call`은 DOM에 핸들러가 연결됐는지 검증하지 않는다 — 그것은 `click` 등이 한다. 이들은 JavaScript를 돌리지 않으므로
-`JS()` 체인·훅·debounce의 시간은 브라우저 E2E로 본다. `render`는 자식의 라이브 수명주기를 구동하지 않는다.
-이 부분은 컨슈머 통합 테스트와 브라우저 E2E로 확인한다. `sent_messages` 목록은 공개지만 그 메시지 형식은 내부 프로토콜이다.
-Phoenix 1.2의 중복 ID·컴포넌트·복구 폼 ID 누락별 `raise`/`warn`/`ignore` 설정도 제공하지 않는다.
+`JS()` 체인·훅·debounce의 시간은 브라우저 E2E로 본다. `child()`가 돌리는 수명주기는 세션의 것이지만 재접속은 없다.
+`sent_messages` 목록은 공개지만 그 메시지 형식은 내부 프로토콜이다.

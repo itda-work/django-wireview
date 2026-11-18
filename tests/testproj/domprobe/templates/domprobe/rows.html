@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<ul {% tag_header %}>
+  {% for n in rows %}
+    {% live_component 'HeldRow' id=n n=n %}
+  {% endfor %}
+</ul>

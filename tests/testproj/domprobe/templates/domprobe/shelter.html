@@ -1,0 +1,10 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="toggle" {% on "click" "toggle" %}>toggle</button>
+  <button type="button" data-testid="redraw" {% on "click" "redraw" %}>redraw</button>
+  {% if shown %}
+    {% live_component 'HeldBusyPet' id="busy" %}
+    {% component 'HeldBusyKid' id="busykid" %}
+  {% endif %}
+</div>

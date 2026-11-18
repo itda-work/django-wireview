@@ -13,8 +13,8 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 118 |
-| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 12 |
+| ✅ 지원 | 119 |
+| 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 11 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 15 |
 | ⚪ 설계상 제외 | 2 |
 
@@ -63,7 +63,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | 2.10 Components | 10 | 0 | 3 | 1 |
 | 2.11 Form Handling | 10 | 2 | 0 | 0 |
 | 2.12 Performance Features | 6 | 1 | 0 | 0 |
-| 2.13 Testing | 7 | 1 | 1 | 0 |
+| 2.13 Testing | 8 | 0 | 1 | 0 |
 | 2.14 Developer Tools | 6 | 0 | 1 | 0 |
 | 2.15 Miscellaneous | 5 | 1 | 1 | 1 |
 
@@ -273,7 +273,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestFollowingARedirect::test_it_mounts_the_destination`<br>`tests/test_navigation_helpers.py::TestFollowingARedirect::test_a_refusing_destination_refuses_here_too` |
 | 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 | `tests/test_navigation_helpers.py::TestStreamHelpers::test_it_collects_the_html`<br>`tests/test_navigation_helpers.py::TestStreamHelpers::test_it_exposes_the_operations` |
 | MockChannelLayer | - | `mount()`이 채널 레이어를 흉내 내고 `view.broadcasts`에 남긴다 | ✅ 추가 기능 | `tests/test_presence.py::TestPresenceMixin::test_presence_join_broadcasts`<br>`examples/notifications/tests.py::test_marking_read_touches_only_the_users_own_and_tells_their_bell` |
-| DOM 바인딩을 읽는 테스트·test_warnings | `element/3`·`form/3`과 `render_click/change/submit/…`, `render_hook`, `find_live_child`, `submit_form`, `test_warnings` | `click()`·`change()`·`input()`·`submit()`·`keydown()`·`keyup()`·`focus()`·`blur()`가 렌더에서 선택자(와 `text=`)로 고른 요소의 `wire-on-*` 바인딩을 클라이언트와 같은 규칙(위임·수정자·키 조건·폼 필드 직렬화·submitter·소유 컴포넌트)으로 읽어 보낸다. 스트림 항목도 페이지에 있고, `hook_event()`가 `render_hook`, 설정 `TEST_PAGE_CHECKS`가 `test_warnings`다. 남은 것: `find_live_child`(부모를 마운트한 채 중첩 컴포넌트에 보내기 — `mount()`가 렌더 사이에 저장소를 지니고 자식 수명주기를 돌려야 한다), `submit_form`(HTTP 제출) | 🟡 GAP-056 (#252) |  |
+| DOM 바인딩을 읽는 테스트·test_warnings | `element/3`·`form/3`과 `render_click/change/submit/…`, `render_hook`, `find_live_child`, `submit_form`, `test_warnings` | `click()`·`change()`·`input()`·`submit()`·`keydown()`·`keyup()`·`focus()`·`blur()`가 렌더에서 선택자(와 `text=`)로 고른 요소의 `wire-on-*` 바인딩을 클라이언트와 같은 규칙(위임·수정자·키 조건·폼 필드 직렬화·submitter·소유 컴포넌트)으로 읽어 보낸다. 스트림 항목도 페이지에 있고, `hook_event()`가 `render_hook`이다. 헬퍼가 페이지를 읽은 뒤에는 연결처럼 페이지를 지녀 중첩 컴포넌트와 LiveComponent의 인스턴스·join·`joined()`/`update()`/`leaving()`·메일을 돌리고, 이벤트는 그 요소의 컴포넌트에 간다(`child()`가 `find_live_child`). `submit_form()`은 폼의 HTTP 제출을 칸 순서·submitter·목적지·CSRF까지 Django 테스트 클라이언트로 보낸다. 설정 `TEST_PAGE_CHECKS`가 검사마다 정책과 폼 제외를 받는 `test_warnings`다 | ✅ (GAP-056) | `tests/test_mounted_page.py::test_each_step_runs_what_the_session_runs_and_the_page_shows_what_the_browser_does`<br>`tests/test_dom_events_e2e.py::test_a_held_page_hears_in_the_browser_what_the_helpers_run`<br>`tests/test_mounted_http_form.py::test_the_view_gets_what_the_browser_sends`<br>`tests/test_dom_events_e2e.py::test_a_forms_own_submission_sends_what_submit_form_sends`<br>`tests/test_dom_page_checks.py::test_each_check_has_its_own_policy` |
 | 비동기·업로드 테스트와 메시지 단언 | `render_async/2`, `file_input/4`·`render_upload/3`·`preflight_upload/1`, `assert_push_event`, `assert_reply`, `page_title/1` | `call()`이 핸들러 반환값을 돌려준다. 그 밖은 `sent_messages`의 내부 형식을 직접 읽는다 | 🟠 GAP-057 (#253) |  |
 
 ### 2.14 Developer Tools 🟠
@@ -352,7 +352,7 @@ LiveView 1.2.12 대조에서 남은 것(#229):
 | ~~GAP-048~~ | ~~폼 payload 의미(disabled·submitter·_target·사용 여부·reset)~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#244) |
 | GAP-049 | 컴포넌트 재시작의 폼 복구와 복구 끄기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #245 |
 | ~~GAP-050~~ | ~~서버가 지시하는 HTTP 폼 제출과 제출·업로드 잠금~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#246) |
-| GAP-056 | DOM 바인딩을 읽는 컴포넌트 테스트 헬퍼와 테스트 경고 설정 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #252 |
+| ~~GAP-056~~ | ~~DOM 바인딩을 읽는 컴포넌트 테스트 헬퍼와 테스트 경고 설정~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#252) |
 
 ### 🟡 P2: Nice to Have (편의 기능)
 

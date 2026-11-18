@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from . import telemetry
 from .core import csrf, handlers
 from .core.component import Component, MessagePayload
+from .core.meta import WireviewMeta
 from .core.session import SessionView
 from .core.state import StaleState, StateMismatch, state_of
 from .debug import render_queries
@@ -121,6 +122,8 @@ class LifecycleBatch:
 
 class ComponentRepository:
     user: AnonymousUser | AbstractBaseUser
+    #: What the components it builds talk through: a mounted page's post to the test (wireview.testing)
+    wire_class: type[WireviewMeta] | None = None
 
     def __init__(
         self,
@@ -364,6 +367,7 @@ class ComponentRepository:
             session=self.session,
             live_session=self.live_session,
             id_given=id_given,
+            wire_class=self.wire_class,
         )
 
     def _build_restored(

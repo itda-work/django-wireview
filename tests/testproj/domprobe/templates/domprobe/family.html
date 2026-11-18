@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-family">{{ heard }}</output>
+  <span data-testid="family-title">{{ title }}</span>
+  <span data-testid="family-told">{{ told }}</span>
+  <button type="button" data-testid="rename" {% on "click" "rename" %}>rename</button>
+  <button type="button" data-testid="toggle" {% on "click" "toggle" %}>toggle</button>
+  {% component 'DomKid' id="kid" label=title %}
+  {% if shown %}
+    {% live_component 'DomPet' id="pet" title=title %}
+  {% endif %}
+</div>

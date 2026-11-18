@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% if this.is_live_component %}{% live_tag_header %}{% else %}{% tag_header %}{% endif %}>
+  <span data-testid="{{ this.id }}-runs">{{ runs }}</span>
+  <button type="button"
+          data-testid="{{ this.id }}-run"
+          {% on "click" "run" myself=this.is_live_component %}>run</button>
+</div>

@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% if this.is_live_component %}{% live_tag_header %}{% else %}{% tag_header %}{% endif %}>
+  {{ level }}
+  {% if level < until %}
+    {% live_component 'HeldDeep' id=this.next_id level=this.next_level until=until %}
+  {% endif %}
+</div>

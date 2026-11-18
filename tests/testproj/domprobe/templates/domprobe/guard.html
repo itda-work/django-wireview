@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="guard-hit" {% on "click" "hit" %}>hit</button>
+  {% component 'HeldRefused' id="refused" %}
+  {% live_component 'HeldRefusedPet' id="refused-pet" %}
+  {% component 'HeldAllowed' id="allowed" %}
+</div>

@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-kid">{{ heard }}</output>
+  <span data-testid="kid-text">{{ label }}:{{ count }}</span>
+  <button type="button" data-testid="kid-bump" {% on "click" "bump" %}>bump</button>
+</div>

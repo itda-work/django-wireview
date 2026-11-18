@@ -19,7 +19,20 @@ import re
 import pytest
 from playwright.sync_api import expect
 from testproj.domprobe.live import HEARD, DomHooked
-from testproj.domprobe.scenarios import HOOK_HEARD, HOOK_REPLY, PAYLOADS, SCENARIOS, by, heard, submitted
+from testproj.domprobe.scenarios import (
+    FAMILY,
+    FAMILY_JOINED,
+    HOOK_HEARD,
+    HOOK_REPLY,
+    HTTP_SUBMITS,
+    PAYLOADS,
+    SCENARIOS,
+    by,
+    family_heard,
+    heard,
+    submitted,
+)
+from testproj.domprobe.views import RECEIVED
 from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, WAIT_TIMEOUT, expect_text, open_live, wait_joined
 from testproj.e2e_server import serve
 
@@ -261,3 +274,45 @@ def test_a_table_row_streamed_into_a_tbody_is_a_row(page, server):
     page.locator("#person-1 button").click()
     expect(rows).to_have_count(1)
     assert [(name, kwargs) for _, name, kwargs in HEARD] == [("remove", {"id": 1})]
+
+
+@pytest.mark.parametrize("case", HTTP_SUBMITS, ids=[c.name for c in HTTP_SUBMITS])
+def test_a_forms_own_submission_sends_what_submit_form_sends(page, server, case):
+    """The browser submits the form without script; ``tests/test_submit_form.py`` holds ``submit_form()`` to
+    the same table (#252)."""
+    RECEIVED.clear()
+    open_live(page, f"{server}/domprobe/http/")
+    with page.expect_navigation(timeout=WAIT_TIMEOUT * 1000) as navigation:
+        page.click(f"[data-testid={case.submitter}]")
+    assert navigation.value is not None and navigation.value.status == 200
+    (got,) = RECEIVED
+    assert got["method"] == case.method
+    assert got["fields"] == case.fields
+
+
+def test_a_form_without_its_token_is_refused_in_the_browser_too(page, server):
+    RECEIVED.clear()
+    open_live(page, f"{server}/domprobe/http/")
+    with page.expect_navigation(timeout=WAIT_TIMEOUT * 1000) as navigation:
+        page.click("[data-testid=bare-go]")
+    assert navigation.value is not None and navigation.value.status == 403
+    assert RECEIVED == []
+
+
+@pytest.mark.parametrize("step", range(len(FAMILY)), ids=[s.name for s in FAMILY])
+def test_a_held_page_hears_in_the_browser_what_the_helpers_run(page, server, step):
+    """``FAMILY`` up to ``step``, by a user: the nested component, the LiveComponent and their parent hear
+    what ``tests/test_mounted_page.py`` holds the helpers to, and the page shows the same."""
+    HEARD.clear()
+    open_live(page, f"{server}/domprobe/family/")
+    expect_text(by(page, "pet-text"), "a:0")
+    assert sorted(family_heard(HEARD)) == sorted(FAMILY_JOINED)
+    for done in FAMILY[: step + 1]:
+        HEARD.clear()
+        page.click(f"[data-testid={done.testid}]")
+        for testid, text in done.shows.items():
+            if text is None:
+                expect(page.locator(f"[data-testid={testid}]")).to_have_count(0, timeout=WAIT_TIMEOUT * 1000)
+            else:
+                expect_text(by(page, testid), text)
+        assert family_heard(HEARD) == done.heard, done.name

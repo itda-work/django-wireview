@@ -1,0 +1,54 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form method="post"
+        action="/domprobe/received/"
+        id="post-form"
+        data-testid="post-form">
+    {% csrf_token %}
+    <input name="pick" value="a">
+    <button type="submit" name="pick" value="b" data-testid="post-pick">b</button>
+    <input name="pick" value="c">
+    <button type="submit" name="other" value="x" data-testid="post-other">x</button>
+    <button type="submit"
+            name="how"
+            value="get"
+            formmethod="get"
+            data-testid="post-as-get">get</button>
+    <textarea name="note">line1
+line2</textarea>
+    <input type="checkbox" name="box" value="1">
+    <input type="checkbox" name="blank" value="" checked>
+    <select name="many" multiple>
+      <option value="p" selected>p</option>
+      <option value="q" disabled selected>disabled q</option>
+      <option value="q">q</option>
+      <option value="r" selected>r</option>
+    </select>
+    <input name="locked" value="l" disabled>
+  </form>
+  <input name="outside" value="o" form="post-form">
+  <form method="get"
+        action="/domprobe/received/?drop=1"
+        data-testid="get-form">
+    <input name="q" value="1">
+    <input name="q" value="2">
+    <input name="away" value="">
+    <button type="submit" data-testid="get-go">go</button>
+  </form>
+  <form method="post" enctype="multipart/form-data" data-testid="multi-form">
+    {% csrf_token %}
+    <input name="pick" value="a">
+    <button type="submit"
+            name="pick"
+            value="b"
+            formaction="../received/"
+            data-testid="multi-pick">b</button>
+    <input name="pick" value="c">
+    <input type="file" name="doc">
+  </form>
+  <form method="post" action="/domprobe/received/" data-testid="bare-form">
+    <input name="pick" value="a">
+    <button type="submit" data-testid="bare-go">go</button>
+  </form>
+</div>

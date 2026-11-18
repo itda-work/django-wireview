@@ -410,9 +410,6 @@ async def _fails(view, action, match: str) -> None:
         (DomKeys, lambda v: v.focus("output"), r"Cannot focus <output.*cannot take focus"),
         (DomKeys, lambda v: v.blur("[data-testid=search]"), r"Cannot blur <form"),
         (DomForm, lambda v: v.focus("input[name=locked]"), r"Cannot focus .*: it is disabled"),
-        # The binding belongs to a nested component, which mount() does not run
-        (DomNest, lambda v: v.click("[data-testid=leaf-button]"), r"calls 'leaf' on DomLeaf 'leaf'.*Mount DomLeaf"),
-        (DomNest, lambda v: v.click("[data-testid=live-button]"), r"calls 'bump' on DomLive 'live'"),
     ],
 )
 async def test_what_no_user_can_do_fails(component, action, match):
@@ -481,12 +478,35 @@ async def test_hook_event_sends_what_the_hook_pushes():
         (lambda v: v.hook_event("[data-testid=plain]", "point"), r"has no wire-hook"),
         (lambda v: v.hook_event("[data-testid=two]", "point"), r"has the hooks \['DomPush', 'DomOther'\]: name"),
         (lambda v: v.hook_event("[data-testid=chart]", "point", hook="Chart"), r"has no hook 'Chart'"),
-        (lambda v: v.hook_event("[data-testid=leaf-hook]", "point"), r"DomHookLeaf 'hook-leaf''s, not the mounted"),
     ],
 )
 async def test_a_hook_event_no_hook_can_push_fails(action, match):
     view = await mount(DomHooked)
     await _fails(view, action, match)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_nested_components_binding_goes_to_it_from_the_parents_mount():
+    """The page holds the nested component and the LiveComponent: each gets its own event, and the click
+    bubbles on to the parent's binding around them, as in a browser (#252)."""
+    view = await mount(DomNest)
+    await view.click("[data-testid=leaf-button]")
+    await view.click("[data-testid=live-button]")
+    assert [(cls, name, kwargs) for cls, name, kwargs in HEARD] == [
+        ("DomLeaf", "leaf", {"leafy": "l1", "k": "v"}),
+        ("DomNest", "wrapped", {"mine": "m1"}),
+        ("DomLive", "bump", {"lively": "v1"}),
+        ("DomNest", "wrapped", {"mine": "m1"}),
+    ]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_nested_components_hook_pushes_to_it():
+    view = await mount(DomHooked)
+    assert await view.hook_event("[data-testid=leaf-hook]", "point", {"x": 2}) == {"leaf": True}
+    assert HEARD == [("DomHookLeaf", "point", {"hook_id": "hook-leaf:DomPush:test", "x": 2})]
 
 
 @pytest.mark.integration

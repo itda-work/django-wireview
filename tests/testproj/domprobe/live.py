@@ -10,6 +10,7 @@ delegation, ownership or serialization shows as a different entry.
 
 from __future__ import annotations
 
+import asyncio
 import typing as t
 
 from wireview import JS, Component, LiveComponent
@@ -189,6 +190,10 @@ class DomHookLeaf(Component):
     class Meta:
         template_name = "domprobe/hook_leaf.html"
 
+    async def handle_hook_event(self, hook_id: str, event: str, payload: dict[str, t.Any]) -> t.Any:
+        HEARD.append(("DomHookLeaf", event, {"hook_id": hook_id, **payload}))
+        return {"leaf": True}
+
 
 class DomStreamHost(Component):
     """Stream containers for ``tests/test_dom_events_e2e.py`` to put operations in: two named alike, one in a
@@ -288,3 +293,237 @@ class DomPayload(_Recording, Component):
 
     async def got(self, **kwargs: t.Any) -> None:
         self._heard("got", kwargs)
+
+
+# ----------------------------------------------------------------------------
+# A held page (GAP-056, #252): a parent, the component it draws and its
+# LiveComponent, each keeping its own state from one render to the next
+# ----------------------------------------------------------------------------
+
+
+class DomFamily(_Recording, Component):
+    """The parent: passes its title to both, shows and hides the LiveComponent, hears what it tells."""
+
+    class Meta:
+        template_name = "domprobe/family.html"
+
+    heard: str = ""
+    title: str = "a"
+    shown: bool = True
+    told: int = 0
+
+    async def rename(self, **kwargs: t.Any) -> None:
+        self._heard("rename", {})
+        self.title += "b"
+
+    async def toggle(self, **kwargs: t.Any) -> None:
+        self._heard("toggle", {})
+        self.shown = not self.shown
+
+    async def told_me(self, n: int) -> None:
+        self._heard("told_me", {"n": n})
+        self.told = n
+
+
+class DomKid(_Recording, Component):
+    """A nested component: the label its drawer passes, a count of its own."""
+
+    class Meta:
+        template_name = "domprobe/kid.html"
+
+    heard: str = ""
+    label: str = ""
+    count: int = 0
+
+    async def joined(self) -> None:
+        self._heard("joined", {})
+
+    async def leaving(self) -> None:
+        self._heard("leaving", {})
+
+    async def bump(self, **kwargs: t.Any) -> None:
+        self._heard("bump", {})
+        self.count += 1
+
+
+class DomPet(_Recording, LiveComponent):
+    """A LiveComponent its parent owns: joined, update and leaving are recorded."""
+
+    class Meta:
+        template_name = "domprobe/pet.html"
+
+    heard: str = ""
+    title: str = ""
+    pets: int = 0
+
+    async def joined(self) -> None:
+        self._heard("joined", {})
+
+    async def update(self, **assigns: t.Any) -> None:
+        self._heard("update", dict(assigns))
+        await super().update(**assigns)
+
+    async def leaving(self) -> None:
+        self._heard("leaving", {})
+
+    async def pet(self, **kwargs: t.Any) -> None:
+        self._heard("pet", {})
+        self.pets += 1
+
+    async def tell(self, **kwargs: t.Any) -> None:
+        self._heard("tell", {})
+        await self.send_to_parent("told_me", n=self.pets)
+
+
+class DomHttp(Component):
+    """Forms sent to a view over HTTP: ``submit_form()`` and a browser's own submission (#252)."""
+
+    class Meta:
+        template_name = "domprobe/http.html"
+
+
+CANCELLED: list[str] = []
+
+
+class _Busy:
+    @property
+    def is_live_component(self) -> bool:
+        return isinstance(self, LiveComponent)
+
+    def get_subscriptions(self) -> set[str]:
+        return {f"held-{self.id}"}
+
+    async def joined(self) -> None:
+        await self.start_async("wait", self._wait())  # type: ignore[attr-defined]
+
+    async def _wait(self) -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            CANCELLED.append(self.id)  # type: ignore[attr-defined]
+            raise
+
+    async def run(self, **kwargs: t.Any) -> None:
+        self.runs += 1  # type: ignore[attr-defined]
+
+    async def leaving(self) -> None:
+        HEARD.append((type(self).__name__, "leaving", {}))
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        HEARD.append((type(self).__name__, "notification", kwargs))
+
+
+class HeldBusyPet(_Busy, LiveComponent):
+    class Meta:
+        template_name = "domprobe/busy.html"
+
+    runs: int = 0
+
+
+class HeldBusyKid(_Busy, Component):
+    class Meta:
+        template_name = "domprobe/busy.html"
+
+    runs: int = 0
+
+
+class HeldShelter(Component):
+    class Meta:
+        template_name = "domprobe/shelter.html"
+
+    shown: bool = True
+
+    async def toggle(self) -> None:
+        self.shown = not self.shown
+
+    async def redraw(self) -> None:
+        pass
+
+
+class HaltNested:
+    @staticmethod
+    async def on_mount(component, params, session):
+        return {"halt": True}
+
+
+class _Guarded:
+    @property
+    def is_live_component(self) -> bool:
+        return isinstance(self, LiveComponent)
+
+    async def hit(self, **kwargs: t.Any) -> None:
+        HEARD.append((type(self).__name__, "hit", {}))
+
+
+class HeldRefused(_Guarded, Component):
+    class Meta:
+        template_name = "domprobe/guarded.html"
+        live_sessions = {"ip-inside"}
+        on_mount = [HaltNested]
+
+
+class HeldRefusedPet(_Guarded, LiveComponent):
+    class Meta:
+        template_name = "domprobe/guarded.html"
+        live_sessions = {"ip-inside"}
+        on_mount = [HaltNested]
+
+
+class HeldAllowed(_Guarded, Component):
+    class Meta:
+        template_name = "domprobe/guarded.html"
+
+
+class HeldGuard(_Guarded, Component):
+    class Meta:
+        template_name = "domprobe/guard.html"
+
+
+JOINED_ROWS: list[str] = []
+
+
+class HeldRow(LiveComponent):
+    class Meta:
+        template_name = "domprobe/row.html"
+
+    n: str = ""
+
+    async def joined(self) -> None:
+        JOINED_ROWS.append(self.id)
+
+
+class HeldRows(Component):
+    class Meta:
+        template_name = "domprobe/rows.html"
+
+    rows: list[str] = []
+
+
+class _Deep:
+    @property
+    def is_live_component(self) -> bool:
+        return isinstance(self, LiveComponent)
+
+    @property
+    def next_id(self) -> str:
+        return f"deep-{self.level + 1}"  # type: ignore[attr-defined]
+
+    @property
+    def next_level(self) -> int:
+        return self.level + 1  # type: ignore[attr-defined]
+
+
+class HeldDeep(_Deep, LiveComponent):
+    class Meta:
+        template_name = "domprobe/deep.html"
+
+    level: int = 0
+    until: int = 0
+
+
+class HeldDeepRoot(_Deep, Component):
+    class Meta:
+        template_name = "domprobe/deep.html"
+
+    level: int = 0
+    until: int = 0

@@ -465,16 +465,18 @@ class Component(BaseModel):
         session: SessionView | None = None,
         live_session: "LiveSession | None" = None,
         id_given: bool | None = None,
+        wire_class: "type[WireviewMeta] | None" = None,
     ) -> "Component":
         """Build a component instance from state.
 
         ``id_given`` says whether the state's id is one the template or the
         page gave; left out, any id in the state is. A caller that put a
-        minted id there says False.
+        minted id there says False. ``wire_class`` is the repository's: a
+        mounted page's components post their mail to the test (wireview.testing).
         """
         component_class = cls._resolve(_component_name)
 
-        wire = WireviewMeta(
+        wire = (wire_class or WireviewMeta)(
             params=params,
             channel_name=channel_name,
             channel_layer=channel_layer,

@@ -500,3 +500,96 @@ def submitted(implicit_args: dict[str, list[t.Any]]) -> dict[str, list[str]]:
         name: [str(v) for value in values for v in (value if isinstance(value, list) else [value])]
         for name, values in implicit_args.items()
     }
+
+
+# ============================================================================
+# A held page: DomFamily, its DomKid and its DomPet, step by step (#252)
+# ============================================================================
+
+#: The classes of the held page, whose hooks and handlers ``FAMILY`` compares
+FAMILY_CLASSES = ("DomFamily", "DomKid", "DomPet")
+
+
+@dataclasses.dataclass(frozen=True)
+class Step:
+    """One user action on the family page, and what it leaves.
+
+    ``heard`` is every hook and handler of ``FAMILY_CLASSES`` that ran, in
+    order; ``shows`` the text of each ``data-testid`` after it (``None``: not
+    on the page).
+    """
+
+    name: str
+    testid: str
+    heard: list[tuple[str, str, dict[str, t.Any]]]
+    shows: dict[str, str | None]
+
+
+#: What the page's first joins run: the nested component's join, the LiveComponent's in its parent's render
+FAMILY_JOINED = [("DomKid", "joined", {}), ("DomPet", "joined", {})]
+
+FAMILY = [
+    # The nested component's own event: its count, which the page keeps
+    Step("kid-bump", "kid-bump", [("DomKid", "bump", {})], {"kid-text": "a:1", "pet-text": "a:0"}),
+    # The LiveComponent's (myself=True)
+    Step("pet", "pet-pet", [("DomPet", "pet", {})], {"pet-text": "a:1", "kid-text": "a:1"}),
+    # send_to_parent: the parent's handler runs, with the instance it drew
+    Step(
+        "tell",
+        "pet-tell",
+        [("DomPet", "tell", {}), ("DomFamily", "told_me", {"n": 1})],
+        {"family-told": "1", "pet-text": "a:1"},
+    ),
+    # The parent passes new props: update() for the LiveComponent, the props for the nested one, whose count stays
+    Step(
+        "rename",
+        "rename",
+        [("DomFamily", "rename", {}), ("DomPet", "update", {"title": "ab"})],
+        {"family-title": "ab", "kid-text": "ab:1", "pet-text": "ab:1"},
+    ),
+    # The parent stops drawing the LiveComponent: leaving()
+    Step("hide", "toggle", [("DomFamily", "toggle", {}), ("DomPet", "leaving", {})], {"pet-text": None}),
+    # ...and draws it again: a new instance, joined, from its first state
+    Step("show", "toggle", [("DomFamily", "toggle", {}), ("DomPet", "joined", {})], {"pet-text": "ab:0"}),
+    # The new one hears its own events
+    Step("pet-again", "pet-pet", [("DomPet", "pet", {})], {"pet-text": "ab:1", "kid-text": "ab:1"}),
+]
+
+
+def family_heard(log: list[t.Any]) -> list[tuple[str, str, dict[str, t.Any]]]:
+    """What the held page's components heard, in order."""
+    return [entry for entry in log if entry[0] in FAMILY_CLASSES]
+
+
+# ============================================================================
+# A form's own submission over HTTP: submit_form() and the browser (#252)
+# ============================================================================
+
+
+@dataclasses.dataclass(frozen=True)
+class HttpSubmit:
+    """A form of ``DomHttp``, the button that submits it, and what ``views.received`` gets.
+
+    ``fields`` is each name with ``getlist(name)``: two fields of one name with
+    the pressed button of that name between them keep that order.
+    """
+
+    name: str
+    form: str
+    submitter: str
+    method: str
+    fields: dict[str, list[str]]
+
+
+_POSTED = {"blank": [""], "note": ["line1\r\nline2"], "many": ["p", "r"], "outside": ["o"]}
+
+HTTP_SUBMITS = [
+    HttpSubmit("post", "post-form", "post-pick", "POST", {"pick": ["a", "b", "c"], **_POSTED}),
+    HttpSubmit("post-other-button", "post-form", "post-other", "POST", {"pick": ["a", "c"], "other": ["x"], **_POSTED}),
+    HttpSubmit("formmethod-get", "post-form", "post-as-get", "GET", {"pick": ["a", "c"], "how": ["get"], **_POSTED}),
+    # The action's own query is replaced by the fields
+    HttpSubmit("get", "get-form", "get-go", "GET", {"q": ["1", "2"], "away": [""]}),
+    # multipart, sent to the submitter's relative formaction; a file field with no file is an empty part,
+    # which Django reads as an empty field
+    HttpSubmit("multipart", "multi-form", "multi-pick", "POST", {"pick": ["a", "b", "c"], "doc": [""]}),
+]

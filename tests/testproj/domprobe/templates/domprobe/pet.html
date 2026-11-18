@@ -1,0 +1,12 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <output data-testid="heard-pet">{{ heard }}</output>
+  <span data-testid="pet-text">{{ title }}:{{ pets }}</span>
+  <button type="button"
+          data-testid="pet-pet"
+          {% on "click" "pet" myself=True %}>pet</button>
+  <button type="button"
+          data-testid="pet-tell"
+          {% on "click" "tell" myself=True %}>tell</button>
+</div>

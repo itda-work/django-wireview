@@ -645,18 +645,26 @@ class Fields:
 
     def selected(self, select: Element) -> list[str]:
         """The values of the selected options, in order."""
-        if id(select) in self._selected:
-            return self._selected[id(select)]
+        return [option_value(option) for option in self.selected_options(select)]
+
+    def selected_options(self, select: Element) -> list[Element]:
+        """Keep option identity and tree order, including options with equal values."""
         options = options_of(select)
-        chosen = [o for o in options if o.has("selected")]
-        if select.has("multiple"):
-            return [option_value(o) for o in chosen]
-        if chosen:
-            # A select-one shows the last option marked selected
-            return [option_value(chosen[-1])]
-        # ...or the first that is not disabled
-        first = next((o for o in options if not o.has("disabled") and not _in_disabled_optgroup(o)), None)
-        return [option_value(first)] if first is not None else []
+        multiple = select.has("multiple")
+        if id(select) in self._selected:
+            requested = set(self._selected[id(select)])
+            matching = [
+                option
+                for option in options
+                if option_value(option) in requested
+                and not option.has("disabled")
+                and not _in_disabled_optgroup(option)
+            ]
+            return matching if multiple else matching[:1]
+        chosen = [option for option in options if option.has("selected")]
+        if multiple or chosen:
+            return chosen if multiple else chosen[-1:]
+        return [option for option in options if not option.has("disabled") and not _in_disabled_optgroup(option)][:1]
 
     def typed(self, el: Element) -> bool:
         """Whether the test set the value of ``el``, rather than the render."""
@@ -1212,13 +1220,6 @@ class Page:
         else:
             target_el = owner
         component_id = target_el.get("id") or ""
-        if component_id != self.component_id:
-            raise DomError(
-                f"The {type_} binding of {el.describe()} calls {handler!r} on "
-                f"{target_el.get('data-name') or 'a component'} {component_id!r}, not on the mounted "
-                f"{self.component_id!r}: mount() runs the handlers of the component it mounted. "
-                f"Mount {target_el.get('data-name') or 'that component'} to test its events."
-            )
         form = el.closest(lambda a: a.tag == "form")
         scope = form if form is not None and target_el.contains(form) else target_el
         return ServerEvent(
@@ -1231,8 +1232,9 @@ class Page:
             meta=event_meta(scope, target_el, self.fields, self.root, self.touched, source or el),
         )
 
-    def hook_id(self, el: Element, hook: str | None) -> str:
-        """The id the client gives the hook ``hook`` of ``el`` (``generateHookId``, with a fixed suffix)."""
+    def hook_id(self, el: Element, hook: str | None) -> tuple[str, str]:
+        """The component whose hook ``hook`` of ``el`` is, and the id the client gives it
+        (``generateHookId``, with a fixed suffix)."""
         names = (el.get("wire-hook") or "").split()
         if not names:
             raise DomError(f"{el.describe()} has no wire-hook: no hook on it can push an event")
@@ -1245,13 +1247,8 @@ class Page:
         owner = el.closest(is_component)
         if owner is None:
             raise DomError(f"{el.describe()} is in no component's element: its hook belongs to none")
-        if owner.get("id") != self.component_id:
-            name = owner.get("data-name") or "that component"
-            raise DomError(
-                f"The hook {hook!r} of {el.describe()} is {name} {owner.get('id')!r}'s, not the mounted "
-                f"{self.component_id!r}'s: its pushEvent goes there. Mount {name} to test it."
-            )
-        return f"{self.component_id}:{hook}:test"
+        owner_id = owner.get("id") or ""
+        return owner_id, f"{owner_id}:{hook}:test"
 
     # -- actions ------------------------------------------------------------
 
@@ -1380,6 +1377,25 @@ class Page:
         action = _Dispatch(self)
         self._submit(action, form, submitter)
         return self._finish(action, form, "submit")
+
+    def http_submission(
+        self, form: Element, values: t.Mapping[str, t.Any] | None, submitter: Element | None, page_url: str | None
+    ) -> Submission:
+        """What the browser sends when ``form`` is submitted without script: ``submit_form()``.
+
+        ``values`` and ``submitter`` as :meth:`submit` takes them. No submit event
+        is dispatched: this is the request the page makes when nothing prevents
+        the submit, or when its code calls ``form.submit()``.
+        """
+        if form.tag != "form":
+            raise DomError(f"{form.describe()} is not a form: submit_form() submits a form")
+        if submitter is not None:
+            if not is_submitter(submitter, self.root) or form_of(submitter, self.root) is not form:
+                raise DomError(f"{submitter.describe()} is not a submit button of {form.describe()}")
+            self._refuse_disabled(submitter, "submit with")
+        for name, value in (values or {}).items():
+            self._set_named(form, name, value)
+        return submission(self, form, submitter, page_url)
 
     def _submit(self, action: _Dispatch, form: Element, submitter: Element | None = None) -> None:
         # Constraint validation (required, pattern) is the browser's and is not checked here
@@ -1510,6 +1526,125 @@ class Page:
             )
 
 
+# ============================================================================
+# A form's HTTP submission (submit_form)
+# ============================================================================
+
+
+@dataclasses.dataclass(frozen=True)
+class Submission:
+    """What the browser's own submission of a form sends: where, how, and the entry list in order.
+
+    ``entries`` holds ``(name, value)`` in the order HTML's "constructing the
+    entry list" gives them; a file input with no file chosen is ``(name, None)``.
+    """
+
+    method: str
+    action: str
+    enctype: str
+    entries: list[tuple[str, str | None]]
+
+
+#: The enctypes a form takes; anything else is the default
+ENCTYPES = ("application/x-www-form-urlencoded", "multipart/form-data", "text/plain")
+
+
+def form_entries(
+    form: Element, root: Element, fields: Fields, submitter: Element | None
+) -> list[tuple[str, str | None]]:
+    """HTML's entry list of ``form``: its submittable controls in tree order, ``form=`` ones included.
+
+    Not a disabled one, a button only when it is ``submitter`` (an image button
+    as ``name.x`` and ``name.y``), a checkbox or radio only when checked (its
+    value, ``on`` without one), each selected option of a select, a file input
+    with no file. Unlike ``serialize``, every name keeps its place: two fields
+    of one name with another between them go in that order.
+    """
+    entries: list[tuple[str, str | None]] = []
+    for el in root.descendants():
+        if el.tag not in ("button", "input", "select", "textarea") or form_of(el, root) is not form:
+            continue
+        if disabled_by(el) is not None:
+            continue
+        kind = field_type(el)
+        name = el.get("name") or ""
+        if _is_button_control(el):
+            if el is not submitter:
+                continue
+            if kind == "image":
+                prefix = f"{name}." if name else ""
+                entries += [(f"{prefix}x", "0"), (f"{prefix}y", "0")]
+                continue
+        if not name:
+            continue
+        if kind in ("checkbox", "radio"):
+            if fields.checked(el):
+                entries.append((name, fields.value(el)))
+        elif kind == "file":
+            entries.append((name, None))
+        elif el.tag == "select":
+            entries.extend(
+                (name, option_value(option))
+                for option in fields.selected_options(el)
+                if disabled_by(option) is None and not _in_disabled_optgroup(option)
+            )
+        elif _is_button_control(el):
+            entries.append((name, el.get("value") or ""))
+        else:
+            entries.append((name, "" if _bad_input(el, fields) else fields.value(el)))
+    return entries
+
+
+def _crlf(value: str) -> str:
+    """HTML normalizes the line breaks of a submitted name or value to CRLF."""
+    return re.sub(r"\r\n|\r|\n", "\r\n", value)
+
+
+def submission(page: Page, form: Element, submitter: Element | None, page_url: str | None) -> Submission:
+    """The request the browser makes when ``form`` is submitted (``submitter`` the button pressed).
+
+    ``page_url`` is the page's address, which a relative or missing ``action``
+    resolves against; the submitter's ``formaction``, ``formmethod`` and
+    ``formenctype`` win over the form's.
+    """
+    from urllib.parse import urljoin, urlsplit
+
+    def chosen(attribute: str, override: str) -> str | None:
+        if submitter is not None and submitter.has(override):
+            return submitter.get(override) or ""
+        return form.get(attribute)
+
+    method = (chosen("method", "formmethod") or "get").strip().lower()
+    if method == "dialog":
+        raise DomError(f"{form.describe()} has method=dialog: it closes a dialog and sends no request")
+    if method not in ("get", "post"):
+        method = "get"
+    enctype = (chosen("enctype", "formenctype") or "").strip().lower()
+    if enctype not in ENCTYPES:
+        enctype = ENCTYPES[0]
+    action = (chosen("action", "formaction") or "").strip()
+    if page_url is None and not action.startswith(("/", "http://", "https://")):
+        raise DomError(
+            f"{form.describe()} sends to {action or 'the page it is on'!r}, which depends on the page's address: "
+            "say where the component is with mount(..., path=...)"
+        )
+    url = urljoin(page_url or "http://testserver/", action)
+    parts = urlsplit(url)
+    if parts.scheme != "http" or parts.hostname != "testserver" or parts.port not in (None, 80):
+        raise DomError(
+            f"{form.describe()} sends to {url!r}, not to this site: the test client reaches only the project's views"
+        )
+    return Submission(
+        method=method,
+        action=parts._replace(scheme="", netloc="", fragment="").geturl() or "/",
+        enctype=enctype,
+        entries=[
+            (_crlf(name), None if value is None else _crlf(value))
+            for name, value in form_entries(form, page.root, page.fields, submitter)
+        ],
+    )
+
+
 #: The fields whose Enter submits their form (HTML's "fields that block implicit submission")
 _IMPLICIT_SUBMISSION_TYPES = frozenset(
     {"text", "search", "url", "tel", "email", "password", "date", "month", "week", "time", "datetime-local", "number"}
@@ -1593,19 +1728,28 @@ class _Reaching(_Dispatch):
             self.sent.append(t.cast(ServerEvent, None))
 
 
-def page_problems(page: Page, callable_handler: t.Callable[[str], bool]) -> list[str]:
-    """What is wrong with the structure of ``page``: what ``TEST_PAGE_CHECKS`` reports.
+#: The checks of ``TEST_PAGE_CHECKS``, each one kind of mistake
+PAGE_CHECKS = ("duplicate_id", "duplicate_component", "recover_form")
 
-    - two elements with one id (``getElementById`` finds the first, and the
-      client holds one component per id);
-    - a ``wire-auto-recover`` form that recovers nothing after a reconnect: one
-      naming a handler the mounted component does not let a client call, or a
-      bare one whose ``change`` reaches no server binding.
 
-    ``callable_handler`` says whether the mounted component takes a handler name
-    from a client.
+def page_problems(
+    page: Page,
+    callable_handler: t.Callable[[str, str], bool | None],
+    skip_forms: t.Sequence[Selector] = (),
+) -> list[tuple[str, str]]:
+    """What is wrong with the structure of ``page``: what ``TEST_PAGE_CHECKS`` reports, as ``(check, message)``.
+
+    - ``duplicate_id``: two elements with one id (``getElementById`` finds the first);
+    - ``duplicate_component``: two components with one id (the client holds one per id);
+    - ``recover_form``: a ``wire-auto-recover`` form that recovers nothing after a
+      reconnect: one naming a handler its component does not let a client call,
+      or a bare one whose ``change`` reaches no server binding. A form one of
+      ``skip_forms`` matches is not checked.
+
+    ``callable_handler(component_id, name)`` says whether the component under
+    that id takes the handler name from a client, ``None`` when it cannot say.
     """
-    problems: list[str] = []
+    problems: list[tuple[str, str]] = []
     by_id: dict[str, list[Element]] = {}
     for el in page.root.descendants():
         if (id_ := el.get("id")) is not None and id_ != "":
@@ -1618,35 +1762,49 @@ def page_problems(page: Page, callable_handler: t.Callable[[str], bool]) -> list
         if len(components) > 1:
             names = ", ".join(el.get("data-name") or el.tag for el in components)
             problems.append(
-                f"{len(components)} components have the id {id_!r} ({names}): the page holds one component per "
-                f"id, so their joins, events and renders are mixed up. Give each {{% component %}} its own "
-                f"id.{listed}"
+                (
+                    "duplicate_component",
+                    f"{len(components)} components have the id {id_!r} ({names}): the page holds one component per "
+                    f"id, so their joins, events and renders are mixed up. Give each {{% component %}} its own "
+                    f"id.{listed}",
+                )
             )
         else:
             problems.append(
-                f"{len(elements)} elements have the id {id_!r}: the page finds only the first by it (a label's "
-                f"for, a myself target, a stream item's place).{listed}"
+                (
+                    "duplicate_id",
+                    f"{len(elements)} elements have the id {id_!r}: the page finds only the first by it (a label's "
+                    f"for, a myself target, a stream item's place).{listed}",
+                )
             )
     for form in page.root.descendants():
         if form.tag != "form" or not form.has("wire-auto-recover"):
             continue
+        if any(selector.matches(form) for selector in skip_forms):
+            continue
         handler = form.get("wire-auto-recover") or ""
         owner = form.closest(is_component)
         if owner is None:
-            problems.append(f"{form.describe()} is in no component's element: nothing recovers it")
+            problems.append(("recover_form", f"{form.describe()} is in no component's element: nothing recovers it"))
         elif handler and handler != "true":
-            if owner.get("id") == page.component_id and not callable_handler(handler):
+            if callable_handler(owner.get("id") or "", handler) is False:
                 problems.append(
-                    f"{form.describe()} recovers through {handler!r}, which a client cannot call on "
-                    f"{owner.get('data-name') or 'the component'}: after a reconnect its values reach nothing"
+                    (
+                        "recover_form",
+                        f"{form.describe()} recovers through {handler!r}, which a client cannot call on "
+                        f"{owner.get('data-name') or 'the component'}: after a reconnect its values reach nothing",
+                    )
                 )
         else:
             probe = _Reaching(page)
             probe.dispatch(form, "change")
             if not probe.sent:
                 problems.append(
-                    f"{form.describe()} has a bare wire-auto-recover, which replays the form's change after a "
-                    'reconnect, and no {% on "change" %} binding on the form or above it takes that change: '
-                    'nothing is recovered. Bind its change, or name a handler: wire-auto-recover="restore".'
+                    (
+                        "recover_form",
+                        f"{form.describe()} has a bare wire-auto-recover, which replays the form's change after a "
+                        'reconnect, and no {% on "change" %} binding on the form or above it takes that change: '
+                        'nothing is recovered. Bind its change, or name a handler: wire-auto-recover="restore".',
+                    )
                 )
     return problems
