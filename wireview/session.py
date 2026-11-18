@@ -43,6 +43,7 @@ from .core.rendered import (
     PROTOCOL_VERSION,
     REJOIN_SINCE,
     RENEW_SINCE,
+    SUBMIT_SINCE,
     UPDATE_ONLY_SINCE,
     component_refs,
     may_name_components,
@@ -2350,11 +2351,14 @@ class WireviewSession:
         with render_queries.tree_scope(component, "join" if first else "render"):
             diff, children, settled = await self._render_tree(component)
         instances: dict[str, int] = {}
-        if diff is not None or children or acknowledge or announce:
+        submits = self._submits([component, *settled])
+        if diff is not None or children or acknowledge or announce or submits:
             log.debug(f">>> RENDER {component._name} {component.id} (+{len(children)} children)")
             payload: dict[str, t.Any] = {"id": component.id, "diff": diff}
             if children:
                 payload["children"] = children
+            if submits:
+                payload["submit"] = submits
             if ref is not None:
                 payload["ref"] = ref
             if announce:
@@ -2380,6 +2384,30 @@ class WireviewSession:
                 # its infinite scroll judges its list once the list is there.
                 if child.id in instances and self.repo.vsn >= JOINED_SINCE:
                     await child.wire.send("joined", **_with_ref({"id": child.id}, ref))
+
+    def _submits(self, components: list[Component]) -> list[dict[str, str]]:
+        """The forms ``wire.submit_form`` asked the page to submit, for this render (#246).
+
+        They ride on the render, not on a message of their own: the page paints
+        it, submits, and keeps the form locked from the answer on -- the event
+        that ran the handler ends its loading state with this very frame, so a
+        second click finds nothing to send. A page whose script predates
+        ``SUBMIT_SINCE`` would ignore the field and stay: it is not sent one.
+        """
+        submits = [
+            {"id": component.id, "selector": selector}
+            for component in components
+            for selector in component.wire.take_submits()
+        ]
+        if submits and self.repo.vsn < SUBMIT_SINCE:
+            log.warning(
+                "Not asking the page to submit %s: its script speaks protocol %d, which has no form submission"
+                " -- the page has to load the current wireview.js (a reload)",
+                ", ".join(f"{each['selector']!r} of {each['id']}" for each in submits),
+                self.repo.vsn,
+            )
+            return []
+        return submits
 
     @staticmethod
     def _first_renders(components: list[Component]) -> dict[str, int]:

@@ -1,0 +1,106 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form method="post"
+        action="{% url 'submitprobe:sign-in' %}"
+        data-testid="form"
+        {% on "submit.prevent" "check" %}>
+    {% csrf_token %}
+    <input type="text"
+           name="username"
+           data-testid="username"
+           value="{{ this.username }}">
+    <input type="password" name="password" data-testid="password">
+    <button type="submit" name="mode" value="plain" data-testid="plain">Sign in</button>
+    <button type="submit"
+            name="mode"
+            value="remember"
+            formaction="{% url 'submitprobe:sign-in' %}?via=formaction"
+            data-testid="remember">Sign in and remember</button>
+  </form>
+  <p data-testid="error">{{ this.error }}</p>
+  <span data-testid="checks">{{ this.checks }}</span>
+  <form id="away" method="post" action="http://elsewhere.invalid/steal/">
+    {% csrf_token %}
+    <input type="text"
+           name="username"
+           data-testid="away-username"
+           value="{{ this.username }}">
+  </form>
+  {# Fields named as the form's own properties: what goes and where is the form's, not theirs #}
+  <form id="shadow"
+        method="post"
+        action="{% url 'submitprobe:sign-in' %}?via=shadow"
+        data-testid="shadow"
+        {% on "submit.prevent" "go" which="shadow" %}>
+    {% csrf_token %}
+    <input type="text" name="username" value="shade">
+    <input type="text" name="action" value="http://elsewhere.invalid/">
+    <input type="text" name="method" value="get">
+    <input type="text" name="target" value="_blank">
+    <input type="text" name="elements" value="e">
+    <input type="text" name="submit" value="s">
+    <input type="hidden" name="part" value="first">
+    <button type="submit" name="part" value="button" data-testid="shadow-go">Go</button>
+    <input type="hidden" name="part" value="last">
+  </form>
+  {# Same-origin form, the submitter sends it elsewhere: refused #}
+  <form id="crossed"
+        method="post"
+        action="{% url 'submitprobe:sign-in' %}"
+        data-testid="crossed"
+        {% on "submit.prevent" "go" which="crossed" %}>
+    {% csrf_token %}
+    <input type="text"
+           name="username"
+           value="crossed"
+           data-testid="crossed-field">
+    <button type="submit"
+            formaction="http://elsewhere.invalid/steal/"
+            data-testid="crossed-go">Go</button>
+  </form>
+  {# Another origin's form, the submitter brings it home: sent where the submitter says #}
+  <form id="rescued"
+        method="post"
+        action="http://elsewhere.invalid/steal/"
+        data-testid="rescued"
+        {% on "submit.prevent" "go" which="rescued" %}>
+    {% csrf_token %}
+    <input type="text" name="username" value="rescued">
+    <button type="submit"
+            name="mode"
+            value="home"
+            formaction="{% url 'submitprobe:sign-in' %}?via=rescued"
+            data-testid="rescued-go">Go</button>
+  </form>
+  {# Answers that leave the page where it is #}
+  <form id="nothing"
+        method="post"
+        action="{% url 'submitprobe:nothing' %}"
+        data-testid="nothing"
+        {% on "submit.prevent" "go" which="nothing" %}>
+    {% csrf_token %}
+    <input type="text" name="username" value="n" data-testid="nothing-field">
+    <button type="submit" data-testid="nothing-go">Go</button>
+  </form>
+  <form id="download"
+        method="post"
+        action="{% url 'submitprobe:download' %}"
+        data-testid="download"
+        {% on "submit.prevent" "go" which="download" %}>
+    {% csrf_token %}
+    <input type="text" name="username" value="d" data-testid="download-field">
+    <button type="submit" data-testid="download-go">Go</button>
+  </form>
+  <form id="popup"
+        method="post"
+        action="{% url 'submitprobe:popup' %}"
+        data-testid="popup"
+        {% on "submit.prevent" "go" which="popup" %}>
+    {% csrf_token %}
+    <input type="text" name="username" value="p" data-testid="popup-field">
+    <button type="submit" formtarget="_blank" data-testid="popup-go">Go</button>
+  </form>
+  <button type="button" data-testid="elsewhere" {% on "click" "elsewhere" %}>Elsewhere</button>
+  <button type="button" data-testid="missing" {% on "click" "missing" %}>Missing</button>
+</div>

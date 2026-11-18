@@ -12,6 +12,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- A submit handler can call `await self.wire.submit_form(selector)` to submit a same-origin form over HTTP after its render. The browser carries the submit button and its overrides, and locks text inputs and buttons while the live submit is pending. Requires protocol 14 for server-directed submission (GAP-050 #246).
+
 ## [1.7.0] - 2026-11-15
 
 ### Added

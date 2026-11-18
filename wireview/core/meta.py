@@ -116,7 +116,7 @@ class Repo(t.Protocol):
 #: What a component's code may use on ``self.wire`` (docs/COMPATIBILITY.md, #99).
 #: The rest of this class is the framework's plumbing; a component reaches that
 #: behaviour through Component's own methods (put_flash, push_js, defer ...).
-PUBLIC_MEMBERS = frozenset({"params", "redirect_to", "replace_to", "push_to"})
+PUBLIC_MEMBERS = frozenset({"params", "redirect_to", "replace_to", "push_to", "submit_form"})
 
 
 #: True while component code runs for an HTTP render, across the bridges the
@@ -194,6 +194,9 @@ class WireviewMeta:
         self.broker: Broker = broker
         self._is_frozen: bool = False
         self._redirected_to: str | None = None
+        # Forms submit_form() asked the page to submit, by selector: they go
+        # with this component's next render (session.send_render, #246)
+        self._submits: list[str] = []
         self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
         # While a render of a ``Meta.shared_render`` class is under way: write the
@@ -421,6 +424,32 @@ class WireviewMeta:
         """
         url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="push", url=url)
+
+    async def submit_form(self, selector: str = "form", /) -> None:
+        """Have the page submit one of this component's forms as the browser does (#246).
+
+        Phoenix's ``phx-trigger-action``: a plain HTTP submission of the form,
+        to its ``action`` with its fields, its ``{% csrf_token %}`` among them
+        -- what a view that sets a cookie or a session (a login) needs, which no
+        message on the socket can do. The request goes with the component's
+        next render, the one the running handler ends with, and the page
+        submits once that render is painted: the fields carry what it drew.
+
+        ``selector`` picks the form in the component's element (the element
+        itself when it matches), as ``querySelector`` reads it; a form of a
+        nested component is not this one's. The submit button the user
+        submitted it with goes along, as the browser's own submission would
+        send it. The page submits a form only to its own origin, once, and
+        keeps it locked until it leaves (docs/features/form-feedback.md).
+        """
+        if not isinstance(selector, str) or not selector.strip():
+            raise ValueError("submit_form() needs a CSS selector for the form, such as 'form' or '#login'")
+        self._submits.append(selector)
+
+    def take_submits(self) -> list[str]:
+        """The forms ``submit_form`` asked for since the last render, cleared."""
+        submits, self._submits = self._submits, []
+        return submits
 
     async def push_title(self, title: str) -> None:
         """Update the page title dynamically.

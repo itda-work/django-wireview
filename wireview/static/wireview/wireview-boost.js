@@ -32,6 +32,8 @@ import {
 import { isIslandPair, syncAttributes } from "./islands.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { StickyOps } from "./sticky.mjs";
+import { Locks } from "./locks.mjs";
+import { attributeOf, formActionOf } from "./form-parts.mjs";
 import { ValueGuard, holdShown, radiosShown } from "./values.mjs";
 
 /**
@@ -63,6 +65,14 @@ const valueGuard = new ValueGuard();
  * morph reads it.
  */
 const sticky = new StickyOps();
+
+/**
+ * The page's locked form controls (locks.mjs, #246): a submit's, until its
+ * answer; a form the server submitted, until the page leaves. A render's morph
+ * keeps them locked.
+ * @type {Locks<Element>}
+ */
+const locks = new Locks();
 
 /** How many times a navigation's morph has put another page in this document. */
 let pagesShown = 0;
@@ -198,6 +208,10 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
         if (fromEl.nodeType === Node.ELEMENT_NODE) {
           if (navigation) sticky.forget(fromEl);
           else sticky.apply(fromEl, /** @type {HTMLElement} */ (toEl));
+          // A locked control stays locked through its render, and comes back
+          // to what the server drew last (locks.mjs, #246)
+          if (navigation) locks.forget(fromEl);
+          else locks.overlay(fromEl, /** @type {Element} */ (toEl));
         }
 
         const before = radios.get(fromEl);
@@ -534,11 +548,12 @@ if (BOOST_PAGES) {
     const form = e.target;
     if (!(form instanceof HTMLFormElement) || !boostsForm(form)) return;
     const submitter = /** @type {HTMLButtonElement|HTMLInputElement|null} */ (e.submitter);
-    const target = submitter?.getAttribute("formtarget") ?? form.getAttribute("target");
+    const target = submitter?.getAttribute("formtarget") ?? attributeOf(form, "target");
     if (target && target !== "_self") return;
-    const action = submitter?.getAttribute("formaction") ? submitter.formAction : form.action;
+    // The prototype's: a field named "action" makes `form.action` that field (#246)
+    const action = submitter?.getAttribute("formaction") ? submitter.formAction : formActionOf(form);
     // As the browser reads it: `method="put"` is a GET (#170)
-    const method = formMethod(form.getAttribute("method"), submitter?.getAttribute("formmethod"));
+    const method = formMethod(attributeOf(form, "method"), submitter?.getAttribute("formmethod"));
     // A dialog's form closes its dialog and goes nowhere
     if (method === "dialog" || !hasSameOriginAsDocument(action)) return;
     e.preventDefault();
@@ -1164,6 +1179,7 @@ window.addEventListener("pageshow", (event) => {
  * @property {typeof addBeforeElUpdated} addBeforeElUpdated - Add a morph callback
  * @property {typeof navigationToken} navigationToken - The navigation in flight
  * @property {StickyOps} sticky - What JS() commands changed, which renders keep
+ * @property {Locks<Element>} locks - The locked form controls, which renders keep
  * @property {typeof pageGeneration} pageGeneration - Which page the document shows
  */
 
@@ -1178,5 +1194,6 @@ export default {
   addBeforeElUpdated: addBeforeElUpdated,
   navigationToken: navigationToken,
   sticky: sticky,
+  locks: locks,
   pageGeneration: pageGeneration,
 };

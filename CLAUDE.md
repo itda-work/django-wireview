@@ -220,7 +220,8 @@ wireview/
 │                          uvicorn은 정적 파일을 서빙하지 않으므로 스타터 asgi.py가 DEBUG일 때 ASGIStaticFilesHandler로 감싼다
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 ├── templates/wireview/toasts.html  {% wireview_toasts %}가 심는 토스트 수신 컴포넌트의 템플릿
-└── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
+└── static/wireview/       locks.mjs (제출 중 컨트롤의 잠금과 복원), form-parts.mjs (동명 필드가 있는 폼의 속성·컨트롤 조회),
+                           wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수. pinContainerIds: morph 전에 렌더의 컨테이너에 화면 컨테이너의 id를 붙여 자리 짝짓기로 지워지지 않게 한다),
                            targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별.
                            whenPatched: 훅 pushEvent의 응답은 예약된 패치 뒤에 — 그 렌더의 DOM을 읽는다, #223),

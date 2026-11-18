@@ -34,7 +34,7 @@
  * opens. The server never sends a newer form. Keep in step with
  * `PROTOCOL_VERSION` in wireview/core/rendered.py.
  */
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 
 /**
  * First server version that echoes a user event's `ref` on its render (#92).

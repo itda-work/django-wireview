@@ -116,6 +116,7 @@ INSTALLED_APPS = [
     "testproj.csrfprobe",
     "testproj.identityprobe",
     "testproj.domprobe",
+    "testproj.submitprobe",
     "wireview",
     "channels",
     "daphne",

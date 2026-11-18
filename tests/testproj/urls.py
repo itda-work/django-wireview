@@ -63,6 +63,7 @@ urlpatterns = [
     path("csrfprobe/", include("testproj.csrfprobe.urls")),
     path("identityprobe/", include("testproj.identityprobe.urls")),
     path("domprobe/", include("testproj.domprobe.urls")),
+    path("submitprobe/", include("testproj.submitprobe.urls")),
     # The chunk endpoint. A project that leaves this out has no uploads at all,
     # so the test project carries it the way a real one would.
     path("", include("wireview.urls")),

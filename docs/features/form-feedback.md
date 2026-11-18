@@ -9,6 +9,24 @@
 2. 건드린 필드의 오류만 보여 준다
 3. 건드리지 않은 필드의 오류는 CSS로 감춘다
 
+## 검증 뒤 HTTP로 제출하기
+
+로그인처럼 Django 뷰가 세션 쿠키를 써야 하는 폼은 먼저 컴포넌트에서 검증한 다음 브라우저에 HTTP 제출을 요청할 수 있다.
+폼에 `id="login"`, `method="post"`, 뷰를 가리키는 `action`, `{% csrf_token %}`, `{% on "submit.prevent" "check" %}`를 둔다.
+검증 오류가 있으면 핸들러가 오류를 그린다. 성공하면 같은 핸들러에서 다음을 호출한다.
+
+```python
+await self.wire.submit_form("#login")
+```
+
+현재 컴포넌트 안에서 선택자와 일치하는 첫 폼을 제출한다. 기본 선택자는 `form`이다.
+브라우저는 응답 렌더를 적용한 다음 실제 HTTP 요청을 보낸다. 제출 버튼의 이름·값과 `formaction`·`formmethod` 설정도 적용한다.
+목적지는 현재 페이지와 같은 출처의 HTTP(S) URL이어야 한다. POST는 일반 Django CSRF 검사를 받으며, 뷰에서도 입력과 권한을 검증한다.
+이 지시는 프로토콜 14부터 지원한다. 이전 번들은 새로 고침해서 갱신해야 한다.
+
+제출 응답을 기다리는 동안 텍스트 입력과 textarea는 읽기 전용이 되고 버튼은 비활성화된다. 서버가 응답하거나 연결이 끊기면 원래 상태로 돌아간다.
+`auto_upload=False`인 파일이 있으면 그 파일의 업로드부터 기다린다. [업로드와 폼 제출](./chunked-uploads.md)
+
 ## 기본 사용
 
 ### HTML 구조
@@ -506,14 +524,12 @@ async def check_email(self, email: str = ""):
   `{% on %}`의 `_target=`(LiveComponent 대상 지정)과 핸들러의 `_target`은 별개다.
 - 중첩 이름은 wireview의 점 경로와 숫자 인덱스 규칙을 따른다. Phoenix의 `user[email]` 형식을 그대로 옮기지 않는다.
   실리는 칸은 HTML의 성공한 폼 컨트롤 규칙(`FormData`)을 따른다. 다만 폼 밖의 이벤트는 컴포넌트 안의 `name` 있는 요소를 모은다.
-- `phx-trigger-action`처럼 서버 렌더를 계기로 HTTP action 제출로 전환하는 속성은 없다.
-  일반 `action` 폼이나 `wire-boost`는 사용자가 제출하는 경로이며 이 기능의 대체 속성이 아니다.
+- `phx-trigger-action`에 해당하는 동작은 핸들러에서 `await self.wire.submit_form()`으로 요청한다.
 - 복구는 `wire-auto-recover`를 단 폼의 소켓 재연결에만 적용한다. change 폼의 기본 자동 복구와 컴포넌트 오류 후
   재마운트 복구는 제공하지 않는다. `wire-auto-recover="ignore"`도 비활성화 값이 아니라 핸들러 이름으로 해석된다.
 - 폼 reset 뒤에는 그 폼의 `input`·`change`를 보낸다(Phoenix처럼). 그 이벤트의 `_target`은 `None`이다.
   잘못된 number 입력은 `""`로 실리고 `_bad_input`에 이름이 오며, 그 change를 억제하지는 않는다.
-- 제출 중 전체 입력 readonly·버튼 disabled 전환은 자동 제공하지 않는다. 현재 로딩 표시는
-  [Optimistic UI](./optimistic-ui.md)의 `wire-disabled-with` 규칙이다.
+- 제출 중 버튼에는 `wire-disabled-with`로 대기 문구를 표시할 수 있다. [Optimistic UI](./optimistic-ui.md)
 
 Phoenix 1.2의 `phx-no-unused-field`는 used-input 전송을 끄는 옵션이다. wireview는 `_unused`를 폼 파라미터에
 섞지 않고 인자를 적은 핸들러에만 주므로 대응 옵션이 없다. `phx-patch-focused`처럼 포커스된 폼 컨트롤에 서버 패치를

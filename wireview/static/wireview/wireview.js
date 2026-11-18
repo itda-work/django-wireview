@@ -31,7 +31,9 @@ import {
   reconnectOptions,
   renewsNow,
 } from "./reconnect.mjs";
-import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
+import { NAVIGATED_EVENT, NavigationLog, carriedAcross, destination, formMethod } from "./navigation.mjs";
+import { lockKind } from "./locks.mjs";
+import { attributeOf, controlsOf, formActionOf, setAttributeOf, submitForm } from "./form-parts.mjs";
 import { UploadManagers } from "./uploads.mjs";
 import { SubmitUploads } from "./submits.mjs";
 import { newTab, socketUrl } from "./tab.mjs";
@@ -523,7 +525,7 @@ class ServerConnection {
         // End timing for profiling (event round-trip complete)
         endEventTiming();
 
-        const { id, diff, children, ref, vsn, instances } = payload;
+        const { id, diff, children, ref, vsn, instances, submit } = payload;
         if (typeof vsn === "number") this.serverVsn = vsn;
         const target = this.components[id];
         // The render answering a join carries vsn, and its ref is the join's
@@ -545,6 +547,24 @@ class ServerConnection {
             : typeof vsn === "number"
               ? []
               : this.loading.answerUnpaired(id);
+        // A form the server asks to submit (`wire.submit_form`, #246) stays
+        // locked from here: the answer that ends its submit's lock is this one
+        /** @type {{id: string, selector: string, form: HTMLFormElement | null}[]} */
+        const submits = (Array.isArray(submit) ? submit : []).map((/** @type {{id: string, selector: string}} */ each) => {
+          const form = componentForm(each.id, each.selector);
+          if (form) holdForSubmission(form);
+          return { ...each, form };
+        });
+        // What the user typed is what the submission sends: the answer's morph
+        // keeps it in that form's fields -- a password the server never drew
+        // with a value -- and what the user did not touch takes the render's
+        if (permission) {
+          for (const field of [...permission.keys()]) {
+            if (submits.some(({ form }) => form && /** @type {HTMLInputElement} */ (field).form === form)) {
+              permission.delete(field);
+            }
+          }
+        }
         released.forEach(unmarkLoading);
         // Not for a component whose element left the page: the render was on
         // its way when the page let it go, and its LiveComponents went with it
@@ -553,7 +573,10 @@ class ServerConnection {
         // that instance as current, and paint it over the new one. A
         // LiveComponent's own render is its root's instance's (#146).
         const root = target?.owned ? this.rootOf(id) : id;
-        if (!this.joins.render(root, ref, Boolean(target))) break;
+        if (!this.joins.render(root, ref, Boolean(target))) {
+          for (const { form } of submits) if (form && !nativeSubmits.get(form)?.sent) releaseSubmission(form);
+          break;
+        }
         // The instances this render is the first of: whose upload configs to
         // take (#137)
         if (instances) uploadManagers.named(instances);
@@ -594,6 +617,20 @@ class ServerConnection {
           for (const child of changedChildren) {
             child.scheduleMorph();
           }
+        }
+        // Once the render is painted (its patch is scheduled by now): the fields carry what it drew
+        for (const { id: owner, selector, form: before } of submits) {
+          this.targeted.push(owner, {
+            find: () => componentForm(owner, selector),
+            apply: (form) => {
+              if (before && before !== form) releaseSubmission(before);
+              submitNatively(form);
+            },
+            drop: () => {
+              if (before) releaseSubmission(before);
+              console.error("wireview: submit_form() found no form %o in %s", selector, owner);
+            },
+          });
         }
         break;
       }
@@ -1767,7 +1804,7 @@ class WireviewComponent {
       const el = /** @type {HTMLInputElement} */ (node);
       if (el.closest("[wireview-component]") !== thisElement) continue;
       if (!FeedbackManager.isFormInput(el) || isButtonControl(el) || el.type === "hidden") continue;
-      if (el.matches(":disabled") || !el.getAttribute("name")) continue;
+      if (isDisabledControl(el) || !el.getAttribute("name")) continue;
       fields.push(el);
     }
     const target = source && fields.includes(/** @type {HTMLInputElement} */ (source)) ? source.getAttribute("name") : null;
@@ -1809,7 +1846,8 @@ class WireviewComponent {
       const el = /** @type {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement} */ (node);
       // Avoid serializing data of a nested component
       if (el.closest("[wireview-component]") !== thisElement) continue;
-      if (el.matches(":disabled")) continue;
+      // Not a control a submit's lock disabled: the submit sends its submitter (#246)
+      if (isDisabledControl(el)) continue;
       const key = el.getAttribute("name");
       if (!key) continue;
 
@@ -1856,7 +1894,8 @@ function namedIn(element) {
   const inside = Array.from(element.querySelectorAll("[name]"));
   if (!(element instanceof HTMLFormElement)) return inside;
   const owned = inside.filter((el) => !isListed(el) || /** @type {any} */ (el).form === element);
-  const outside = Array.from(element.elements).filter((el) => el.hasAttribute("name") && !element.contains(el));
+  // The collection the prototype gives: a field named "elements" hides the property
+  const outside = Array.from(controlsOf(element)).filter((el) => el.hasAttribute("name") && !element.contains(el));
   if (!outside.length) return owned;
   return [...owned, ...outside].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 }
@@ -3572,7 +3611,7 @@ const FeedbackManager = {
    */
   formsWith(name) {
     return Array.from(document.forms).filter((form) =>
-      Array.from(form.elements).some((el) => this.isFormInput(/** @type {HTMLElement} */ (el)) && this.getFieldName(/** @type {HTMLElement} */ (el)) === name)
+      Array.from(controlsOf(form)).some((el) => this.isFormInput(/** @type {HTMLElement} */ (el)) && this.getFieldName(/** @type {HTMLElement} */ (el)) === name)
     );
   },
 
@@ -3688,39 +3727,76 @@ function isSubmitter(el) {
   return false;
 }
 
+/** The lock holder of an event's loading state (locks.mjs). */
+const LOADING_LOCK = "loading";
+/** The lock holder of a form the server had the page submit (#246). */
+const SUBMITTED_LOCK = "submitted";
+
+/**
+ * The controls a form's submit locked and nothing else marked: they take the
+ * lock, not the loading classes (#246).
+ * @type {WeakSet<Element>}
+ */
+const lockedOnly = new WeakSet();
+
+/**
+ * Lock the controls of `form` for `holder` (locks.mjs): those the form owns,
+ * a `form="id"` one outside it included.
+ * @param {HTMLFormElement} form
+ * @param {string} holder
+ * @returns {HTMLElement[]} the controls locked
+ */
+function lockForm(form, holder) {
+  /** @type {HTMLElement[]} */
+  const locked = [];
+  for (const control of Array.from(controlsOf(form))) {
+    const kind = lockKind(/** @type {HTMLInputElement} */ (control));
+    if (kind === null) continue;
+    boost.locks.lock(control, kind, holder);
+    locked.push(/** @type {HTMLElement} */ (control));
+  }
+  return locked;
+}
+
 /**
  * Show that an event is on its way to the server, until its answer arrives
  * (`LoadingLedger`, #118): the loading classes, and `wire-disabled-with`.
  *
- * A submit is marked on its submit buttons too, since that is where
- * `wire-disabled-with` goes in a form (docs/features/optimistic-ui.md). Every
- * path that sends an event for an element calls this -- a binding with a
- * handler and a JS() chain that pushes alike -- or the feedback depends on how
- * the event was written.
+ * A submit locks its form too (#246): the inputs read-only, the buttons
+ * disabled, as Phoenix does -- the answer would overwrite an edit made
+ * meanwhile, and a second click would save twice. Its submit buttons with
+ * `wire-disabled-with` show that text and take the loading classes, since that
+ * is where it goes in a form (docs/features/optimistic-ui.md). Every path that
+ * sends an event for an element calls this -- a binding with a handler and a
+ * JS() chain that pushes alike -- or the feedback depends on how the event was
+ * written.
  * @param {HTMLElement} element - the element that carries the binding
  * @param {string} [eventType]
  * @param {boolean} [again] - a morph just rewrote the element from the server's
- *   HTML: what it shows now is what to restore once the answer comes
+ *   HTML: what it shows now is what to restore once the answer comes. A lock
+ *   outlasts the morph on its own (`Locks.overlay`).
  * @returns {HTMLElement[]} the elements marked, for the ledger
  */
 function markLoading(element, eventType, again = false) {
+  if (again && lockedOnly.has(element)) return [element];
   const marked = [element];
   if (!again && eventType === "submit" && element instanceof HTMLFormElement) {
-    for (const button of element.querySelectorAll("[wire-disabled-with]")) {
-      if (isSubmitter(button)) marked.push(/** @type {HTMLElement} */ (button));
+    for (const control of lockForm(element, LOADING_LOCK)) {
+      marked.push(control);
+      if (!(isSubmitter(control) && control.hasAttribute("wire-disabled-with"))) lockedOnly.add(control);
     }
   }
   for (const el of marked) {
+    if (lockedOnly.has(el)) continue;
     el.classList.add("wireview-loading");
     if (eventType) el.classList.add(`wireview-${eventType}-loading`);
 
     const disabledWithText = el.getAttribute("wire-disabled-with");
-    if (disabledWithText !== null && (again || el._wireOriginalText === undefined)) {
-      if (!again || el.textContent !== disabledWithText) {
+    if (disabledWithText !== null) {
+      if (again ? el.textContent !== disabledWithText : el._wireOriginalText === undefined) {
         el._wireOriginalText = el.textContent;
-        el._wireOriginalDisabled = /** @type {HTMLButtonElement} */ (el).disabled;
       }
-      /** @type {HTMLButtonElement} */ (el).disabled = true;
+      boost.locks.lock(el, "disabled", LOADING_LOCK);
       el.textContent = disabledWithText;
     }
   }
@@ -3739,11 +3815,270 @@ function unmarkLoading(el) {
   }
   if (el._wireOriginalText !== undefined) {
     el.textContent = el._wireOriginalText;
-    /** @type {HTMLButtonElement} */ (el).disabled = el._wireOriginalDisabled || false;
     delete el._wireOriginalText;
-    delete el._wireOriginalDisabled;
   }
+  boost.locks.unlock(el, LOADING_LOCK);
+  lockedOnly.delete(el);
 }
+
+/**
+ * Whether a form submission leaves `el` out as disabled: its own `disabled`,
+ * or a disabled fieldset's -- not a lock's (#246). A submit that waited for
+ * its uploads is serialized while its form is locked, its submitter disabled.
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function isDisabledControl(el) {
+  if (!el.matches(":disabled")) return false;
+  if (boost.locks.own(el, "disabled")) return true;
+  // Disabled by a lock alone: a fieldset still disables it, but in its first legend
+  for (let fieldset = el.parentElement?.closest("fieldset"); fieldset; fieldset = fieldset.parentElement?.closest("fieldset")) {
+    if (!fieldset.hasAttribute("disabled")) continue;
+    const legend = fieldset.querySelector(":scope > legend");
+    if (!legend || !legend.contains(el)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a submit of `form` is under way: its event waits for its answer or
+ * its uploads, or the server had the page submit it (#246). Another submit
+ * then sends nothing.
+ * @param {HTMLFormElement} form
+ * @returns {boolean}
+ */
+function submitPending(form) {
+  if (submitUploads.has(form) || nativeSubmits.has(form)) return true;
+  return connection.loading.pending().some((mark) => mark.eventType === "submit" && mark.elements[0] === form);
+}
+
+// ============================================================================
+// Server-directed form submission (#246)
+// ============================================================================
+
+/**
+ * The submit button each form was last submitted with (#244), for the
+ * submission the server asks for after: it goes along as the browser's own
+ * would send it. Kept by what it is, too, for a render that replaced it.
+ * @type {WeakMap<HTMLFormElement, {button: Element, name: string | null, value: string, type: string} | null>}
+ */
+const lastSubmitters = new WeakMap();
+
+/**
+ * A form's submit went out, with `submitter` or none.
+ * @param {HTMLFormElement} form
+ * @param {Element|null} submitter
+ */
+function rememberSubmitter(form, submitter) {
+  lastSubmitters.set(
+    form,
+    submitter
+      ? {
+          button: submitter,
+          name: submitter.getAttribute("name"),
+          value: /** @type {HTMLButtonElement} */ (submitter).value,
+          type: /** @type {HTMLButtonElement} */ (submitter).type,
+        }
+      : null
+  );
+}
+
+/**
+ * The button `form` was last submitted with, as the page has it now.
+ * @param {HTMLFormElement} form
+ * @returns {HTMLButtonElement|HTMLInputElement|null}
+ */
+function rememberedSubmitter(form) {
+  const last = lastSubmitters.get(form);
+  if (!last) return null;
+  const owns = (/** @type {Element} */ el) => isSubmitter(el) && /** @type {HTMLButtonElement} */ (el).form === form;
+  if (last.button.isConnected && owns(last.button)) return /** @type {HTMLButtonElement} */ (last.button);
+  // A render replaced it: the button of the same name and value
+  const same = Array.from(controlsOf(form)).find(
+    (el) =>
+      owns(el) &&
+      el.getAttribute("name") === last.name &&
+      /** @type {HTMLButtonElement} */ (el).value === last.value &&
+      /** @type {HTMLButtonElement} */ (el).type === last.type
+  );
+  return /** @type {HTMLButtonElement|HTMLInputElement|null} */ (same ?? null);
+}
+
+/**
+ * The forms the server had the page submit, each with the controls it holds
+ * locked until the page leaves (#246).
+ * @type {Map<HTMLFormElement, NativeSubmit>}
+ */
+const nativeSubmits = new Map();
+
+/**
+ * @typedef {{controls: HTMLElement[], sent: boolean, timer?: number}} NativeSubmit
+ */
+
+/**
+ * How long a form the server submitted stays locked while the page is still
+ * here (#246). A submission whose answer leaves the page where it is -- a 204,
+ * a download -- fires nothing the page can hear, and a lock until the page
+ * leaves would be one for good. Past this the form is the user's again: a
+ * second submit then is theirs, as it is with a form the library never touched.
+ */
+const SUBMITTED_HOLD_MS = 5000;
+
+/**
+ * The form `selector` picks in component `id`'s element, the element itself
+ * included; one in a nested component is that component's.
+ * @param {string} id
+ * @param {string} selector
+ * @returns {HTMLFormElement|null}
+ */
+function componentForm(id, selector) {
+  const root = document.getElementById(id);
+  if (!root) return null;
+  let found;
+  try {
+    // The prototype's: the component's element may be a form with a field so named
+    const own = Element.prototype.matches.call(root, selector);
+    found = [...(own ? [root] : []), ...Element.prototype.querySelectorAll.call(root, selector)];
+  } catch (error) {
+    console.error("wireview: submit_form() selector %o of %s is not one the browser reads", selector, id, error);
+    return null;
+  }
+  const form = found.find(
+    (el) => el instanceof HTMLFormElement && el.closest("[wireview-component]") === root
+  );
+  return /** @type {HTMLFormElement|undefined} */ (form) ?? null;
+}
+
+/**
+ * Lock `form` for the submission the server asked for, before the render that
+ * carries the request ends the submit's own loading state.
+ * @param {HTMLFormElement} form
+ */
+function holdForSubmission(form) {
+  const held = nativeSubmits.get(form);
+  if (held) return;
+  nativeSubmits.set(form, { controls: lockForm(form, SUBMITTED_LOCK), sent: false });
+}
+
+/**
+ * The form will not be submitted after all, or its submission left the page
+ * where it was: its lock goes.
+ * @param {HTMLFormElement} form
+ */
+function releaseSubmission(form) {
+  const held = nativeSubmits.get(form);
+  if (!held) return;
+  nativeSubmits.delete(form);
+  window.clearTimeout(held.timer);
+  for (const control of held.controls) boost.locks.unlock(control, SUBMITTED_LOCK);
+}
+
+/**
+ * Submit `form` as the browser does (#246): to its action, with its fields and
+ * the button it was last submitted with -- that button's `formaction`,
+ * `formmethod`, `formenctype` and `formtarget` too, put on the form for the
+ * moment of the submission, and its name and value as a field.
+ * `HTMLFormElement.submit` fires no `submit` event, so no binding and no boost
+ * takes it, and runs no constraint validation: the server has judged the fields.
+ *
+ * Only to this page's origin: the fields carry the CSRF token, which no other
+ * site is to read, and a `javascript:` action runs nothing. The URL judged is
+ * the one the submission reads, read the way it reads it -- after the
+ * submitter's attributes are on, and past a field named "action" (form-parts.mjs).
+ *
+ * Once: a form submitted is locked, and asked again meanwhile goes nowhere.
+ * The lock lasts until the page leaves; a submission that leaves it where it
+ * is lets go at once when it went to another window, and after
+ * `SUBMITTED_HOLD_MS` otherwise (a 204, a download).
+ * @param {HTMLFormElement} form
+ */
+function submitNatively(form) {
+  holdForSubmission(form);
+  const held = /** @type {NativeSubmit} */ (nativeSubmits.get(form));
+  if (held.sent) {
+    debugLog("submit", "already submitted", form);
+    return;
+  }
+  const submitter = rememberedSubmitter(form);
+  /** @type {(() => void)[]} */
+  const undo = [];
+  /** @param {string} attribute @param {string} value */
+  const setOnForm = (attribute, value) => {
+    const before = attributeOf(form, attribute);
+    setAttributeOf(form, attribute, value);
+    undo.push(() => setAttributeOf(form, attribute, before));
+  };
+  /** @param {string} name @param {string} value */
+  const addField = (name, value) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    // A submit button contributes at its position among the successful controls.
+    // Keep that order for repeated names and for a button associated by form="id".
+    if (!submitter) return;
+    if (submitter.hasAttribute("form")) input.setAttribute("form", submitter.getAttribute("form") ?? "");
+    submitter.before(input);
+    undo.push(() => input.remove());
+  };
+  /** @type {string|null} */
+  let target = null;
+  try {
+    if (submitter) {
+      for (const [own, formAttribute] of [
+        ["formaction", "action"],
+        ["formmethod", "method"],
+        ["formenctype", "enctype"],
+        ["formtarget", "target"],
+      ]) {
+        const value = submitter.getAttribute(own);
+        if (value !== null) setOnForm(formAttribute, value);
+      }
+      const name = submitter.getAttribute("name");
+      if (name) {
+        if (/** @type {HTMLInputElement} */ (submitter).type === "image") {
+          addField(`${name}.x`, "0");
+          addField(`${name}.y`, "0");
+        } else {
+          addField(name, /** @type {HTMLButtonElement} */ (submitter).value);
+        }
+      }
+    }
+    // What the submission is about to read
+    const action = formActionOf(form);
+    const method = formMethod(attributeOf(form, "method"));
+    target = attributeOf(form, "target");
+    if (method === "dialog" || destination(action, document.baseURI, document.location.origin).kind !== "same") {
+      console.error(
+        "wireview: did not submit %o to %s: the server submits a form only to this page's origin, over http(s)",
+        form,
+        action
+      );
+      releaseSubmission(form);
+      return;
+    }
+    if (method === "post" && !controlsOf(form).namedItem("csrfmiddlewaretoken")) {
+      console.warn(
+        "wireview: submitting %o with no {%% csrf_token %%}: Django's CSRF check refuses it unless the view is exempt",
+        form
+      );
+    }
+    held.sent = true;
+    submitForm(form);
+  } finally {
+    // The submission took its fields, its URL and its target when it was made
+    for (const step of undo.reverse()) step();
+  }
+  // Another window shows the answer: this page stays, and its form with it
+  if (target && target.toLowerCase() !== "_self") releaseSubmission(form);
+  else held.timer = window.setTimeout(() => releaseSubmission(form), SUBMITTED_HOLD_MS);
+}
+
+// A page the back/forward cache restores is the one before the submission
+window.addEventListener("pageshow", (event) => {
+  if (!(/** @type {PageTransitionEvent} */ (event).persisted)) return;
+  for (const form of [...nativeSubmits.keys()]) releaseSubmission(form);
+});
 
 // ============================================================================
 // Event bindings: delegated, no inline script (#90)
@@ -3916,6 +4251,12 @@ const EventBindings = {
               : event.type === "click" && isSubmitter(element)
                 ? element
                 : null;
+          if (event.type === "submit" && element instanceof HTMLFormElement) {
+            // Submitted once, it is not sent again until that is over (#246)
+            if (submitPending(element)) return;
+            // What a submission the server asks for after sends (#246)
+            rememberSubmitter(element, submitter);
+          }
           if (value.js) {
             window.wireview.exec(element, value.js, { commit, eventType: event.type, submitter, source });
           } else if (value.h !== undefined) {
