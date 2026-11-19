@@ -43,7 +43,9 @@ async def transfer(self, amount: int, **_):
 `transaction.atomic`으로 묶는다.
 
 다시 join하는 동안 사용자가 입력하던 값은 지켜진다. 던진 이벤트가 Enter나 submit이었어도 입력칸을
-비우지 않는다. 그 이벤트의 답은 오지 않았기 때문이다.
+비우지 않는다. 그 이벤트의 답은 오지 않았기 때문이다. 화면에만 있는 그 값을 새 인스턴스에 돌려주려면 폼에
+[`wire-auto-recover`](./form-feedback.md#재연결-뒤-폼-복구-wire-auto-recover)를 단다 — 다시 join이 자리 잡은 뒤 한 번
+보낸다. 그 복구가 또 던지면 복구 없이 한 번 더 다시 join하고 멈춘다.
 
 같은 이벤트가 매번 던지면 누를 때마다 다시 join할 뿐 반복되지는 않는다. 다시 join하는 것은 이벤트가
 아니라 join이기 때문이다.

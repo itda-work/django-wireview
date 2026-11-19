@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <span data-testid="{{ this.id }}-tag">{{ this.tag }}</span>
+  <form id="{{ this.id }}-form" wire-auto-recover="keep">
+    <input name="draft" data-testid="{{ this.id }}-draft">
+  </form>
+  <span data-testid="{{ this.id }}-kept">{{ this.kept }}</span>
+</div>

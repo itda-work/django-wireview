@@ -478,19 +478,29 @@ input.is-invalid {
 
 ## 재연결 뒤 폼 복구 (`wire-auto-recover`)
 
-연결이 끊겼다 다시 붙으면 서버는 마지막 렌더의 상태만 가지고 있다. 서명된 `data-state`가 join에서
-그것을 되돌린다. 그 사이 사용자가 폼에 입력한 것은 페이지에는 남아 있지만 서버에는 없다.
-`wire-auto-recover`를 단 폼은 컴포넌트가 다시 join한 뒤 그 값을 서버에 돌려준다.
+서버는 마지막 렌더의 상태만 가지고 있다. 서명된 `data-state`가 join에서 그것을 되돌린다. 그 사이 사용자가 폼에
+입력한 것은 페이지에는 남아 있지만 서버에는 없다. 그 상태로 새 인스턴스가 생기는 때가 둘 있다.
+
+- **소켓 재연결.** 네트워크가 끊겼다 돌아오면 새 소켓이 모든 컴포넌트를 다시 join한다.
+- **이벤트 처리 중 오류.** 핸들러가 예외를 던지면 서버가 그 인스턴스를 버리고, 페이지가 요소의 상태(이벤트 전의 것)로
+  그 컴포넌트를 다시 join한다([오류 처리](./errors.md)). 소켓과 다른 컴포넌트는 그대로다.
+
+`wire-auto-recover`를 단 폼은 두 경우 모두 새 인스턴스에 그 값을 돌려준다.
 
 ```html
 <!-- 핸들러를 적으면 그 핸들러가 폼의 값을 form_data로 받는다 -->
-<form wire-auto-recover="recover_draft">
+<form id="draft" wire-auto-recover="recover_draft">
   <textarea name="body"></textarea>
 </form>
 
 <!-- 값 없이 달면 폼의 change 이벤트를 다시 일으켜 폼 자신의 바인딩이 돈다 -->
-<form wire-auto-recover {% on "change" "check_email" %}>
+<form id="signup" wire-auto-recover {% on "change" "check_email" %}>
   <input name="email">
+</form>
+
+<!-- 끈다. 템플릿이 조건에 따라 값을 고를 때 쓴다 -->
+<form id="search" wire-auto-recover="false">
+  <input name="q">
 </form>
 ```
 
@@ -505,6 +515,40 @@ async def check_email(self, email: str = ""):
 값 없이 다는 형태는 폼의 change를 재실행한다. Phoenix와 달리 복구하려는 폼에 속성을 명시해야 한다. 그 폼에 `{% on "change" %}` 바인딩이
 있어야 한다. 핸들러 이름을 Phoenix처럼 `validate`로 짓지 않는다 — Pydantic `BaseModel`이 가진 이름이라
 클라이언트가 부를 수 없고, `{% on %}`이 렌더 때 거절한다(`manage.py check`의 `wireview.W018`이 미리 알린다). 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
+
+| 값 | 뜻 |
+|----|----|
+| 없음(`wire-auto-recover`), `"true"` | 폼의 change를 다시 일으킨다 |
+| `"false"` | 복구하지 않는다 |
+| 그 밖의 이름 | 그 핸들러를 `form_data`로 부른다. `"ignore"`도 핸들러 이름이다 — 1.7까지 그랬던 그대로다 |
+
+### 언제, 무엇이 가는가
+
+- **join이 자리 잡은 뒤에 한 번.** 폼은 join을 보낼 때 고르고, 그 join의 `joined`가 오고 그 렌더가 화면에 그려진 뒤에
+  보낸다. 그래서 복구는 그 join이 만든 인스턴스에 가고, 같은 폼이 두 번 가지 않는다. 그 사이 같은 id로 다른 join이 나가면
+  (boost 이동이 새 DOM을 가져왔다) 그 복구는 버린다.
+- **같은 폼만.** 새 렌더에도 같은 id(id가 없었으면 같은 요소)로, 같은 컴포넌트 안에, 복구를 켠 채 있는 폼만 돌려준다.
+  새 렌더가 지운 폼, id를 바꾼 폼, `"false"`로 바꾼 폼은 보내지 않는다. id를 단 폼이 가장 확실하다.
+- **보내는 때의 값.** join을 보낸 뒤 사용자가 더 입력한 것도 실린다. 렌더는 사용자가 고친 칸의 값을 덮어쓰지 않는다.
+- **파일은 싣지 않는다.** `{% upload_input %}`에 고른 파일은 그것을 고른 인스턴스와 함께 끝난다 — 새 인스턴스는 다시
+  골라야 한다. 이름을 단 평범한 `<input type="file">`도 `form_data`에 실리지 않는다.
+- **그 join이 소유하는 것.** 컴포넌트 자신의 폼과 그것이 소유한 LiveComponent의 폼이다(LiveComponent는 부모의 join이
+  다시 만든다). 각 폼은 자기 컴포넌트의 핸들러로 간다. 안에 그린 다른 컴포넌트의 폼은 그 컴포넌트의 join이 맡는다.
+  오류는 그 컴포넌트만 다시 join하므로 페이지의 다른 컴포넌트는 복구하지 않는다.
+- **다른 신분의 소켓에는 보내지 않는다.** 다른 탭이 로그인·로그아웃하거나 CSRF 시크릿을 바꿨다면 재연결의 join은
+  `renew`(새 소켓)나 `reload`로 답받는다([live_session](./live-session.md)). 그 join은 아무것도 만들지 않았으므로 보낼 곳이 없고,
+  `renew`로 연 소켓은 아무것도 복구하지 않는다 — 입력한 값은 이전 신분의 것이다. 값은 화면에 남는다.
+- **복구가 예외를 던지면 다시 복구하지 않는다.** 오류 뒤 복구한 컴포넌트가 그 다음 오류를 내면, 그 사이 사용자가 아무것도
+  하지 않았다면 복구 없이 다시 join한다 — 아니면 같은 폼이 같은 예외를 끝없이 부른다. 사용자가 누르거나 키를 치면
+  다음 오류는 다시 복구한다. 스크립트가 일으킨 이벤트는 사용자의 것으로 치지 않는다.
+- 개발 서버의 템플릿 변경 rejoin(#180)은 복구하지 않는다. 그것은 페이지가 보낸 것의 답을 다 받은 뒤 다시 join한다.
+
+### 기본으로 켜지 않는다
+
+Phoenix는 `phx-change`가 있고 id를 단 폼을 기본으로 복구한다. wireview는 속성을 단 폼만 복구하고, 그것을 기본으로 켜는
+설정도 두지 않는다. 기본 복구는 "다시 join한 뒤 폼의 change가 한 번 더 간다"를 모든 폼에 들인다 — change 핸들러가
+저장하거나 메일을 보내는 앱은 재연결마다 그 일을 한 번 더 한다. 그리고 서명된 상태가 이미 마지막 렌더를 되돌리므로,
+복구가 더하는 것은 보내지 않은 입력뿐이다. 그것이 필요한 폼에 속성을 단다.
 
 ## Phoenix LiveView 대응
 
@@ -525,8 +569,9 @@ async def check_email(self, email: str = ""):
 - 중첩 이름은 wireview의 점 경로와 숫자 인덱스 규칙을 따른다. Phoenix의 `user[email]` 형식을 그대로 옮기지 않는다.
   실리는 칸은 HTML의 성공한 폼 컨트롤 규칙(`FormData`)을 따른다. 다만 폼 밖의 이벤트는 컴포넌트 안의 `name` 있는 요소를 모은다.
 - `phx-trigger-action`에 해당하는 동작은 핸들러에서 `await self.wire.submit_form()`으로 요청한다.
-- 복구는 `wire-auto-recover`를 단 폼의 소켓 재연결에만 적용한다. change 폼의 기본 자동 복구와 컴포넌트 오류 후
-  재마운트 복구는 제공하지 않는다. `wire-auto-recover="ignore"`도 비활성화 값이 아니라 핸들러 이름으로 해석된다.
+- 복구는 `wire-auto-recover`를 단 폼만 한다(재연결과 오류 뒤 다시 join 모두). change 폼의 기본 자동 복구는 제공하지
+  않는다([기본으로 켜지 않는다](#기본으로-켜지-않는다)). 끄는 값은 Phoenix의 `"ignore"`가 아니라 `"false"`다 —
+  `"ignore"`는 1.7까지 핸들러 이름이었고 지금도 그렇다.
 - 폼 reset 뒤에는 그 폼의 `input`·`change`를 보낸다(Phoenix처럼). 그 이벤트의 `_target`은 `None`이다.
   잘못된 number 입력은 `""`로 실리고 `_bad_input`에 이름이 오며, 그 change를 억제하지는 않는다.
 - 제출 중 버튼에는 `wire-disabled-with`로 대기 문구를 표시할 수 있다. [Optimistic UI](./optimistic-ui.md)

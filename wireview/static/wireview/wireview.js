@@ -10,6 +10,7 @@ import {
   navigationCommand,
 } from "./rendered.mjs";
 import { Joins, rejoinable, settledEvent } from "./joins.mjs";
+import { Recoveries, recoveryOf, stillRecovers } from "./recovery.mjs";
 import { RejoinBarrier, SYNC_TIMEOUT_MS } from "./rejoins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
@@ -124,6 +125,14 @@ class ServerConnection {
     this.renewal = new Renewal(readReconnectSettings(document));
     /** @type {boolean} whether the joins being sent are the first round on a renewal's socket (#209) */
     this.renewedRound = false;
+    /**
+     * @type {boolean} whether the joins being sent are a reconnect's, whose
+     * `wire-auto-recover` forms their new instances get back (#245). Not a
+     * renewal's: its socket is another identity's (#209).
+     */
+    this.recoveringRound = false;
+    /** @type {Recoveries<HTMLFormElement>} the forms each join gives back once it lands (#245) */
+    this.recoveries = new Recoveries();
     /** @type {WireviewMessage[]} */
     this.messageQueue = [];
     /** @type {ReconnectingWebSocket|null} */
@@ -212,6 +221,14 @@ class ServerConnection {
     window.addEventListener("online", returned);
     window.addEventListener("pageshow", returned);
 
+    // The user pressed or typed something: an error from here is theirs, not a
+    // recovery's raising again (#245). What a script does is not trusted.
+    const acted = (/** @type {Event} */ event) => {
+      if (event.isTrusted) this.recoveries.userActed();
+    };
+    document.addEventListener("pointerdown", acted, true);
+    document.addEventListener("keydown", acted, true);
+
     this.socket.addEventListener("open", () => {
       debugLog("ws", "Connected to server");
       this.revival.heard(performance.now());
@@ -229,20 +246,21 @@ class ServerConnection {
       whenDocumentReady(() => {
         this.components = {};
         this.renewedRound = renewed;
+        this.recoveringRound = reconnecting && !renewed;
         try {
           this.joinAllComponents();
         } finally {
           this.renewedRound = false;
+          this.recoveringRound = false;
         }
         // Flush messages queued while the socket was connecting
         while (this.messageQueue.length) {
           const { command, payload } = this.messageQueue.shift();
           this._send(command, payload);
         }
-        // After the joins: the server handles one socket's messages in order,
-        // and a recovery event sent before its component's join found nothing
-        // to reach and was dropped (#110).
-        if (reconnecting) this.recoverForms();
+        // The `wire-auto-recover` forms go back once each join has landed
+        // (`joined`, recoverLanded, #245): sent behind the join alone, a
+        // recovery found nothing when the server answered `renew`.
       });
     });
 
@@ -258,6 +276,8 @@ class ServerConnection {
       // Nothing sent on this socket will be answered.
       boost.valueGuard.clear();
       this.loading.clear().forEach(unmarkLoading);
+      // The joins it sent will not land; the next socket's arm their own
+      this.recoveries.clear();
       debugLog("ws", "Disconnected from server");
       this.replies.fail(() => true, "disconnected");
       this.revival.closed();
@@ -457,6 +477,7 @@ class ServerConnection {
       component.viewportObserver.destroy();
       delete this.components[id];
       this.joins.forget(id);
+      this.recoveries.drop(id);
       // Nothing it was waiting for is for the page any more (#146)
       this.loading.abandon(id).forEach(unmarkLoading);
       // Its files, requests and previews too: a config it was still owed must
@@ -618,6 +639,10 @@ class ServerConnection {
             child.scheduleMorph();
           }
         }
+        // A server that does not say `joined`: the forms go back once this
+        // join's render is painted, as `joined` would have them (#245) -- its
+        // patch is scheduled by now, so they are looked for in what it drew
+        if (this.serverVsn < JOINED_SINCE && typeof vsn === "number") this.recoverLanded(id, ref);
         // Once the render is painted (its patch is scheduled by now): the fields carry what it drew
         for (const { id: owner, selector, form: before } of submits) {
           this.targeted.push(owner, {
@@ -639,6 +664,7 @@ class ServerConnection {
         // A LiveComponent's is its root's instance's, as its render is.
         const owned = this.components[payload.id]?.owned;
         if (!this.joins.about(owned ? this.rootOf(payload.id) : payload.id, payload.ref)) break;
+        if (!owned) this.recoveries.drop(payload.id);
         boost.applying(() => document.getElementById(payload.id)?.remove());
         boost.navEvent.sendNewContent();
         break;
@@ -707,8 +733,11 @@ class ServerConnection {
           // state from before the event, so joining with it is the rollback.
           // Past a rejoin's barrier (#180): what it holds for this id was sent
           // after the error came, for the instance this join makes, and would
-          // otherwise go out ahead of it, to none (#222).
-          target.rejoin({ through: true });
+          // otherwise go out ahead of it, to none (#222). Its forms go back to
+          // the new instance once the join lands -- not when the last error
+          // recovered and the user did nothing since: the recovery may be what
+          // raised (#245).
+          target.rejoin({ through: true, recover: this.recoveries.recoversAfterError(id) });
         } else if (element) {
           // A join that failed is not retried: it would fail again. The page
           // keeps what the server rendered, and the next connection tries --
@@ -716,6 +745,7 @@ class ServerConnection {
           // stays registered, so its hooks hear destroyed() if it leaves: the
           // server answers its events without running them (#94).
           this.joins.forget(id);
+          this.recoveries.drop(id);
           // No instance, so no uploads: its own nor its LiveComponents' -- the
           // ones it owns; one in its slot is its caller's, alive
           uploadManagers.joinFailed(id, ownedLiveIds(element));
@@ -751,6 +781,7 @@ class ServerConnection {
         // one the deployed class does not accept, #231) and mounted nothing. Reloading re-renders the page with fresh tokens.
         // A join the page has since replaced is answered on its own (#146).
         if (!this.joins.about(payload.id, payload.ref)) break;
+        if (payload.id) this.recoveries.drop(payload.id);
         this._reloadPage(payload.reason);
         break;
       case "renew":
@@ -759,6 +790,9 @@ class ServerConnection {
         // Open a socket under the cookies the browser holds now and join every
         // component there, as a reconnect does; once, however many joins said it.
         if (!this.joins.about(payload.id, payload.ref)) break;
+        // Nothing this socket armed goes anywhere now: the instances its joins
+        // made are this socket's identity, the page's forms another's (#245)
+        this.recoveries.clear();
         {
           // At once the first time; a renew soon after the last waits, as a reconnect does
           const epoch = this.epoch;
@@ -875,6 +909,7 @@ class ServerConnection {
         const { id, ref } = payload;
         if (!this.joins.about(this.components[id]?.owned ? this.rootOf(id) : id, ref)) break;
         this.startViewports(id);
+        this.recoverLanded(id, ref);
         break;
       }
 
@@ -1267,33 +1302,97 @@ class ServerConnection {
   }
 
   /**
-   * Gives the server back what a `wire-auto-recover` form holds after a
-   * reconnect. The form is still on the page with what the user typed; the
-   * server has only the state of the last render, which a signed state
-   * restores on join. So once the component has joined again:
+   * The `wire-auto-recover` forms of a join's element, taken as the join goes
+   * out (#245): the component's own and those of the LiveComponents it owns,
+   * whose instances the join builds too. A nested root's are its own join's,
+   * and one turned off (`wire-auto-recover="false"`) is left out.
+   * @param {HTMLElement} element - the root the join is for
+   * @returns {import("./recovery.mjs").Armed<HTMLFormElement>[]}
+   */
+  recoverableForms(element) {
+    const owners = new Set([element.id, ...ownedLiveIds(element)]);
+    /** @type {import("./recovery.mjs").Armed<HTMLFormElement>[]} */
+    const forms = [];
+    for (const node of element.querySelectorAll("form[wire-auto-recover]")) {
+      const form = /** @type {HTMLFormElement} */ (node);
+      const owner = form.closest("[wireview-component]")?.id;
+      if (!owner || !owners.has(owner) || recoveryOf(form.getAttribute("wire-auto-recover"))?.kind === "off") continue;
+      forms.push({ form, id: form.getAttribute("id"), owner });
+    }
+    return forms;
+  }
+
+  /**
+   * A form as `stillRecovers` reads it.
+   * @param {Element | null} form
+   * @returns {import("./recovery.mjs").Found | null}
+   */
+  found(form) {
+    if (!(form instanceof HTMLFormElement)) return null;
+    return {
+      connected: form.isConnected,
+      // The attribute: a field named "id" hides the property
+      id: form.getAttribute("id"),
+      owner: form.closest("[wireview-component]")?.id ?? null,
+      value: form.getAttribute("wire-auto-recover"),
+    };
+  }
+
+  /**
+   * The join for `id` landed (`joined`): the forms it took go back to the new
+   * instance once its render is patched in (#245), each through its handler
+   * (`form_data`) or its own change binding. Once, and only to the join it
+   * was taken for: a join sent for the id meanwhile replaced the instance.
+   * @param {string} id
+   * @param {number} [ref] - the `joined`'s
+   */
+  recoverLanded(id, ref) {
+    const { forms, afterError } = this.recoveries.landed(id, ref);
+    if (!forms.length) return;
+    const join = this.joins.byId.get(id);
+    const generation = this.recoveries.generation;
+    this.targeted.push(id, {
+      find: () => document.getElementById(id),
+      apply: () => {
+        // Not when a join sent for the id meanwhile replaced the instance, nor
+        // after a `renew` or a close let go of everything this socket armed
+        if (this.joins.byId.get(id) !== join || this.recoveries.generation !== generation) return;
+        if (this.recoverForms(forms) && afterError) this.recoveries.recovered(id);
+      },
+    });
+  }
+
+  /**
+   * Gives the new instances what the forms hold now: what the user typed is
+   * still in them, and the morph keeps a field the user edited. A form the
+   * render dropped, gave another id, moved to another component or turned off
+   * is not the one taken, and nothing goes for it. A file input sends nothing:
+   * its file went with the instance it was chosen for (#137).
    *
    * - `wire-auto-recover="handler"` calls that handler with `form_data`,
    * - a bare `wire-auto-recover` fires the form's change event, so its own
    *   `{% on "change" %}` binding runs -- Phoenix's phx-auto-recover default.
+   * @param {import("./recovery.mjs").Armed<HTMLFormElement>[]} forms
+   * @returns {boolean} whether any went
    */
-  recoverForms() {
-    for (const form of document.querySelectorAll("form[wire-auto-recover]")) {
-      const componentEl = form.closest("[wireview-component]");
-      if (!componentEl || !this.components[componentEl.id]) continue;
-
-      const handler = form.getAttribute("wire-auto-recover");
-      if (handler && handler !== "true") {
-        debugLog("form", `Recovering ${componentEl.id} through ${handler}`);
-        this._send("user_event", {
-          id: componentEl.id,
-          command: handler,
-          implicit_args: {},
-          explicit_args: { form_data: formValues(/** @type {HTMLFormElement} */ (form)) },
-        });
+  recoverForms(forms) {
+    let sent = false;
+    for (const armed of forms) {
+      const form = armed.id !== null ? document.getElementById(armed.id) : armed.form;
+      const recovery = stillRecovers(armed, this.found(form));
+      if (!recovery || !this.components[armed.owner]) continue;
+      const element = /** @type {HTMLFormElement} */ (form);
+      if (recovery.kind === "handler") {
+        debugLog("form", `Recovering ${armed.owner} through ${recovery.handler}`);
+        // Paired with its answer, as any event the server echoes refs for
+        const ref = this.serverVsn >= REFS_SINCE ? ++this.lastRef : undefined;
+        this.sendUserEvent(armed.owner, recovery.handler, {}, { form_data: recoveredValues(element) }, ref, undefined);
       } else {
-        form.dispatchEvent(new Event("change", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
       }
+      sent = true;
     }
+    return sent;
   }
 
   /**
@@ -1668,9 +1767,11 @@ class WireviewComponent {
    * dropped, since the join's answer is a full render. Also what a `rejoin`
    * does for each component (#180), with `through`: its join goes past the
    * barrier that holds what the page sends meanwhile.
-   * @param {{through?: boolean}} [options]
+   * @param {{through?: boolean, recover?: boolean}} [options] - `recover`: an
+   *   `error`'s rollback, whose `wire-auto-recover` forms the new instance
+   *   gets back (#245)
    */
-  rejoin({ through = false } = {}) {
+  rejoin({ through = false, recover = false } = {}) {
     const element = /** @type {HTMLElement|null} */ (this.getElemenet());
     if (!element) return;
     // A render that arrived before the error may still wait for its frame;
@@ -1679,15 +1780,17 @@ class WireviewComponent {
     this.static = null;
     this.dynamic = [];
     this.fingerprint = null;
-    this.sendJoin(element, through);
+    this.sendJoin(element, through, recover);
   }
 
   /**
    * Sends a join with the element's signed state and its nested components'.
    * @param {HTMLElement} element
    * @param {boolean} [through] - past a rejoin's barrier (#180)
+   * @param {boolean} [afterError] - an `error`'s rollback, which gives the
+   *   new instance its forms back as a reconnect's joins do (#245)
    */
-  sendJoin(element, through = false) {
+  sendJoin(element, through = false, afterError = false) {
     // A second join on this connection replaces the instance: new DOM from a
     // boosted navigation, or the rollback after a crash. The server retires the
     // old one with its LiveComponents and their uploads, and so does the page:
@@ -1697,6 +1800,11 @@ class WireviewComponent {
     // replaces by its answer, which carries the ref (#139).
     const ref = connection.serverVsn >= JOIN_REFS_SINCE ? ++connection.lastRef : undefined;
     uploadManagers.joining(this.id, ownedLiveIds(element), connection.joins.sent(this.id, ref));
+    // The forms the new instance gets back once this join lands: a reconnect's
+    // or a rollback's. Any other join -- new DOM under the id -- gives back
+    // nothing, and drops what an earlier one was to (#245).
+    const recover = afterError || connection.recoveringRound;
+    connection.recoveries.arm(this.id, ref, recover ? connection.recoverableForms(element) : [], { afterError });
     // Infinite scroll judges the new instance's list once this join lands
     // (`joined`), as it did the first's (#112). Left running, the old
     // instance's observer saw the new DOM's binding over a list not there
@@ -3699,14 +3807,18 @@ document.addEventListener("reset", (e) => {
 FeedbackManager.init();
 
 /**
- * A form's values as a plain object; a name with several values maps to a list.
+ * What a recovery gives back of a form (#245): its values as a plain object, a
+ * name with several values mapping to a list. A submission's entries
+ * (`FormData`), less the files: a chosen file is not the new instance's, and
+ * a `File` has no JSON.
  * @param {HTMLFormElement} form
- * @returns {Object<string, FormDataEntryValue | FormDataEntryValue[]>}
+ * @returns {Object<string, string | string[]>}
  */
-function formValues(form) {
-  /** @type {Object<string, FormDataEntryValue | FormDataEntryValue[]>} */
+function recoveredValues(form) {
+  /** @type {Object<string, string | string[]>} */
   const data = {};
   for (const [name, value] of new FormData(form).entries()) {
+    if (typeof value !== "string") continue;
     const seen = data[name];
     if (seen === undefined) data[name] = value;
     else if (Array.isArray(seen)) seen.push(value);

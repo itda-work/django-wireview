@@ -448,6 +448,10 @@ def normalized_text(el: Element) -> str:
 # ============================================================================
 
 BINDING_PREFIX = "wire-on-"
+
+#: The ``wire-auto-recover`` value that turns a form's recovery off (#245). The
+#: client's is ``RECOVERY_OFF`` in static/wireview/recovery.mjs; ``ignore`` stays a handler's name.
+RECOVERY_OFF = "false"
 #: Modifiers that take the next token as their argument (``ARITY`` in events.mjs)
 ARITY = frozenset({"debounce", "throttle", "key", "key_code"})
 #: Key shortcuts and the ``event.key`` (lowercased) each stands for (``KEYS`` in events.mjs)
@@ -1742,9 +1746,10 @@ def page_problems(
     - ``duplicate_id``: two elements with one id (``getElementById`` finds the first);
     - ``duplicate_component``: two components with one id (the client holds one per id);
     - ``recover_form``: a ``wire-auto-recover`` form that recovers nothing after a
-      reconnect: one naming a handler its component does not let a client call,
-      or a bare one whose ``change`` reaches no server binding. A form one of
-      ``skip_forms`` matches is not checked.
+      reconnect or an error's rollback: one naming a handler its component does
+      not let a client call, or a bare one whose ``change`` reaches no server
+      binding. One turned off (``wire-auto-recover="false"``), or that one of
+      ``skip_forms`` matches, is not checked.
 
     ``callable_handler(component_id, name)`` says whether the component under
     that id takes the handler name from a client, ``None`` when it cannot say.
@@ -1783,6 +1788,9 @@ def page_problems(
         if any(selector.matches(form) for selector in skip_forms):
             continue
         handler = form.get("wire-auto-recover") or ""
+        if handler == RECOVERY_OFF:
+            # Turned off: recovering nothing is what it asks for (#245)
+            continue
         owner = form.closest(is_component)
         if owner is None:
             problems.append(("recover_form", f"{form.describe()} is in no component's element: nothing recovers it"))

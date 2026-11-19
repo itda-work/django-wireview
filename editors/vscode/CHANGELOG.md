@@ -17,6 +17,10 @@ the release workflow refuses a tag whose section has no date
 - A completion snippet for django-wireview's `{% island %}` tag (#221).
 - `wire-boost` offers the value `false`, which leaves the links on or inside the element to the browser (#227).
 
+### Fixed
+
+- `wire-auto-recover="true"` and `"false"` (recovery off, #245) are no longer reported as unknown handlers; `"ignore"` is still a handler's name.
+
 ## [0.2.1] - 2026-10-09
 
 ### Fixed

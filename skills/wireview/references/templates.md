@@ -81,7 +81,7 @@
 | `wire-viewport-top` / `wire-viewport-bottom` | 무한 스크롤 |
 | `wire-disabled-with` | 요청 중 버튼 비활성화 + 대체 문구 |
 | `wire-feedback-for` / `wire-no-feedback` | 폼 검증 오류 표시 시점 제어 |
-| `wire-auto-recover` | 재연결 뒤 폼의 값을 서버에 돌려줌 (핸들러 또는 폼의 change 바인딩) |
+| `wire-auto-recover` | 재연결이나 오류 뒤 다시 join한 새 인스턴스에 폼의 값을 한 번 돌려줌 (핸들러 또는 폼의 change 바인딩). `"false"`는 끈다 |
 | `wire-flash` | 플래시 메시지 표시 자리 |
 
 업로드의 `wire-upload`·`wire-upload-drop`·`wire-upload-select`·`wire-preview`는 업로드 태그가 만드는 속성이다. 직접 쓰지 않고

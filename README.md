@@ -71,7 +71,7 @@ Django로 백엔드를 만들고 있고 프런트엔드 전담이 없는 팀에 
 | **Vaadin Flow** (Java) | HTTP, 푸시는 WebSocket | 내장. `@Push` | 서버 세션의 UI 객체 트리 | sticky session 필요 | UI unit 테스트 |
 | **Spring REST + SPA** (Java) | HTTP, 필요하면 WebSocket | 직접 만든다. STOMP 등 | 클라이언트 | 무상태 API | API와 프런트를 따로 |
 
-**가장 가까운 것은 Phoenix LiveView입니다.** wireview는 그 모델을 Django로 옮긴 것이라 기능표 147행 중 119행이 같습니다. 설계상 제외한 둘(중첩 LiveView의 프로세스 격리, long polling 폴백) 말고도, LiveView 1.2와 견주어 아직 없는 기능 15행과 일부만 있는 기능 11행이 GAP 번호와 이슈로 남아 있습니다 — JS 명령·훅·폼·업로드의 옵션, 테스트 헬퍼, 포털 같은 것들입니다([기능 갭](https://github.com/itda-work/django-wireview/blob/main/docs/FEATURE-GAP.md)). 고르는 기준은 언어와 팀입니다. 이미 Django의 모델·폼·admin·인증 위에 있으면 wireview, Elixir 팀이거나 BEAM의 프로세스 격리와 연결당 메모리가 필요하면 LiveView입니다.
+**가장 가까운 것은 Phoenix LiveView입니다.** wireview는 그 모델을 Django로 옮긴 것이라 기능표 147행 중 120행이 같습니다. 설계상 제외한 둘(중첩 LiveView의 프로세스 격리, long polling 폴백) 말고도, LiveView 1.2와 견주어 아직 없는 기능 15행과 일부만 있는 기능 10행이 GAP 번호와 이슈로 남아 있습니다 — JS 명령·훅·폼·업로드의 옵션, 테스트 헬퍼, 포털 같은 것들입니다([기능 갭](https://github.com/itda-work/django-wireview/blob/main/docs/FEATURE-GAP.md)). 고르는 기준은 언어와 팀입니다. 이미 Django의 모델·폼·admin·인증 위에 있으면 wireview, Elixir 팀이거나 BEAM의 프로세스 격리와 연결당 메모리가 필요하면 LiveView입니다.
 
 **Livewire, django-unicorn, htmx는 상호작용마다 HTTP 요청을 보냅니다.** WebSocket 인프라 없이 어느 호스팅에서나 돌고 scale-to-zero가 됩니다. 대신 서버가 먼저 보내는 것(알림, 진행률, 접속자, 다른 사람의 변경)은 Livewire가 Echo와 Reverb를, htmx가 SSE·WebSocket 확장을 따로 붙여야 합니다. 화면의 핵심이 그것이면 wireview, 폼과 목록이 전부면 그쪽이 가볍습니다.
 

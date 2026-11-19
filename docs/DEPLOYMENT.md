@@ -757,6 +757,7 @@ websocket-client는 접속 주소로 `Origin`을 채운다.
   새로고침 없이 이어진다.
 - 사용자가 입력하고 아직 보내지 않은 값은 입력란에 그대로 남는다. join의 렌더도 사용자가 고친 값을 덮지 않는다.
   그 값을 서버에 다시 알리려면 [`wire-auto-recover`](./features/form-feedback.md#재연결-뒤-폼-복구-wire-auto-recover)를 단다.
+  이벤트 처리 중 오류로 컴포넌트 하나가 다시 join할 때도 같다.
 - 돌아오지 않는 것: 서명 상태에 실리지 않는 값(`Meta.exclude_fields`, temporary assign — `joined()`에서 다시
   읽는다), 끊긴 동안 보낸 이벤트와 훅의 `pushEvent`(버려진다), 끊긴 동안의 브로드캐스트.
 - 서명이 맞지 않거나(서명 키가 다른 서버) `STATE_MAX_AGE`보다 오래된 상태는 거절되고 페이지가 새로고침된다.
@@ -1025,7 +1026,7 @@ class WebSocketRateLimitMiddleware:
 (`RECONNECT_*`, 연결이 5초를 못 버티면 대기가 계속 는다. 사용자가 탭으로 돌아오면 지금의 대기만 건너뛴다 —
 [롤링 배포와 재연결](#롤링-배포와-재연결))만큼 기다려 다시 붙고 모든 컴포넌트를 요소의 `data-state`로 다시 join한다.
 거절된 메시지와 끊긴 동안 보낸 메시지는 다시 보내지 않는다(`_send`가 버린다) — 그래서 다시 끊기는 것은 페이지가 스스로 같은
-것을 다시 보낼 때뿐이다: `wire-auto-recover` 폼은 재연결 뒤 그 값을 다시 보내고(`recoverForms`), 훅의 `mounted()`·`reconnected()`가
+것을 다시 보낼 때뿐이다: `wire-auto-recover` 폼은 재연결의 join이 자리 잡은 뒤 그 값을 다시 보내고(`recoverLanded`), 훅의 `mounted()`·`reconnected()`가
 보내는 것도 다시 나간다.
 
 | 상한 | 설정 | 기본 | 넘으면 |

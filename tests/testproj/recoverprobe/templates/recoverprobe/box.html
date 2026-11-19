@@ -1,0 +1,45 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="{{ this.id }}-tag">{{ this.tag }}</span>
+  <span data-testid="{{ this.id }}-count">{{ this.count }}</span>
+  <button type="button"
+          data-testid="{{ this.id }}-bump"
+          {% on "click" "bump" %}>bump</button>
+  <button type="button"
+          data-testid="{{ this.id }}-boom"
+          {% on "click" "boom" %}>boom</button>
+  {% if this.layout.shown %}
+    <form id="{{ this.id }}-{{ this.layout.form_id }}"
+          wire-auto-recover="{{ this.layout.recover }}">
+      <input name="draft" data-testid="{{ this.id }}-draft">
+      {% upload_input "photo" data_testid=this.id|add:"-photo" %}
+      <input type="file" name="attachment" data-testid="{{ this.id }}-attachment">
+    </form>
+  {% endif %}
+  <span data-testid="{{ this.id }}-kept">{{ this.kept }}</span>
+  <form id="{{ this.id }}-city"
+        wire-auto-recover
+        {% on "change" "set_city" %}>
+    <input name="city" data-testid="{{ this.id }}-city">
+  </form>
+  <span data-testid="{{ this.id }}-city-value">{{ this.city }}</span>
+  <form id="{{ this.id }}-off"
+        wire-auto-recover="false"
+        {% on "change" "set_off" %}>
+    <input name="off" data-testid="{{ this.id }}-off">
+  </form>
+  <form id="{{ this.id }}-ignore" wire-auto-recover="ignore">
+    <input name="note" data-testid="{{ this.id }}-note">
+  </form>
+  <span data-testid="{{ this.id }}-ignored">{{ this.ignored }}</span>
+  {% if this.layout.explode %}
+    <form id="{{ this.id }}-explode" wire-auto-recover="explode">
+      <input name="fuse" data-testid="{{ this.id }}-fuse">
+    </form>
+  {% endif %}
+  <ul data-testid="{{ this.id }}-entries">
+    {% for entry in this.uploads.photo %}<li>{{ entry.client_name }}</li>{% endfor %}
+  </ul>
+  {% live_component "RecoverLeaf" id=this.id|add:"-leaf" %}
+</div>

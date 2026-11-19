@@ -17,6 +17,13 @@ export const SLOT_HOSTS = new Set(["component_block", "live_component_block", "f
 /** Attributes whose value names a handler of the component that draws them. */
 export const HANDLER_ATTRIBUTES = new Set(["wire-viewport-top", "wire-viewport-bottom", "wire-auto-recover"]);
 
+/**
+ * The values of `wire-auto-recover` that name no handler: `true`, the bare
+ * attribute a boolean renders, and `false`, which turns the recovery off
+ * (static/wireview/recovery.mjs). `ignore` is a handler's name.
+ */
+export const RECOVER_KEYWORDS = new Set(["true", "false"]);
+
 /** Tags whose arguments are not Django expressions: a `|` there is not a filter. */
 const NOT_EXPRESSIONS = new Set(["cond", "class", "comment", "verbatim", "load", "templatetag", "lorem", "now", "filter"]);
 /** Tags whose every argument is an expression; the others only in `key=value`. */
@@ -273,7 +280,7 @@ function attributeSymbols(text: string, tokens: Token[], found: Sym[]): void {
       for (let match = word.exec(value); match; match = word.exec(value)) {
         found.push({ kind: "hook", span: { start: start + match.index, end: start + match.index + match[0].length }, name: match[0] });
       }
-    } else if (value.trim()) {
+    } else if (value.trim() && !(name === "wire-auto-recover" && RECOVER_KEYWORDS.has(value.trim()))) {
       const leading = value.length - value.trimStart().length;
       const handler = value.trim();
       found.push({ kind: "handler", span: { start: start + leading, end: start + leading + handler.length }, name: handler, tag: null });

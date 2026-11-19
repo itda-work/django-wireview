@@ -246,6 +246,8 @@ wireview/
                            pageshow(persisted)도 돌아옴이다(isReturn). renew는 백오프를 기다리는 소켓을 그 기다림에 맡긴다(renewsNow). 숨은 탭은 아무것도 하지 않는다, #228),
                            tab.mjs (페이지 로드의 이름. 소켓 URL의 tab으로 재연결마다 같은 값을 보낸다 — presence가 탭을 가른다, #202),
                            renew.mjs (서버의 renew에 새 소켓을 소켓마다 한 번 연다. 그 소켓의 첫 join 바퀴만 renewed를 싣는다 — 서버는 그 join에 다시 renew하지 않고 로그인이 다르면 reload. 이어지는 renew는 재연결 백오프만큼 기다린다, #209),
+                           recovery.mjs (wire-auto-recover 폼을 새 인스턴스에 언제 돌려주는가: 재연결과 error 뒤 다시 join의 join이 폼을 고르고(arm) 그 join의 joined·렌더 뒤 한 번 보낸다.
+                           같은 id·같은 컴포넌트·켜진 채인 폼만, renew로 연 소켓은 아무것도, 복구가 던진 error 뒤에는 사용자가 누르거나 치기 전까지 다시 복구하지 않는다. "false"가 끄고 "ignore"는 핸들러 이름, #245),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
@@ -326,6 +328,7 @@ tests/
                            slot/ 은 join이 실패하는 컴포넌트 둘 — 슬롯에 호스트의 LiveComponent를 받은 것과 자기 LiveComponent를 든 것 — 과 그 훅들이 떠나는 페이지.
                            그 LiveComponent는 업로드를 받는다(슬롯의 것은 실패 뒤에도 끝내야 한다).
                            핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
+                           recoverprobe/ 는 wire-auto-recover 폼이 재연결과 이벤트 오류 뒤 새 인스턴스에 한 번 가는지(LiveComponent 포함, 다른 컴포넌트에는 안 간다), 새 렌더가 지우거나 id를 바꾸거나 끈 폼, 파일 입력, 던지는 복구, renew·reload된 다른 신분을 보는 E2E(test_form_recovery_e2e.py)의 픽스처(LAYOUT 을 테스트가 바꾸고 HEARD 에 받은 인스턴스가 남는다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구, 사용자가 돌아올 때의 재연결·확인(#228, slow_bump 은 확인 시한보다 오래 걸리는 핸들러)을 보는 E2E(test_offline_e2e.py)의 픽스처,
                            islandprobe/ 는 섬의 수명(한 번 mount·바뀐 props만 update·예외 뒤 다시 join·재연결·boost 이동·sticky·늦은 등록·뒤로 가기의 사본)과 ctx를 보는 E2E(test_islands_e2e.py)의 픽스처(again/ 은 같은 id의 board, holder/ 는 같은 섬 id를 다른 컴포넌트가, sides/ 는 남아 있는 두 컴포넌트 사이로 섬이 옮겨 가는 페이지),
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,

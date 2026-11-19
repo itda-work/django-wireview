@@ -364,7 +364,7 @@ wireview/
     ├── wireview-boost.js
     ├── locks.mjs  form-parts.mjs
     ├── rendered.mjs  streams.mjs  targets.mjs  replies.mjs  islands.mjs  events.mjs  values.mjs  live-session.mjs  ready.mjs  reload.mjs
-    ├── loading.mjs  navigation.mjs  reconnect.mjs  uploads.mjs  submits.mjs  joins.mjs  rejoins.mjs  tab.mjs  renew.mjs  viewport.mjs  sticky.mjs
+    ├── loading.mjs  navigation.mjs  reconnect.mjs  uploads.mjs  submits.mjs  joins.mjs  rejoins.mjs  tab.mjs  renew.mjs  viewport.mjs  sticky.mjs  recovery.mjs
     └── types.d.ts
 ```
 

@@ -8,13 +8,14 @@ helper, which reads the page through it -- with all of them.
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 from testproj.wireview_setting import set_wireview
 
 from wireview import Component, mount
-from wireview.testing_dom import Page, page_problems
+from wireview.testing_dom import RECOVERY_OFF, Page, page_problems
 
 pytestmark = pytest.mark.integration
 
@@ -83,6 +84,23 @@ def test_a_recover_handler_the_client_cannot_call_is_named():
         "<form wire-auto-recover=\"restore\"> recovers through 'restore'",
         "<form wire-auto-recover=\"model_dump\"> recovers through 'model_dump'",
     ]
+
+
+def test_a_form_whose_recovery_is_off_is_not_a_problem():
+    """``false`` turns the recovery off (#245); ``ignore`` is still a handler's name, checked as one."""
+    html = (
+        '<div id="c1" wireview-component data-name="X">'
+        '<form wire-auto-recover="false"><input name="a"></form>'
+        '<form wire-auto-recover="ignore"><input name="b"></form>'
+        "</div>"
+    )
+    problems = page_problems(Page(html, "c1"), lambda component_id, name: False)
+    assert [p.split(",")[0] for _, p in problems] == ["<form wire-auto-recover=\"ignore\"> recovers through 'ignore'"]
+
+
+def test_the_value_that_turns_recovery_off_is_the_clients():
+    source = (Path(__file__).parents[1] / "wireview/static/wireview/recovery.mjs").read_text(encoding="utf-8")
+    assert f'export const RECOVERY_OFF = "{RECOVERY_OFF}";' in source
 
 
 @pytest.mark.asyncio

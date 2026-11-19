@@ -14,6 +14,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- A `wire-auto-recover` form now gives its values back after a component's error rollback too, not only after a reconnect (GAP-049 #245). `wire-auto-recover="false"` turns recovery off; `"ignore"` is still a handler's name.
+
+### Changed
+
+- Form recovery waits until the join has landed (`joined`) and its render is on the page, then goes once to the instance that join built: only for a form still drawn with the same id in the same component, without file inputs. A socket opened for a `renew` recovers nothing (the values were typed for the previous identity), and an error during a recovery rolls back without recovering again until the user acts (GAP-049 #245).
+
 - Mounted DOM helpers dispatch to nested components and LiveComponents, and `view.child(id)` exposes their joined instances. `view.submit_form()` submits a form through the Django test client. Page checks accept per-check policies and form exclusions (GAP-056 #252).
 
 - A submit handler can call `await self.wire.submit_form(selector)` to submit a same-origin form over HTTP after its render. The browser carries the submit button and its overrides, and locks text inputs and buttons while the live submit is pending. Requires protocol 14 for server-directed submission (GAP-050 #246).

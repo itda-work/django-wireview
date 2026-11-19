@@ -62,7 +62,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다. Phoenix LiveV
 | 기능 | 설명 | 문서 |
 |------|------|------|
 | **Optimistic UI** | 로딩 클래스, `wire-disabled-with` | [문서](./optimistic-ui.md) |
-| **Form Feedback** | 검증 오류 표시, 제출 중 입력 잠금, `self.wire.submit_form()`으로 HTTP 제출 | [문서](./form-feedback.md) |
+| **Form Feedback** | 검증 오류 표시, 제출 중 입력 잠금, `self.wire.submit_form()`으로 HTTP 제출, 재연결·오류 뒤 폼 복구(`wire-auto-recover`) | [문서](./form-feedback.md) |
 
 ## JavaScript 연동
 

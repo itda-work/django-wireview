@@ -37,6 +37,8 @@ pair("missing-argument", `${W}{% component "TodoList" %}`, `${W}{% component "To
 pair("missing-argument", `${W}{% func "badge" tone="x" %}`, `${W}{% func "badge" text=t %}`);
 pair("unknown-handler", `${W}<b {% on "click" "nope" %}>`, `${W}<b {% on "click" "add" %}>`);
 pair("unknown-handler", `<div wire-viewport-bottom="more">`, `<div wire-viewport-bottom="toggleAll" wire-auto-recover>`);
+// true and false name no handler (the bare attribute, recovery off); ignore is a handler's name (#245)
+pair("unknown-handler", `<form wire-auto-recover="ignore">`, `<form wire-auto-recover="false"></form><form wire-auto-recover="true">`);
 pair("not-a-handler", `${W}<b {% on "click" "joined" %}>`, `${W}<b {% on "click" "toggleAll" %}>`);
 pair("unknown-handler-argument", `${W}<b {% on "click" "add" txt=1 %}>`, `${W}<b {% on "click" "add" text=1 myself=True %}>`);
 pair("invalid-event", `${W}<b {% on "1click" "add" %}>`, `${W}<b {% on "my-event:x" "add" %}>`);

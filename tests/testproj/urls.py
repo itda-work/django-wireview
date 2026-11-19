@@ -46,6 +46,7 @@ urlpatterns = [
     path("fileprobe/", include("testproj.fileprobe.urls")),
     path("streamprobe/", include("testproj.streamprobe.urls")),
     path("offlineprobe/", include("testproj.offlineprobe.urls")),
+    path("recoverprobe/", include("testproj.recoverprobe.urls")),
     path("hookprobe/", include("testproj.hookprobe.urls")),
     path("islandprobe/", include("testproj.islandprobe.urls")),
     path("tempprobe/", include("testproj.tempprobe.urls")),
