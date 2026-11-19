@@ -127,6 +127,13 @@ def test_every_binding_works_under_a_strict_policy(page, server):
     by(page, "note").click()
     expect_text(by(page, "count"), "2")
 
+    # A click away from the zone, and Escape the window hears (#234): every click above was away from
+    # it, the one on it is not, and the window heard the Escape in the keys field as well as this one
+    by(page, "zone").click()
+    page.evaluate("() => document.activeElement && document.activeElement.blur()")
+    page.keyboard.press("Escape")
+    expect_text(by(page, "beyond"), re.compile(r"^AWA+W$"))  # type: ignore[arg-type]
+
     assert page.evaluate("window.__violations") == []
 
     # Control: the policy is enforced, so an inline handler would have been refused.

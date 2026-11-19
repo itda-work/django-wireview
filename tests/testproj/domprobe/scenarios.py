@@ -13,7 +13,7 @@ import dataclasses
 import re
 import typing as t
 
-from .live import DomBubble, DomForm, DomKeys, DomLeaf, DomLive, DomMeta, DomNest
+from .live import DomBeyond, DomBubble, DomForm, DomKeys, DomLeaf, DomLive, DomMeta, DomNest
 
 # The fields DomForm's form holds as the page draws it, as its handlers get them
 FORM = {
@@ -443,6 +443,124 @@ SCENARIOS += [
 # What DomHooked hears from its chart's hook pushing ``point`` with x=3, and the reply the hook gets
 HOOK_HEARD = [("point", {"hook": "DomPush", "x": 3})]
 HOOK_REPLY = {"event": "point", "doubled": 6, "owner_is_me": True}
+
+
+# DomBeyond's field, which each of its handlers gets (#234)
+BEYOND = {"note": "n0", "kept": "k0"}
+
+
+def _expect_beyond(page: t.Any, text: str) -> None:
+    from testproj.e2e_browser import expect_text
+
+    expect_text(by(page, "heard-beyond"), re.compile(rf"(^|\s){re.escape(text)}$"))  # type: ignore[arg-type]
+
+
+async def _away_helper(view: t.Any) -> None:
+    await view.click("[data-testid=inside]")
+    await view.click("[data-testid=outside]")
+
+
+def _away(page: t.Any) -> None:
+    by(page, "inside").click()
+    _expect_beyond(page, "closed pressed anywhere")
+    by(page, "outside").click()
+    _expect_beyond(page, "closed closed outside anywhere")
+
+
+async def _window_keys_helper(view: t.Any) -> None:
+    await view.keydown(None, "Escape")
+    await view.keydown("[data-testid=note]", "Escape")
+
+
+def _window_keys(page: t.Any) -> None:
+    # Nothing focused: the key goes to the body
+    # Each key is also heard by the keydown.window binding after it, in attribute order
+    page.keyboard.press("Escape")
+    _expect_beyond(page, "escaped typed")
+    by(page, "note").press("Escape")
+    _expect_beyond(page, "escaped typed field_escaped escaped typed")
+
+
+async def _stopped_helper(view: t.Any) -> None:
+    await view.click("[data-testid=outside]")
+    await view.click("[data-testid=quiet]")
+    await view.click("[data-testid=outside]")
+
+
+def _stopped(page: t.Any) -> None:
+    by(page, "outside").click()
+    _expect_beyond(page, "outside anywhere")
+    by(page, "quiet").click()
+    _expect_beyond(page, "quieted")
+    by(page, "outside").click()
+    _expect_beyond(page, "quieted closed closed outside anywhere")
+
+
+SCENARIOS += [
+    # A click in the menu is not away from it, one outside is, before the button outside hears it; the
+    # hidden one hears neither, a display: contents wrapper (shown through what it holds) both. The window
+    # hears both clicks after the elements did
+    Scenario(
+        "click-away",
+        DomBeyond,
+        "heard-beyond",
+        _away_helper,
+        _away,
+        [
+            ("closed", {**BEYOND, "where": "contents"}),
+            ("pressed", {**BEYOND, "where": "inside"}),
+            ("anywhere", BEYOND),
+            ("closed", {**BEYOND, "where": "menu"}),
+            ("closed", {**BEYOND, "where": "contents"}),
+            ("outside", BEYOND),
+            ("anywhere", BEYOND),
+        ],
+    ),
+    # A key with nothing focused reaches the window, and one in a field after the field's own binding
+    Scenario(
+        "window-keys",
+        DomBeyond,
+        "heard-beyond",
+        _window_keys_helper,
+        _window_keys,
+        [("escaped", BEYOND), ("field_escaped", BEYOND), ("escaped", BEYOND)],
+    ),
+    # A shortcut the browser has its own use for: prevented
+    Scenario(
+        "window-shortcut",
+        DomBeyond,
+        "heard-beyond",
+        lambda v: v.keydown(None, "k", ctrl=True),
+        lambda page: page.keyboard.press("Control+k"),
+        [("searched", BEYOND)],
+    ),
+    # .stop on the element keeps the click from the window
+    Scenario(
+        "window-stopped",
+        DomBeyond,
+        "heard-beyond",
+        _stopped_helper,
+        _stopped,
+        [("outside", BEYOND), ("anywhere", BEYOND), ("quieted", BEYOND), ("outside", BEYOND), ("anywhere", BEYOND)],
+    ),  # A window binding goes to the component whose element carries it: the nested one, the LiveComponent it
+    # targets -- not the component around them
+    Scenario(
+        "window-leaf",
+        DomLeaf,
+        "heard-leaf",
+        lambda v: v.keyup(None, "l"),
+        lambda page: page.keyboard.press("l"),
+        [("leaf", {"leafy": "l1", "k": "w"})],
+    ),
+    Scenario(
+        "window-live",
+        DomLive,
+        "heard-live",
+        lambda v: v.keyup(None, "l"),
+        lambda page: page.keyboard.press("l"),
+        [("bump", {"lively": "v1"})],
+    ),
+]
 
 
 def heard(component: type, expected: list[tuple[str, dict[str, t.Any]]], log: list[t.Any]) -> list[t.Any]:

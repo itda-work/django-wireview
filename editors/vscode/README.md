@@ -74,7 +74,7 @@ nothing is reported.
 | `unknown-argument`, `missing-argument` | Warning | An argument that is not a field, a required field that is not passed |
 | `unknown-handler`, `not-a-handler` | Error | A handler the component rendering the template does not have, a method the client cannot call |
 | `unknown-handler-argument` | Warning | An argument the handler does not take |
-| `invalid-event`, `unknown-modifier`, `modifier-argument` | Error | The event name and modifiers of `{% on %}` |
+| `invalid-event`, `unknown-modifier`, `modifier-argument`, `modifier-place` | Error | The event name and modifiers of `{% on %}`; `window` and `away` come right after the event, and `away` takes no `prevent` or `stop` |
 | `missing-slot` | Error | A required slot that is not filled |
 | `unknown-hook` | Information | A `wire-hook` name no hook file registers |
 | `tag-not-loaded`, `filter-not-loaded` | Error | A tag or filter used without its `{% load %}`, or before it |

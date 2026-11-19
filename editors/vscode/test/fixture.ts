@@ -153,6 +153,8 @@ export function metadata(): Metadata {
       key: { description: "A key", has_argument: true, argument: "text" },
       key_code: { description: "A key code", has_argument: true, argument: "number" },
       enter: { description: "Enter", has_argument: false, argument: null },
+      window: { description: "Listen on the window", has_argument: false, argument: null },
+      away: { description: "Only an event outside the element", has_argument: false, argument: null },
     },
     template_dirs: [DIR],
     template_builtins: {

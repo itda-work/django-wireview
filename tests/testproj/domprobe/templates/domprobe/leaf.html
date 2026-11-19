@@ -3,6 +3,6 @@
 <div {% tag_header %}>
   <output data-testid="heard-leaf">{{ heard }}</output>
   <input name="leafy" value="l1">
-  <span data-testid="leaf-bare">bare</span>
+  <span data-testid="leaf-bare" {% on "keyup.window.key.l" "leaf" k="w" %}>bare</span>
   <button type="button" data-testid="leaf-button" {% on "click" "leaf" k="v" %}>leaf</button>
 </div>

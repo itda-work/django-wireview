@@ -476,7 +476,8 @@ function eventCompletions(doc: TemplateDoc, bit: Bit | undefined, offset: number
     return values.map((value, order) => ({ label: value, kind: "value" as const, range, insert: value, detail: pending!, sortText: String(order).padStart(3, "0") }));
   }
   return Object.entries(modifiers)
-    .filter(([name]) => !used.has(name))
+    // window and away only right after the event (#234)
+    .filter(([name]) => !used.has(name) && !(segments.length > 2 && (name === "window" || name === "away")))
     .map(([name, modifier]) => ({
       label: name,
       kind: "modifier" as const,

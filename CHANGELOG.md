@@ -14,6 +14,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Window and click-away bindings (GAP-038 #234): `{% on "keydown.window.esc" "close" %}` hears a key wherever the focus is, none included, after the element bindings it passed and not when one of them stopped it, and `blur.window`/`focus.window` hear the tab losing or gaining focus. `{% on "click.away" "close_menu" %}` hears an event outside its element while the element is shown, decided before anything on the page hears it, so the click that opens a menu does not close it. Both go to the component of the element carrying them, skip a key an IME composes with, and need no cleanup: a removed element is not heard and one drawn again is heard once. What wireview dispatches itself for a form (a recovery's change, a reset's input and change) does not reach them, and they name no `_target`. They render as `wire-window-*` and `wire-away-*`, which a bundle from before them ignores. `away` takes no `prevent` or `stop`. The DOM test helpers run them in the same order, and `view.keydown(None, key)` presses a key with nothing focused.
+
 - A `wire-auto-recover` form now gives its values back after a component's error rollback too, not only after a reconnect (GAP-049 #245). `wire-auto-recover="false"` turns recovery off; `"ignore"` is still a handler's name.
 
 ### Changed

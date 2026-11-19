@@ -125,7 +125,7 @@ async def test_remove_button_deletes_the_row(item):
 | `await view.change(selector, value, *, text=None)` | 칸에 `value`를 넣고 `change`. 텍스트 칸을 떠날 때·select·checkbox가 보내는 것 |
 | `await view.input(selector, value, *, text=None)` | 같은 값 규칙으로 `input`. 키를 누를 때마다 보내는 것 |
 | `await view.submit(selector="form", *, values=None, submitter=None, text=None)` | 폼 제출. `values`는 이름 → 사용자가 넣은 값, `submitter`는 누른 제출 버튼의 선택자 |
-| `await view.keydown(selector, key, *, text=None, ctrl=False, alt=False, shift=False, meta=False, composing=False)` | 키를 누른다. `key`는 브라우저의 `event.key`(`"Enter"`, `"Escape"`, `" "`, `"a"`, `"ArrowUp"`). 폼의 텍스트 칸에서 Enter는 브라우저처럼 폼을 제출한다(아래) |
+| `await view.keydown(selector, key, *, text=None, ctrl=False, alt=False, shift=False, meta=False, composing=False)` | 키를 누른다. `key`는 브라우저의 `event.key`(`"Enter"`, `"Escape"`, `" "`, `"a"`, `"ArrowUp"`). 폼의 텍스트 칸에서 Enter는 브라우저처럼 폼을 제출한다(아래). `selector`가 `None`이면 아무 데도 포커스가 없을 때의 키다 — `{% on "keydown.window" %}`·`away` 바인딩만 듣는다 |
 | `await view.keyup(selector, key, ...)` | 같은 인자로 키를 뗀다. `{% on "keyup.enter" "send" %}` 같은 채팅 입력창 |
 | `await view.focus(selector, *, text=None)` | 포커스를 준다: `focus`(그 요소의 바인딩만) 뒤 `focusin`(조상으로 올라간다) |
 | `await view.blur(selector, *, text=None)` | 포커스를 뺀다: `blur` 뒤 `focusout` |
@@ -192,6 +192,12 @@ assert "3번 점" in view.render()
   한글을 조합하며 누른 Enter는 보내지 않는다. `.debounce`는 시간이
   지난 것으로 보고 보낸다(브라우저처럼 같은 이벤트의 다른 바인딩 뒤에), `.throttle`은 매번 창이 지난 것으로 본다.
   여러 번의 입력이 하나로 합쳐지는 것은 시간의 일이라 브라우저 E2E로 본다.
+- `window`·`away` 바인딩([창과 요소 밖](./csp.md#창과-요소-밖-window-away))도 브라우저와 같은 차례로 돈다. `away`는 요소
+  밖에서 난 이벤트에 맨 먼저, `window`는 요소의 바인딩이 모두 돈 뒤에(그중 하나가 `.stop`하지 않았으면, 올라가는 이벤트만).
+  "보이는가"는 마크업으로만 본다: 요소나 조상의 `hidden`·인라인 `display: none`, `<template>` 안, 닫힌 `<dialog>` 안,
+  닫힌 `<details>`의 summary 밖, hidden input이면 보이지 않는다. 바인딩을 단 요소가 입력칸이어도 `_target`은 없다.
+  reset이 보내는 `input`·`change`는 `window`·`away`가 듣지 않는다. 스타일시트가 숨긴 것은 헬퍼가 모른다 — 브라우저는 `checkVisibility()`로 본다. `composing=True`인 키는 둘 다 듣지
+  않는다. 창 자신의 `focus`·`blur`(탭의 포커스)는 헬퍼가 보내지 않는다 — 핸들러를 `call()`로 부른다.
 - `focus`·`blur`는 올라가지 않는다: 그 요소의 바인딩만 돈다. 조상에서 받으려면 `focusin`·`focusout`에 건다.
   헬퍼는 포커스를 기억하지 않으므로 `focus(b)`가 앞의 칸에 `blur`를 보내지 않는다. 입력한 칸을 떠나는 것은 브라우저에서
   `change` 뒤 `blur`다 — `change()` 다음 `blur()`로 한다.

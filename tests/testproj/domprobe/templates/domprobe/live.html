@@ -2,7 +2,9 @@
 
 <div {% live_tag_header %}>
   <output data-testid="heard-live">{{ heard }}</output>
-  <input name="lively" value="v1">
+  <input name="lively"
+         value="v1"
+         {% on "keyup.window.key.l" "bump" myself=True %}>
   <button type="button"
           data-testid="live-button"
           {% on "click" "bump" myself=True %}>bump</button>

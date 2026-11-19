@@ -1,0 +1,41 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <output data-testid="heard-beyond">{{ heard }}</output>
+  {% if keys %}
+    <span data-testid="keys"
+          {% on "keydown.window.esc" "escaped" %}
+          {% on "keydown.window.ctrl.key.k.prevent" "searched" %}
+          {% on "click.window" "anywhere" %}
+          {% on "keydown.window" "typed" %}
+          {% on "blur.window" "tab_left" %}
+          {% on "change.window" "anywhere_changed" %}></span>
+  {% endif %}
+  <div data-testid="menu" {% on "click.away" "closed" where="menu" %}>
+    <button type="button"
+            data-testid="inside"
+            {% on "click" "pressed" where="inside" %}>inside</button>
+  </div>
+  <div style="display: contents"
+       {% on "click.away" "closed" where="contents" %}>
+    <span data-testid="contents">contents</span>
+  </div>
+  <div data-testid="shut" hidden {% on "click.away" "closed" where="shut" %}>shut</div>
+  <button type="button" data-testid="open" {% on "click" this.open_popup %}>open</button>
+  <div data-testid="popup"
+       hidden
+       {% on "click.away" "closed" where="popup" %}>popup</div>
+  <button type="button" data-testid="outside" {% on "click" "outside" %}>outside</button>
+  <button type="button" data-testid="quiet" {% on "click.stop" "quieted" %}>quiet</button>
+  <button type="button"
+          data-testid="toggle-keys"
+          {% on "click" "toggle_keys" %}>toggle keys</button>
+  <input name="note"
+         value="n0"
+         data-testid="note"
+         {% on "keydown.esc" "field_escaped" %}>
+  <form {% on "change" "form_changed" %}>
+    <input name="kept" value="k0" data-testid="kept">
+    <button type="reset" data-testid="beyond-reset">reset</button>
+  </form>
+</div>

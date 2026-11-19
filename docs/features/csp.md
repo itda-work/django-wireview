@@ -73,12 +73,13 @@ SECURE_CSP = {
 - `debounce`는 나머지를 타이머로 넘긴다. 그래서 `debounce` 뒤의 `prevent`는 너무 늦게 실행된다. `prevent`는 앞에 둔다.
 
 수정자는 `prevent`, `stop`, `ctrl`, `alt`, `shift`, `meta`, `debounce.<ms>`, `throttle.<ms>`, `key.<이름>`, `key_code.<n>`과
-단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`다(`wireview/event_transpiler.py`의
-`MODIFIERS`, 클라이언트는 `events.mjs`). **그 밖의 이름은 `{% on %}`이 렌더 때 `ValueError`로 거절한다.** 클라이언트는 모르는
-수정자를 건너뛰므로, 거절하지 않으면 `click.away`·`click.once`·`click.self`는 조건 없는 click이 되고 `keydown.escape`는
+단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`, 그리고 듣는 곳을 바꾸는 `window`와
+`away`다([창과 요소 밖](#창과-요소-밖-window-away), `wireview/event_transpiler.py`의 `MODIFIERS`, 클라이언트는 `events.mjs`).
+**그 밖의 이름은 `{% on %}`이 렌더 때 `ValueError`로 거절한다.** 클라이언트는 모르는
+수정자를 건너뛰므로, 거절하지 않으면 `click.outside`·`click.once`·`click.self`는 조건 없는 click이 되고 `keydown.escape`는
 모든 키에 반응한다. 인자가 필요한 수정자에 인자가 없거나(`keydown.key`, `input.debounce`), `debounce`·`throttle`·`key_code`의
 인자가 정수가 아니어도(`input.debounce.abc`, 순서를 틀린 `keydown.debounce.enter`) 같은 `ValueError`다. 클라이언트에서는
-`keydown.key`가 어떤 키에도 반응하지 않고, 지연이 `NaN`인 `debounce`·`throttle`은 아무것도 늦추지 않는다. Phoenix의 `phx-click-away`에 대응하는 바인딩은 없다. `.once`·`.capture`·`.passive`·`.self`도 지원하지 않지만,
+`keydown.key`가 어떤 키에도 반응하지 않고, 지연이 `NaN`인 `debounce`·`throttle`은 아무것도 늦추지 않는다. `.once`·`.capture`·`.passive`·`.self`는 지원하지 않지만,
 이 점 표기 수정자들은 Phoenix LiveView의 공개 바인딩 문법도 아니다. Phoenix 기능 갭과 혼동하지 않는다.
 
 ### 같은 이벤트를 여러 번
@@ -122,6 +123,48 @@ SECURE_CSP = {
 `.stop`은 그 위(`document`, `window`)로의 전파와 더 바깥 요소의 wireview 바인딩을 막는다. boost의 링크 가로채기는
 `document`에 있으므로 `.prevent`가 먼저 적용된다.
 
+### 창과 요소 밖 (window, away)
+
+`window`와 `away`는 이벤트 바로 뒤에 적는다. 바인딩이 달린 요소가 아니라 창에서 듣는다(#234).
+
+```django
+<div class="menu" {% on "click.away" "close_menu" %}>…</div>
+<div {% on "keydown.window.esc" "close_dialog" %}
+     {% on "keydown.window.ctrl.key.k.prevent" "open_search" %}></div>
+```
+
+- **`window`**: 페이지 어디서 났든 창까지 올라온 이벤트와 창 자신의 이벤트를 듣는다. 포커스가 아무 데도 없을 때의
+  키, 다른 컴포넌트의 입력칸에서 친 키, 탭이 포커스를 잃는 `blur.window`·얻는 `focus.window`가 그렇다. 요소의 `blur`처럼
+  버블링하지 않는 이벤트는 창에 오지 않으므로 듣지 않는다. 요소의 바인딩이 모두 돈 **뒤에** 돌고, 그중 하나가 `.stop`했으면
+  듣지 않는다. 이벤트를 막아야 하는 단축키(`Ctrl+K`)는 `.prevent`를 붙인다.
+- **`away`**: 요소 **밖**에서 난 이벤트만 듣는다. 요소 자신과 자손에서 난 것은 듣지 않고, 요소가 보이지 않으면(`hidden`,
+  `display: none`, 숨은 조상, 닫힌 `<dialog>`·`<details>` 안 — 브라우저의 `checkVisibility()`) 듣지 않는다. 자기 상자가 없는
+  `display: contents` 래퍼는 안의 것이 보이면 보인다. 닫힌 메뉴가 페이지의 모든 클릭을 서버로 보내지
+  않게 하려는 것이다. 이벤트가 페이지의 어느 리스너에 닿기 **전에**(창의 capture 단계) 누가 들을지 정한다. 그래서 메뉴를
+  여는 클릭이 그 클릭으로 막 열린 메뉴를 다시 닫지 않는다. 열린 메뉴의 토글 버튼을 누르면 그것은 메뉴 밖의 클릭이라
+  `away`가 닫고 버튼의 바인딩이 다시 연다 — 버튼과 메뉴를 한 요소로 감싸 그 요소에 `away`를 단다. `away`에는 `.prevent`·`.stop`을
+  붙일 수 없다(`ValueError`): 그 이벤트는 밖의 요소의 것이라, 막으면 밖의 링크가 이동하지 않는다.
+
+둘 다 바인딩이 달린 요소의 컴포넌트로 간다. 중첩 컴포넌트·LiveComponent 안에 있으면 그 컴포넌트, `myself=True`면 그
+LiveComponent다. 실리는 필드도 그 컴포넌트의 것이다. 다만 이벤트가 난 곳은 그 요소가 아니므로 커밋하는 동작이 아니고(입력
+중인 칸을 그 응답이 덮지 않는다) `_target`도 없다 — 바인딩이 입력칸에 달렸어도 그 칸이 아니다. 키 조건과
+`debounce`·`throttle`은 요소의 바인딩과 같다.
+
+wireview가 폼을 위해 스스로 보내는 이벤트(재연결 뒤 [폼 복구](./form-feedback.md)의 `change`, 폼 reset 뒤의 `input`·`change`)는
+그 폼의 바인딩만 듣는다. 페이지에서 일어난 일이 아니므로 `change.window`·`input.away`는 듣지 않는다.
+
+**IME가 조합 중인 키는 듣지 않는다.** `window`는 입력칸에서 친 키도 듣는다. 한글을 조합하는 동안의 키(`isComposing`)와
+조합을 시작하는 키(Chromium의 `keyCode` 229)는 페이지의 단축키가 아니다. 키 조건 없는 `keydown.window`도 그 키에는 돌지 않는다.
+
+리스너는 요소마다가 아니라 이벤트 종류마다 창에 하나이고, 이벤트가 올 때 그 바인딩을 가진 요소를 문서 순서로 찾는다. 렌더가
+지운 요소는 듣지 않고, 다시 그리거나 재연결 뒤 다시 join해도 한 번만 듣는다. 해제할 것이 없다. 그 대신 그 종류의 이벤트마다
+문서를 한 번 찾는다(`away`는 찾은 요소마다 보이는지도 본다). click·key·focus에는 문제가 없지만 `mousemove.away`·`scroll.window`처럼
+초당 수십 번 나는 이벤트에는 걸지 않는다 — 그런 것은 [훅](./hooks.md)이 필요할 때만 리스너를 단다.
+
+속성은 `wire-window-keydown.esc`·`wire-away-click`처럼 `wire-on-` 밖의 이름으로 렌더된다. 이 기능 전의 번들은 그 속성을
+모르므로 **아무것도 하지 않는다** — `wire-on-click.away`였다면 옛 번들은 `away`를 모르는 수정자로 건너뛰어 요소 **안**의
+클릭에 반응했을 것이다. 업그레이드 뒤에도 옛 번들을 쥔 탭(배포 전에 연 탭)은 새로고침할 때까지 이 바인딩을 듣지 않는다.
+
 ### 렌더가 일으킨 포커스 이벤트
 
 렌더(morph, 스트림 연산, 컴포넌트 제거)가 포커스된 요소를 지우거나 옮기면 브라우저가 그 요소에 `blur`·`focusout`을
@@ -155,8 +198,9 @@ SECURE_CSP = {
 
 [Phoenix 1.2.12 바인딩](https://phoenix-live-view.hexdocs.pm/1.2.12/bindings.html)을 그대로 옮길 수는 없다.
 
-- 요소의 click·focus·blur·keydown·keyup은 `{% on %}`으로 바인딩하지만, `phx-click-away`와
-  `phx-window-keydown`·`keyup`·`focus`·`blur`에 해당하는 창 단위 바인딩은 없다. 훅에서 리스너를 등록하고 해제해야 한다.
+- `phx-click-away`는 `{% on "click.away" %}`, `phx-window-keydown`·`keyup`·`focus`·`blur`는 `{% on "keydown.window" %}`처럼
+  적는다(#234). `away`는 어느 이벤트에나 붙고 보이는 요소만 듣는다. `window`는 요소의 바인딩 뒤에 돌고 그것이 `.stop`하면
+  듣지 않으며, IME 조합 키를 듣지 않는다.
 - `phx-mounted`·`phx-remove`·`phx-connected`·`phx-disconnected` 같은 선언적 JS 실행 속성도 없다.
   이름을 `on`에 넣어도 컴포넌트 수명주기 이벤트가 자동 발생하지 않는다. 훅의 수명주기 콜백을 쓴다.
 - 숫자 debounce·throttle과 키 필터는 지원한다. `debounce="blur"`, 생략 시 기본 지연,

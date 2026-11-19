@@ -51,7 +51,7 @@ Cursor·VSCodium처럼 Open VSX를 쓰는 편집기는 [Open VSX](https://open-v
 | `unknown-argument`, `missing-argument` | 경고 | 필드가 아닌 인자, 넘기지 않은 필수 필드 |
 | `unknown-handler`, `not-a-handler` | 오류 | 템플릿을 그리는 컴포넌트에 없는 핸들러, 클라이언트가 부를 수 없는 메서드 |
 | `unknown-handler-argument` | 경고 | 핸들러가 받지 않는 인자 |
-| `invalid-event`, `unknown-modifier`, `modifier-argument` | 오류 | `{% on %}`의 이벤트 이름과 수정자 |
+| `invalid-event`, `unknown-modifier`, `modifier-argument`, `modifier-place` | 오류 | `{% on %}`의 이벤트 이름과 수정자. `window`·`away`는 이벤트 바로 뒤에, `away`에는 `prevent`·`stop`을 붙이지 않는다 |
 | `missing-slot` | 오류 | 채우지 않은 필수 슬롯 |
 | `unknown-hook` | 정보 | 훅 파일이 등록하지 않은 `wire-hook` 이름 |
 | `tag-not-loaded`, `filter-not-loaded` | 오류 | `{% load %}`하지 않은(또는 그 `{% load %}`보다 앞에 쓴) 태그·필터 |

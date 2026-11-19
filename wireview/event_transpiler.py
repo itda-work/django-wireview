@@ -24,11 +24,23 @@ BINDING_PREFIX = "wire-on-"
 # cannot close the attribute or open another one.
 _BINDING_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_:-]*(\.[A-Za-z0-9_:-]+)*")
 
+#: Bindings that listen beyond their element (#234, GAP-038), written as the
+#: first modifier and rendered under a prefix of their own -- ``keydown.window.esc``
+#: is ``wire-window-keydown.esc``. A bundle from before them reads only
+#: ``wire-on-``, so it ignores them instead of running ``click.away`` as a plain
+#: click. ``SCOPE_PREFIXES`` in events.mjs is the client's.
+SCOPE_PREFIXES: dict[str, str] = {"window": "wire-window-", "away": "wire-away-"}
+#: What an ``away`` binding may not do: the event is the element's it happened at,
+#: and stopping or preventing it there would break every click outside.
+_NOT_AWAY = frozenset({"prevent", "stop"})
+
 
 #: The modifiers the client understands, and what each does. ``events.mjs`` is
 #: the implementation; ``tests/test_event_binding.py`` holds the two together.
 #: The ones in ``MODIFIER_ARGUMENTS`` take the next dotted token as their argument.
 MODIFIERS: dict[str, str] = {
+    "window": "Listen on the window: the event anywhere on the page, or the window's own (right after the event)",
+    "away": "Only an event outside the element, while it is shown, like a click away (right after the event)",
     "prevent": "Calls event.preventDefault()",
     "stop": "Calls event.stopPropagation()",
     "debounce": "Debounce the event handler (requires delay in ms)",
@@ -71,16 +83,29 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
             f"{event_and_modifiers!r} is not an event binding: use letters, digits, '_', ':' and '-', "
             "with modifiers after dots, like 'keyup.enter' or 'input.debounce.300'"
         )
-    tokens = event_and_modifiers.split(".")[1:]
+    event, *tokens = event_and_modifiers.split(".")
     if "inlinejs" in tokens:
         raise ValueError(
             "the inlinejs modifier is not supported: inline JavaScript cannot run under a Content Security "
             "Policy. Use a JS() command chain, or a hook for anything JS() cannot express"
         )
-    # The client skips a modifier it does not know, so click.away would bind a plain click
+    scope = tokens[0] if tokens and tokens[0] in SCOPE_PREFIXES else None
+    # The client skips a modifier it does not know, so a misspelt one would bind a plain event
     tokens.reverse()
+    first = True
     while tokens:
         token = tokens.pop()
+        if token in SCOPE_PREFIXES and not first:
+            raise ValueError(
+                f"{token!r} in {event_and_modifiers!r} must come right after the event, like "
+                f"{event}.{token}{'.esc' if token == 'window' else ''}, and a binding listens in one place"
+            )
+        first = False
+        if scope == "away" and token in _NOT_AWAY:
+            raise ValueError(
+                f"{token!r} in {event_and_modifiers!r}: an away binding hears an event that belongs to "
+                f"another element, and stopping or preventing it would break that element's {event}"
+            )
         if token not in MODIFIERS:
             raise ValueError(
                 f"{token!r} in {event_and_modifiers!r} is not a modifier. The modifiers are: "
@@ -109,4 +134,9 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
             value["a"] = args
         if target:
             value["t"] = target
-    return BINDING_PREFIX + event_and_modifiers, json.dumps(value, cls=DjangoJSONEncoder, separators=(",", ":"))
+    name = BINDING_PREFIX + event_and_modifiers
+    if scope is not None:
+        rest = event_and_modifiers.split(".")
+        del rest[1]
+        name = SCOPE_PREFIXES[scope] + ".".join(rest)
+    return name, json.dumps(value, cls=DjangoJSONEncoder, separators=(",", ":"))

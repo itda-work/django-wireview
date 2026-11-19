@@ -42,7 +42,10 @@ pair("unknown-handler", `<form wire-auto-recover="ignore">`, `<form wire-auto-re
 pair("not-a-handler", `${W}<b {% on "click" "joined" %}>`, `${W}<b {% on "click" "toggleAll" %}>`);
 pair("unknown-handler-argument", `${W}<b {% on "click" "add" txt=1 %}>`, `${W}<b {% on "click" "add" text=1 myself=True %}>`);
 pair("invalid-event", `${W}<b {% on "1click" "add" %}>`, `${W}<b {% on "my-event:x" "add" %}>`);
-pair("unknown-modifier", `${W}<b {% on "click.away" "add" %}>`, `${W}<b {% on "click.prevent.stop" "add" %}>`);
+pair("unknown-modifier", `${W}<b {% on "click.outside" "add" %}>`, `${W}<b {% on "click.prevent.stop" "add" %}>`);
+// window and away right after the event, and away leaves the event alone (#234)
+pair("modifier-place", `${W}<b {% on "keydown.enter.window" "add" %}>`, `${W}<b {% on "keydown.window.enter.prevent" "add" %}>`);
+pair("modifier-place", `${W}<b {% on "click.away.stop" "add" %}>`, `${W}<b {% on "click.away.debounce.300" "add" %}>`);
 pair("unknown-modifier", `${W}<b {% on "click.inlinejs" "add" %}>`, `${W}<b {% on "keydown.key.Enter" "add" %}>`);
 // binding() refuses inlinejs anywhere in the dotted name, before it reads a key's argument
 pair("unknown-modifier", `${W}<b {% on "keydown.key.inlinejs" "add" %}>`, `${W}<b {% on "keydown.key.inline" "add" %}>`);

@@ -1525,6 +1525,12 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         click and is followed by ``input`` and ``change`` unless the click is
         prevented, and a form's submit button then submits its form.
 
+        ``{% on "click.away" %}`` bindings outside the element hear the click
+        first, those on an element the markup shows (no ``hidden``, no inline
+        ``display: none`` on it or an ancestor; a stylesheet is not read here),
+        and ``{% on "click.window" %}`` ones after the element's, unless one of
+        those stopped it (#234).
+
         Returns what :meth:`render` returns afterwards. Fails, saying why, when
         no element or more than one matches (narrow with a selector or
         ``text=``), when the element is disabled, when no binding of a server
@@ -1543,7 +1549,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
     async def keydown(
         self,
-        selector: str,
+        selector: str | None,
         key: str,
         /,
         *,
@@ -1565,14 +1571,20 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         field). Nothing is typed: give a field its value with :meth:`input` or
         :meth:`change`. See :meth:`click` for what is sent and when it fails.
 
+        The key also reaches the page's ``{% on "keydown.window" %}`` bindings
+        after the element's own, unless one of those stopped it (#234). A
+        ``selector`` of None presses the key with nothing focused: only those
+        hear it.
+
         Example:
             await view.keydown("input[name=draft]", "Enter")
+            await view.keydown(None, "Escape")   # {% on "keydown.window.esc" "close" %}
         """
         return await self._key("keydown", selector, key, text, ctrl, alt, shift, meta, composing)
 
     async def keyup(
         self,
-        selector: str,
+        selector: str | None,
         key: str,
         /,
         *,
@@ -1593,7 +1605,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     async def _key(
         self,
         type_: str,
-        selector: str,
+        selector: str | None,
         key: str,
         text: str | re.Pattern[str] | None,
         ctrl: bool,
@@ -1605,7 +1617,11 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         if not isinstance(key, str) or not key:
             raise TypeError(f"{type_}() takes the key as the browser names it (event.key), like 'Enter' or 'a'")
         event = testing_dom.key_event(key, ctrl=ctrl, alt=alt, shift=shift, meta=meta, composing=composing)
-        return await self._act(lambda page: page.key(page.find(selector, text), type_, event))
+        if selector is None and text is not None:
+            raise TypeError(f"{type_}(None, ...) presses the key with nothing focused: text= picks no element there")
+        return await self._act(
+            lambda page: page.key(None if selector is None else page.find(selector, text), type_, event)
+        )
 
     async def focus(self, selector: str, /, *, text: str | re.Pattern[str] | None = None) -> str | None:
         """Give the element ``selector`` picks focus: dispatch ``focus`` (its own bindings) then ``focusin`` (bubbles).

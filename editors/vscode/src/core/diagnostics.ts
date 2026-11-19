@@ -333,9 +333,24 @@ function checkEvent(project: Project, sym: Extract<Sym, { kind: "event" }>, repo
     report("unknown-modifier", "error", segments[inline].span, "The inlinejs modifier is not supported: use a JS() command chain, or a hook.");
     return;
   }
+  // window and away say where the binding listens (#234): right after the event, and away leaves the event alone
+  const scope = segments.length > 1 && SCOPES.has(segments[1].text) && modifiers[segments[1].text] ? segments[1].text : null;
   for (let index = 1; index < segments.length; index++) {
     const { text: name, span } = segments[index];
     const modifier = modifiers[name];
+    if (modifier && SCOPES.has(name) && index !== 1) {
+      report("modifier-place", "error", span, `'${name}' must come right after the event, like ${segments[0].text}.${name}, and a binding listens in one place.`);
+      return;
+    }
+    if (modifier && scope === "away" && (name === "prevent" || name === "stop")) {
+      report(
+        "modifier-place",
+        "error",
+        span,
+        `An away binding hears an event that belongs to another element: stopping or preventing it would break that element's ${segments[0].text}.`,
+      );
+      return;
+    }
     if (!modifier) {
       report(
         "unknown-modifier",
@@ -359,6 +374,9 @@ function checkEvent(project: Project, sym: Extract<Sym, { kind: "event" }>, repo
     index += 1;
   }
 }
+
+/** The modifiers that say where a binding listens rather than when it fires (`SCOPE_PREFIXES` in event_transpiler.py) */
+const SCOPES = new Set(["window", "away"]);
 
 function exampleOf(modifier: string): string {
   return { key: "keydown.key.Escape", key_code: "keydown.key_code.27" }[modifier] ?? `input.${modifier}.300`;

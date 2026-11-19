@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bindingsFor, isRenderEcho, parseBinding, runSteps } from "../../wireview/static/wireview/events.mjs";
+import {
+  belongsToIme,
+  bindingsFor,
+  isAway,
+  isBindingName,
+  isRenderEcho,
+  parseBinding,
+  runSteps,
+} from "../../wireview/static/wireview/events.mjs";
 
 /** Ops that record what a run did; debounce keeps its continuation to call later. */
 function recorder({ throttleAllows = true } = {}) {
@@ -28,17 +36,19 @@ function recorder({ throttleAllows = true } = {}) {
 }
 
 test("parseBinding reads the event and its modifiers, arguments included", () => {
-  assert.deepEqual(parseBinding("wire-on-click"), { type: "click", steps: [] });
+  assert.deepEqual(parseBinding("wire-on-click"), { type: "click", steps: [], scope: "element" });
   assert.deepEqual(parseBinding("wire-on-keyup.debounce.300.enter"), {
     type: "keyup",
     steps: [
       { name: "debounce", arg: "300" },
       { name: "key", arg: "enter" },
     ],
+    scope: "element",
   });
   assert.deepEqual(parseBinding("wire-on-keydown.key.a.ctrl"), {
     type: "keydown",
     steps: [{ name: "key", arg: "a" }, { name: "ctrl" }],
+    scope: "element",
   });
   assert.deepEqual(parseBinding("wire-on-keyup.esc").steps, [{ name: "key", arg: "escape" }]);
   assert.deepEqual(parseBinding("wire-on-keyup.space").steps, [{ name: "key", arg: " " }]);
@@ -149,4 +159,45 @@ test("a focus event while a server change is applied is the render's, not the us
   for (const type of ["click", "input", "keydown", "submit"]) {
     assert.equal(isRenderEcho(type, true), false, type);
   }
+});
+
+// window and away (#234, GAP-038)
+
+test("a window or away binding is read under its own prefix", () => {
+  assert.deepEqual(parseBinding("wire-window-keydown.esc"), {
+    type: "keydown",
+    steps: [{ name: "key", arg: "escape" }],
+    scope: "window",
+  });
+  assert.deepEqual(parseBinding("wire-away-click"), { type: "click", steps: [], scope: "away" });
+  assert.equal(parseBinding("wire-on-click").scope, "element");
+  assert.equal(parseBinding("wire-elsewhere-click"), null);
+});
+
+test("each scope's bindings are apart: an element's are not its window ones", () => {
+  const names = ["wire-on-keydown", "wire-window-keydown.esc", "wire-away-keydown", "wire-window-keyup"];
+  assert.deepEqual(bindingsFor(names, "keydown"), ["wire-on-keydown"]);
+  assert.deepEqual(bindingsFor(names, "keydown", "window"), ["wire-window-keydown.esc"]);
+  assert.deepEqual(bindingsFor(names, "keydown", "away"), ["wire-away-keydown"]);
+});
+
+test("a binding name of any scope is learned", () => {
+  for (const name of ["wire-on-click", "wire-window-keydown", "wire-away-click"]) assert.ok(isBindingName(name));
+  assert.ok(!isBindingName("wire-hook"));
+});
+
+test("an away binding hears what happens outside its element, not in it", () => {
+  const inside = {};
+  const el = { contains: (/** @type {any} */ other) => other === el || other === inside };
+  assert.equal(isAway(el, inside), false);
+  assert.equal(isAway(el, el), false);
+  assert.equal(isAway(el, {}), true);
+  // The window's own event is nobody's click away
+  assert.equal(isAway(el, null), false);
+});
+
+test("a key an IME composes with, or the one that starts it, belongs to the IME", () => {
+  assert.ok(belongsToIme({ isComposing: true, keyCode: 13 }));
+  assert.ok(belongsToIme({ isComposing: false, keyCode: 229 }));
+  assert.ok(!belongsToIme({ isComposing: false, keyCode: 27 }));
 });

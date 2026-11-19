@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-11-19
+> **최종 업데이트**: 2026-11-20
 
 ---
 
@@ -13,9 +13,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 120 |
+| ✅ 지원 | 121 |
 | 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 10 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 15 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 14 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟡·🟠 행은 상태 칸에 GAP 번호와
@@ -59,7 +59,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | 2.6 File Uploads | 9 | 0 | 2 | 0 |
 | 2.7 Async Operations | 5 | 1 | 0 | 0 |
 | 2.8 Navigation | 8 | 1 | 0 | 0 |
-| 2.9 JavaScript Interoperability | 13 | 1 | 5 | 0 |
+| 2.9 JavaScript Interoperability | 14 | 1 | 4 | 0 |
 | 2.10 Components | 10 | 0 | 3 | 1 |
 | 2.11 Form Handling | 11 | 1 | 0 | 0 |
 | 2.12 Performance Features | 6 | 1 | 0 | 0 |
@@ -201,7 +201,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | push_event (server→client) | ✅ | `push_event()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_the_server_pushes_an_event_the_hook_is_listening_for`<br>`examples/hooks/tests.py::test_highlight_pushes_to_every_hook_of_this_component` |
 | Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) | `tests/test_hook_collection.py::TestWhatTheHeaderEmits::test_every_hook_file_gets_a_deferred_script`<br>`examples/hooks/tests.py::TestHookLifecycle::test_a_slow_hook_file_still_registers_before_the_first_join` |
 | onBeforeElUpdated | ✅ | `wireview.dom.onBeforeElUpdated()` | ✅ | `tests/test_js_commands_e2e.py::test_on_before_el_updated_keeps_it`<br>`tests/test_js_commands_e2e.py::test_a_render_drops_what_javascript_added_to_an_element` |
-| 창 단위·요소 밖 바인딩 | `phx-click-away`, `phx-window-keydown/keyup/focus/blur` | 없음. `{% on %}`은 요소와 그 자손의 이벤트만, `click.away`는 렌더 때 거절된다. 훅에서 직접 리스너를 단다 | 🟠 GAP-038 (#234) |  |
+| 창 단위·요소 밖 바인딩 | `phx-click-away`, `phx-window-keydown/keyup/focus/blur` | `{% on "click.away" %}`은 보이는 요소 밖의 이벤트를 누가 듣기 전에(창의 capture 단계), `{% on "keydown.window" %}`은 창까지 온 이벤트와 창 자신의 것(`blur.window`)을 요소의 바인딩 뒤에 듣는다. 바인딩을 단 요소의 컴포넌트로 가고, IME 조합 키는 듣지 않으며, 요소가 지워지면 듣지 않고 다시 그려져도 한 번만 듣는다. 옛 번들은 `wire-on-` 밖의 속성 이름이라 무시한다([문서](./features/csp.md#창과-요소-밖-window-away)) | ✅ (GAP-038) | `tests/test_dom_events_e2e.py::test_a_browser_hears_what_the_helpers_send`<br>`tests/test_beyond_bindings_e2e.py::test_the_click_that_opens_a_menu_does_not_close_it`<br>`tests/test_beyond_bindings_e2e.py::test_a_key_an_ime_composes_with_is_no_window_shortcut`<br>`tests/test_beyond_bindings_e2e.py::test_a_binding_the_render_removed_is_not_heard_and_drawn_again_is_heard_once`<br>`tests/test_beyond_bindings_e2e.py::test_after_a_reconnect_a_window_binding_is_heard_once`<br>`tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy` |
 | 선언적 수명주기 JS | `phx-mounted`, `phx-remove`, `phx-connected`, `phx-disconnected` | 없음. 훅 콜백과 `wireview-disconnected` 클래스로 대신한다. 스트림 delete는 기다리지 않고 지운다 | 🟠 GAP-039 (#235) |  |
 | 속성 단위 패치 제외·포커스 칸 서버 우선 | `JS.ignore_attributes`(wildcard), `phx-patch-focused` | 없음. 요소 전체를 빼는 `wire-update="ignore"`, JS 명령이 바꾼 것의 sticky, `onBeforeElUpdated`로 손으로 보존 | 🟠 GAP-045 (#241) |  |
 | 훅 컨텍스트의 남은 API | `pushEventTo`, `js()`, `upload`·`uploadTo`, 클래스 훅, `beforeUpdate(fromEl, toEl)` | `pushEvent`(콜백·Promise, #222)와 해제 함수를 돌려주는 `handleEvent`. 대상 지정·JS·업로드는 전역 `wireview` API로. 훅은 객체만, `beforeUpdate()`는 인자 없이 컴포넌트 전체에 | 🟡 GAP-046 (#242) |  |
@@ -343,13 +343,13 @@ LiveView 1.2.12 대조에서 남은 것(#229):
 
 | ID | 기능 | 설명 | 난이도 | 추적 |
 |----|------|------|:------:|----------|
-| GAP-038 | 창 단위 이벤트와 요소 밖 클릭(click-away) 바인딩 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #234 |
 | GAP-040 | 이벤트 시간 제어 확장과 이벤트 정보 payload | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #236 |
 | GAP-041 | JS() 속성 토글·체인 재사용·상대 선택자 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #237 |
 | GAP-042 | 포커스 스택과 포커스 가두기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #238 |
 | GAP-043 | 트랜지션 세 단계·blocking·비차단 체인 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #239 |
 | GAP-045 | 속성 단위 패치 제외와 포커스 칸의 서버 우선 패치 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #241 |
 | ~~GAP-048~~ | ~~폼 payload 의미(disabled·submitter·_target·사용 여부·reset)~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#244) |
+| ~~GAP-038~~ | ~~창 단위 이벤트와 요소 밖 클릭(click-away) 바인딩~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#234) |
 | ~~GAP-049~~ | ~~컴포넌트 재시작의 폼 복구와 복구 끄기~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#245) |
 | ~~GAP-050~~ | ~~서버가 지시하는 HTTP 폼 제출과 제출·업로드 잠금~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#246) |
 | ~~GAP-056~~ | ~~DOM 바인딩을 읽는 컴포넌트 테스트 헬퍼와 테스트 경고 설정~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#252) |

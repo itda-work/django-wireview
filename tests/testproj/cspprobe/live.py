@@ -23,6 +23,7 @@ class CspProbe(Component):
     outer: int = 0
     submitted: str = ""
     received: str = ""
+    beyond: str = ""
 
     @property
     def toggle_panel(self) -> JS:
@@ -49,6 +50,10 @@ class CspProbe(Component):
 
     async def key(self, name: str = "", **_rest):
         self.keys += name
+
+    async def heard_beyond(self, name: str = "", **_rest):
+        """A click away from the zone, a key with nothing focused (#234)."""
+        self.beyond += name
 
     async def click_inner(self, **_rest):
         self.inner += 1

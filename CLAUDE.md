@@ -229,7 +229,9 @@ wireview/
                            islands.mjs (섬의 수명: 내장 훅 wireview-island가 mount·props가 바뀐 update·unmount를 잇고, 늦게 등록된 정의를 기다린다. wireview.islands가 등록부(Proxy), #221), reload.mjs (reload 쿨다운 판단),
                            viewport.mjs (wire-viewport-top/bottom이 불리는가. 방향은 스크롤하는 조상들과 창 중 하나라도 그쪽으로 움직였는가, "지나침"은 실제로 넘치는 가장 가까운 상자(없으면 창)에서 잰다 — 자기 스크롤바가 있는 채팅 목록, 스크롤하지 않는 overflow-x: hidden 래퍼, #199),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
-                           events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
+                           events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho.
+                           {% on "keydown.window" %}·{% on "click.away" %}는 wire-window-*·wire-away-*로 렌더된다(옛 번들은 무시, SCOPE_PREFIXES). EventBindings가 창에
+                           이벤트 종류마다 리스너 하나를 두고 그때 문서에서 그 속성의 요소를 찾는다 — away는 capture 단계에서 보이는 요소 밖이면, window는 요소 바인딩 뒤에. IME 키는 듣지 않는다(belongsToIme), #234),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가. IME가 조합 중인 칸은 언제나 지킨다),
                            sticky.mjs (JS() 명령이 요소에 바꾼 클래스·속성·표시·진행 중인 트랜지션을 기록하고, 그 요소의 morph가 들어오는 HTML에 다시 얹는다 — LiveView의 sticky, #219.
                            boost 이동의 morph는 지우고, 스트림 항목 교체는 옮긴다. 인스턴스는 wireview-boost.js의 하나),
@@ -353,7 +355,7 @@ tests/
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
-                           domprobe/ 는 사용자의 클릭·change·input·submit·키·포커스가 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent·키 조건·암묵적 제출, DomTrap·DomChat은 바인딩을 지우거나 잘못 건 템플릿, DomHooked는 static/domprobe/hooks/dom.js의 훅이 누르면 pushEvent한다. DomMeta는 핸들러가 이름으로 묻는 `_target`·`_unused`·`_bad_input`(meta-* 시나리오, #244). streams/ 는 스트림 연산을 받을 컨테이너들의 페이지, payload/ 는 폼마다 제출이 싣는 칸(PAYLOADS)을 브라우저의 FormData와 헬퍼가 함께 맞추는 DomPayload),
+                           domprobe/ 는 사용자의 클릭·change·input·submit·키·포커스가 보내는 것을 헬퍼(test_dom_events.py)와 브라우저(test_dom_events_e2e.py)가 같은 표(scenarios.py)로 보는 픽스처다(위임·.stop·수정자·debounce·JS()·폼 필드 직렬화·중첩 컴포넌트·LiveComponent·키 조건·암묵적 제출, DomTrap·DomChat은 바인딩을 지우거나 잘못 건 템플릿, DomHooked는 static/domprobe/hooks/dom.js의 훅이 누르면 pushEvent한다. DomMeta는 핸들러가 이름으로 묻는 `_target`·`_unused`·`_bad_input`(meta-* 시나리오, #244). DomBeyond는 click.away·keydown.window·blur.window(click-away·window-* 시나리오와 tests/test_beyond_bindings_e2e.py, #234). streams/ 는 스트림 연산을 받을 컨테이너들의 페이지, payload/ 는 폼마다 제출이 싣는 칸(PAYLOADS)을 브라우저의 FormData와 헬퍼가 함께 맞추는 DomPayload),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
                            endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),
@@ -449,7 +451,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ### 클라이언트 DOM 속성
 
-`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼의 opt-in, 링크·조상의 `"false"`는 opt-out, 가장 가까운 것이 이긴다), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`, `wire-island`·`wire-island-props`(`{% island %}`가 그린다). 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON. `window`·`away` 수정자는 `wire-window-<이벤트>`·`wire-away-<이벤트>`), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼의 opt-in, 링크·조상의 `"false"`는 opt-out, 가장 가까운 것이 이긴다), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`, `wire-island`·`wire-island-props`(`{% island %}`가 그린다). 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
 
 ## 명령
 

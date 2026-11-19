@@ -30,7 +30,7 @@ from django.template import Context, Template
 from django.test import RequestFactory
 
 from wireview import Component
-from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS, binding
+from wireview.event_transpiler import BINDING_PREFIX, MODIFIER_ARGUMENTS, MODIFIERS, SCOPE_PREFIXES, binding
 from wireview.features.uploads import UploadEntry
 from wireview.js import JS
 from wireview.templatetags.wireview import upload_preview
@@ -119,10 +119,10 @@ class TestTheOnTag:
             binding(event, "save", {})
 
     @pytest.mark.parametrize(
-        "event", ["click.away", "click.once", "click.capture", "keydown.escape", "click.prevent.self"]
+        "event", ["click.outside", "click.once", "click.capture", "keydown.escape", "click.prevent.self"]
     )
     def test_a_modifier_the_client_does_not_run_is_refused(self, event):
-        # The client skips a modifier it does not know: click.away was a plain click, keydown.escape every key
+        # The client skips a modifier it does not know: click.outside would be a plain click, keydown.escape every key
         with pytest.raises(ValueError, match="not a modifier"):
             binding(event, "save", {})
 
@@ -448,11 +448,12 @@ EVENTS_MJS = Path(__file__).resolve().parent.parent / "wireview" / "static" / "w
 
 def _client_modifiers() -> tuple[set[str], set[str]]:
     source = EVENTS_MJS.read_text(encoding="utf-8")
+    scopes = set(re.findall(r"(\w+): \"wire-", re.search(r"SCOPE_PREFIXES = \{([^}]*)\}", source).group(1)))
     arity = set(re.findall(r"(\w+): 1", re.search(r"const ARITY = \{([^}]*)\}", source).group(1)))
     keys = set(re.findall(r"^\s+(\w+):", re.search(r"const KEYS = \{(.*?)\};", source, re.S).group(1), re.M))
     run_steps = source[source.index("export function runSteps") :]
     cases = set(re.findall(r'case "(\w+)":', run_steps))
-    return cases | keys, arity
+    return cases | keys | scopes, arity
 
 
 def test_the_listed_modifiers_are_the_ones_the_client_runs():
@@ -461,3 +462,61 @@ def test_the_listed_modifiers_are_the_ones_the_client_runs():
 
     assert set(MODIFIERS) == names
     assert MODIFIER_ARGUMENTS == with_argument
+
+
+@pytest.mark.unit
+class TestBindingsBeyondTheElement:
+    """``window`` and ``away`` (#234, GAP-038): a modifier right after the event, rendered under a prefix of
+    its own that a bundle from before them does not read."""
+
+    @pytest.mark.parametrize(
+        ("written", "rendered"),
+        [
+            ("click.away", "wire-away-click"),
+            ("click.away.debounce.300", "wire-away-click.debounce.300"),
+            ("keydown.window", "wire-window-keydown"),
+            ("keydown.window.esc", "wire-window-keydown.esc"),
+            ("keydown.window.ctrl.key.k.prevent", "wire-window-keydown.ctrl.key.k.prevent"),
+            ("focus.window", "wire-window-focus"),
+        ],
+    )
+    def test_it_renders_under_its_own_prefix(self, written, rendered):
+        name, value = binding(written, "close", {})
+
+        assert name == rendered
+        assert json.loads(value) == {"h": "close"}
+
+    def test_the_prefixes_are_the_clients(self):
+        source = EVENTS_MJS.read_text(encoding="utf-8")
+        client = dict(re.findall(r'(\w+): "([^"]+)"', re.search(r"SCOPE_PREFIXES = \{([^}]*)\}", source).group(1)))
+
+        assert client == SCOPE_PREFIXES
+
+    @pytest.mark.parametrize("written", ["keydown.esc.window", "click.prevent.away", "click.window.away"])
+    def test_it_comes_right_after_the_event(self, written):
+        with pytest.raises(ValueError, match="must come right after the event"):
+            binding(written, "close", {})
+
+    @pytest.mark.parametrize("written", ["click.away.prevent", "click.away.stop", "click.away.debounce.30.stop"])
+    def test_an_away_binding_leaves_the_event_alone(self, written):
+        # It belongs to the element clicked: a link outside would not navigate
+        with pytest.raises(ValueError, match="stopping or preventing it"):
+            binding(written, "close", {})
+
+    def test_a_window_binding_may_prevent_what_the_browser_does(self):
+        # Ctrl+K is the browser's search box until the page prevents it
+        assert binding("keydown.window.ctrl.key.k.prevent", "search", {})[0].endswith(".prevent")
+
+    def test_an_older_bundle_does_not_read_it(self):
+        """A bundle before #234 reads ``wire-on-`` alone: a scoped binding is nothing to it, where ``wire-on-
+        click.away`` would have been a click on the element itself."""
+        for written in ("click.away", "keydown.window.esc"):
+            assert not binding(written, "close", {})[0].startswith(BINDING_PREFIX)
+
+    def test_a_template_renders_it(self):
+        html = Template(
+            '{% load wireview %}<div {% on "click.away" "save" %} {% on "keydown.window.esc" "search" %}></div>'
+        ).render(Context({"this": _component()}))
+
+        assert 'wire-away-click="{&quot;h&quot;:&quot;save&quot;}"' in html
+        assert "wire-window-keydown.esc=" in html

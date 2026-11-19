@@ -17,6 +17,55 @@
 export const BINDING_PREFIX = "wire-on-";
 
 /**
+ * Bindings that listen beyond their element (#234, GAP-038). The template
+ * writes them as a modifier right after the event -- `keydown.window.esc`,
+ * `click.away` -- and the server renders them under a prefix of their own,
+ * which an older bundle does not read: it ignores them rather than run
+ * `click.away` as a plain click, its opposite.
+ *
+ * - `window`: the event as the window hears it -- one that bubbled up from
+ *   anywhere on the page (a key with nothing focused, a click), or the
+ *   window's own (`focus`, `blur`, `resize`). After the element bindings it
+ *   passed, and not when one of them stopped it.
+ * - `away`: the event outside the element, when the element is shown. Before
+ *   anything on the page hears it (the window's capture phase), so a click
+ *   that opens a menu does not also close it.
+ * @type {Record<"window" | "away", string>}
+ */
+export const SCOPE_PREFIXES = { window: "wire-window-", away: "wire-away-" };
+
+/** @typedef {"element" | "window" | "away"} Scope */
+
+/**
+ * @param {Scope} scope
+ * @returns {string}
+ */
+function prefixOf(scope) {
+  return scope === "element" ? BINDING_PREFIX : SCOPE_PREFIXES[scope];
+}
+
+/**
+ * Whether an attribute's name is a binding of any scope.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isBindingName(name) {
+  return name.startsWith(BINDING_PREFIX) || name.startsWith(SCOPE_PREFIXES.window) || name.startsWith(SCOPE_PREFIXES.away);
+}
+
+/**
+ * Whether a key belongs to an IME: one it is composing with, or the key that
+ * starts a composition (Chromium's first `keydown` says `isComposing: false`
+ * and `keyCode` 229). A window binding hears every key on the page, the ones
+ * typed into a field included; a page-wide shortcut never takes an IME's.
+ * @param {{isComposing?: boolean, keyCode?: number}} event
+ * @returns {boolean}
+ */
+export function belongsToIme(event) {
+  return Boolean(event.isComposing) || event.keyCode === 229;
+}
+
+/**
  * The events a browser fires on its own when the element with focus is removed
  * or moved: the focus events, and `change` first when the field's value changed
  * since it was focused (Chromium does, as it does when the user leaves).
@@ -58,17 +107,22 @@ const KEYS = {
 
 /**
  * @typedef {{name: string, arg?: string}} Step
- * @typedef {{type: string, steps: Step[]}} Binding
+ * @typedef {{type: string, steps: Step[], scope: Scope}} Binding
  */
 
 /**
  * Read a binding attribute's name.
- * @param {string} attribute - e.g. `wire-on-keyup.debounce.300.enter`
+ * @param {string} attribute - e.g. `wire-on-keyup.debounce.300.enter`, `wire-window-keydown.esc`
  * @returns {Binding | null} null when the name is not a binding
  */
 export function parseBinding(attribute) {
-  if (!attribute.startsWith(BINDING_PREFIX)) return null;
-  const [type, ...tokens] = attribute.slice(BINDING_PREFIX.length).split(".");
+  /** @type {Scope} */
+  let scope;
+  if (attribute.startsWith(BINDING_PREFIX)) scope = "element";
+  else if (attribute.startsWith(SCOPE_PREFIXES.window)) scope = "window";
+  else if (attribute.startsWith(SCOPE_PREFIXES.away)) scope = "away";
+  else return null;
+  const [type, ...tokens] = attribute.slice(prefixOf(scope).length).split(".");
   if (!type) return null;
   /** @type {Step[]} */
   const steps = [];
@@ -82,18 +136,29 @@ export function parseBinding(attribute) {
       steps.push({ name: token });
     }
   }
-  return { type, steps };
+  return { type, steps, scope };
 }
 
 /**
  * The binding attributes among `names` that answer to an event `type`, in order.
  * @param {string[]} names - an element's attribute names
  * @param {string} type - `event.type`
+ * @param {Scope} [scope="element"] - which of them: the element's own, or those listening beyond it
  * @returns {string[]}
  */
-export function bindingsFor(names, type) {
-  const exact = BINDING_PREFIX + type;
+export function bindingsFor(names, type, scope = "element") {
+  const exact = prefixOf(scope) + type;
   return names.filter((name) => name === exact || name.startsWith(exact + "."));
+}
+
+/**
+ * Whether an `away` binding on `el` hears an event at `target`: one outside it.
+ * @param {{contains(other: any): boolean}} el
+ * @param {any} target - the event's target, null when it is not in the document (the window's own)
+ * @returns {boolean}
+ */
+export function isAway(el, target) {
+  return target !== null && target !== undefined && !el.contains(target);
 }
 
 /**

@@ -527,3 +527,62 @@ class HeldDeepRoot(_Deep, Component):
 
     level: int = 0
     until: int = 0
+
+
+class DomBeyond(_Recording, Component):
+    """Bindings that listen beyond their element (#234): a click away from a menu, keys with nothing focused.
+
+    ``keys`` draws the element with the window bindings; ``toggle_keys`` takes
+    it away and draws it again, which must not leave a binding heard twice.
+    """
+
+    class Meta:
+        template_name = "domprobe/beyond.html"
+
+    heard: str = ""
+    keys: bool = True
+
+    @property
+    def open_popup(self) -> JS:
+        # Shown by the page, as a menu is: the click that opens it is not one away from it
+        return JS().show("[data-testid=popup]")
+
+    async def pressed(self, **kwargs: t.Any) -> None:
+        self._heard("pressed", kwargs)
+
+    async def closed(self, **kwargs: t.Any) -> None:
+        self._heard("closed", kwargs)
+
+    async def outside(self, **kwargs: t.Any) -> None:
+        self._heard("outside", kwargs)
+
+    async def escaped(self, **kwargs: t.Any) -> None:
+        self._heard("escaped", kwargs)
+
+    async def field_escaped(self, **kwargs: t.Any) -> None:
+        self._heard("field_escaped", kwargs)
+
+    async def searched(self, **kwargs: t.Any) -> None:
+        self._heard("searched", kwargs)
+
+    async def anywhere(self, **kwargs: t.Any) -> None:
+        self._heard("anywhere", kwargs)
+
+    async def quieted(self, **kwargs: t.Any) -> None:
+        self._heard("quieted", kwargs)
+
+    async def typed(self, **kwargs: t.Any) -> None:
+        self._heard("typed", kwargs)
+
+    async def anywhere_changed(self, **kwargs: t.Any) -> None:
+        self._heard("anywhere_changed", kwargs)
+
+    async def form_changed(self, **kwargs: t.Any) -> None:
+        self._heard("form_changed", kwargs)
+
+    async def tab_left(self, **kwargs: t.Any) -> None:
+        self._heard("tab_left", kwargs)
+
+    async def toggle_keys(self, **kwargs: t.Any) -> None:
+        self.keys = not self.keys
+        self._heard("toggle_keys", kwargs)

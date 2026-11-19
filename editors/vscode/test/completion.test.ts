@@ -114,6 +114,8 @@ test("on: events, then modifiers, then a modifier's argument", () => {
   const modifiers = labels(`${W}{% on "click.prevent.▮" %}`);
   assert.ok(modifiers.includes("stop") && modifiers.includes("debounce"));
   assert.ok(!modifiers.includes("prevent"), "already there");
+  assert.ok(!modifiers.includes("window") && !modifiers.includes("away"), "only right after the event");
+  assert.ok(labels(`${W}{% on "click.▮" %}`).includes("away"));
   assert.deepEqual(labels(`${W}{% on "input.debounce.▮" %}`), ["150", "300", "500", "1000"]);
   assert.ok(labels(`${W}{% on "keydown.key.▮" %}`).includes("Escape"));
   assert.ok(labels(`${W}{% on "keydown.key.Escape.▮" %}`).includes("prevent"), "the argument is eaten");

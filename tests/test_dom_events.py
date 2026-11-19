@@ -27,6 +27,7 @@ from types import SimpleNamespace
 import pytest
 from testproj.domprobe.live import (
     HEARD,
+    DomBeyond,
     DomBubble,
     DomChat,
     DomForm,
@@ -79,7 +80,8 @@ def _binding_name(rng: random.Random, type_: str) -> str:
         tokens.append(token)
         if token in MODIFIER_ARGUMENTS and rng.random() < 0.9:
             tokens.append(rng.choice(["0", "30", "300", "enter", "a", "13", "65", "x1"]))
-    return "wire-on-" + ".".join(tokens)
+    prefix = rng.choice(["wire-on-", "wire-on-", "wire-on-", "wire-window-", "wire-away-"])
+    return prefix + ".".join(tokens)
 
 
 def _event(rng: random.Random) -> dict:
@@ -115,7 +117,12 @@ def _case(rng: random.Random) -> dict:
     ]
     # An element carries an attribute once
     chain = [list(dict.fromkeys(names)) for names in chain]
-    return {"chain": chain, "type": type_, "event": _event(rng), "bubbles": type_ not in NON_BUBBLING}
+    # Elements outside the chain: their away bindings hear it, their window ones too (#234)
+    others = [
+        list(dict.fromkeys(_binding_name(rng, type_) for _ in range(rng.choice([1, 2]))))
+        for _ in range(rng.choice([0, 0, 1, 2]))
+    ]
+    return {"chain": chain, "type": type_, "event": _event(rng), "bubbles": type_ not in NON_BUBBLING, "others": others}
 
 
 class _Recorder:
@@ -125,11 +132,11 @@ class _Recorder:
         self.elements = elements
         self.fired: list[list] = []
         # The chain is divs: none of them is a submit button, so nothing looks for its form
-        self.root = None
+        self.root: Element | None = None
         # ...nor a field anyone touches
         self.touched = SimpleNamespace(touch=lambda el, root: None, touch_form=lambda form, root: None)
 
-    def server_event(self, el, handler, args, target, type_, submitter=None, source=None):
+    def server_event(self, el, handler, args, target, type_, submitter=None, source=None, beyond=False):
         self.fired.append([self.elements.index(el), handler])
         return None
 
@@ -137,14 +144,19 @@ class _Recorder:
 def _helpers_dispatch(case: dict) -> dict:
     # The chain as elements, target first; each binding names itself as its handler
     elements: list[Element] = []
-    parent = None
+    document = Element("#document", [], None)
+    parent = document
     for names in reversed(case["chain"]):
         el = Element("div", [(name, json.dumps({"h": name})) for name in names], parent)
-        if parent is not None:
-            parent.children.append(el)
+        parent.children.append(el)
         parent = el
         elements.insert(0, el)
+    for names in case["others"]:
+        el = Element("div", [(name, json.dumps({"h": name})) for name in names], document)
+        document.children.append(el)
+        elements.append(el)
     recorder = _Recorder(elements)
+    recorder.root = document
     action = _Dispatch(recorder)  # type: ignore[arg-type]
     prevented = action.dispatch(elements[0], case["type"], case["event"])
     action.run_timers()
@@ -751,3 +763,99 @@ def test_a_selector_names_a_non_ascii_class_and_id():
     root = parse('<p class="강조" id="머리">a</p><p>b</p>')
     assert [el.text for el in Selector("p.강조").select(root)] == ["a"]
     assert [el.text for el in Selector("#머리").select(root)] == ["a"]
+
+
+# ============================================================================
+# Bindings beyond their element (#234)
+# ============================================================================
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_key_an_ime_composes_with_reaches_no_window_binding():
+    view = await mount(DomBeyond, id="beyond")
+
+    with pytest.raises(AssertionError, match="with nothing focused reaches no handler"):
+        await view.keydown(None, "Escape", composing=True)
+
+    assert heard(DomBeyond, [("escaped", {}), ("typed", {})], HEARD) == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_nothing_focused_picks_no_element_by_its_text():
+    view = await mount(DomBeyond, id="beyond")
+
+    with pytest.raises(TypeError, match="text= picks no element"):
+        await view.keydown(None, "Escape", text="note")
+
+
+@pytest.mark.integration
+def test_an_element_hidden_inline_hears_no_click_away():
+    html = (
+        '<div id="c" wireview-component data-is-live="true">'
+        '<div style="color: red; display:none" wire-away-click=\'{"h": "closed", "a": {"where": "styled"}}\'></div>'
+        '<template><div wire-away-click=\'{"h": "closed", "a": {"where": "template"}}\'></div></template>'
+        '<div wire-away-click=\'{"h": "closed", "a": {"where": "shown"}}\'></div>'
+        '<button id="b">b</button></div>'
+    )
+    page = Page(html, "c")
+
+    events = page.click(page.find("#b"))
+
+    assert [e.explicit_args["where"] for e in events] == ["shown"]
+
+
+@pytest.mark.integration
+def test_a_window_or_away_binding_commits_nothing_and_names_no_target():
+    """The event happened at another element: the field it came from is not this binding's ``_target``."""
+    html = (
+        '<div id="c" wireview-component data-is-live="true">'
+        '<input name="g" value="w" wire-window-keydown=\'{"h": "pressed"}\'>'
+        '<input name="f" value="v" wire-on-keydown=\'{"h": "typed"}\'></div>'
+    )
+    page = Page(html, "c")
+
+    typed, pressed = page.key(page.find("[name=f]"), "keydown", {"key": "a", "keyCode": 65})
+
+    assert (typed.handler, pressed.handler) == ("typed", "pressed")
+    assert typed.meta["target"] == "f"
+    # Not the field the binding is on either: the key was typed elsewhere
+    assert pressed.meta["target"] is None
+    assert "g" in pressed.meta["unused"]
+
+
+@pytest.mark.integration
+def test_a_closed_dialog_or_details_hears_no_click_away():
+    html = (
+        '<div id="c" wireview-component data-is-live="true">'
+        '<dialog wire-away-click=\'{"h": "closed", "a": {"where": "dialog"}}\'></dialog>'
+        '<details><summary wire-away-click=\'{"h": "closed", "a": {"where": "summary"}}\'>s</summary>'
+        '<div wire-away-click=\'{"h": "closed", "a": {"where": "folded"}}\'></div></details>'
+        '<dialog open wire-away-click=\'{"h": "closed", "a": {"where": "open"}}\'></dialog>'
+        '<template><span wire-window-click=\'{"h": "closed", "a": {"where": "template"}}\'></span></template>'
+        '<button id="b">b</button></div>'
+    )
+    page = Page(html, "c")
+
+    events = page.click(page.find("#b"))
+
+    assert [e.explicit_args["where"] for e in events] == ["summary", "open"]
+
+
+@pytest.mark.integration
+def test_a_reset_and_a_recovery_are_no_event_on_the_page():
+    """wireview dispatches the reset's input and change and the recovery's change itself: the form's
+    bindings hear them, window and away ones do not."""
+    html = (
+        '<div id="c" wireview-component data-is-live="true">'
+        '<span wire-window-change=\'{"h": "anywhere"}\'></span>'
+        '<div wire-away-input=\'{"h": "away"}\'></div>'
+        '<form wire-on-change=\'{"h": "changed"}\' wire-auto-recover>'
+        '<input name="f" value="v"><button type="reset">r</button></form></div>'
+    )
+    page = Page(html, "c")
+
+    events = page.click(page.find("button"))
+
+    assert [e.handler for e in events] == ["changed"]

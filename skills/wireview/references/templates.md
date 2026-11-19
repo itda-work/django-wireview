@@ -38,8 +38,12 @@
 - 폼 요소의 `name` 속성은 같은 이름의 핸들러 인자로 전달된다.
 - 수정자: `prevent`, `stop`, `ctrl`, `alt`, `shift`, `meta`, `debounce.<ms>`, `throttle.<ms>`, `key.<name>`,
   `key_code.<n>`, 단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`.
-  이 밖의 이름(`away`, `once`, `capture`, `self`, `escape` 등)은 렌더 때 `ValueError`다 — 클라이언트는 모르는 수정자를
-  건너뛰므로 `click.away`가 평범한 click이 되던 것을 막는다. Escape는 `esc` 또는 `key.escape`.
+  이 밖의 이름(`outside`, `once`, `capture`, `self`, `escape` 등)은 렌더 때 `ValueError`다 — 클라이언트는 모르는 수정자를
+  건너뛰므로 평범한 click이 되던 것을 막는다. Escape는 `esc` 또는 `key.escape`.
+- 이벤트 바로 뒤의 `window`·`away`는 듣는 곳을 바꾼다. `{% on "keydown.window.esc" "close" %}`는 포커스가 어디 있든(없어도)
+  창까지 온 Escape를, `{% on "click.away" "close_menu" %}`는 그 요소가 보일 때 요소 밖의 클릭을 듣는다. 메뉴를 여는 클릭은
+  그 메뉴를 닫지 않는다. `away`에는 `prevent`·`stop`을 붙일 수 없고, 둘 다 IME 조합 키는 듣지 않는다. 훅으로 창에 리스너를 달
+  필요가 없다.
   인자가 필요한 수정자에 인자가 없거나(`input.debounce`), `debounce`·`throttle`·`key_code`의 인자가 정수가 아니어도
   (`input.debounce.abc`) `ValueError`다.
 - 수정자는 왼쪽부터 적용된다. `prevent`는 `debounce`보다 앞에 둔다.

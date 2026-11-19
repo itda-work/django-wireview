@@ -14,7 +14,7 @@ import { Recoveries, recoveryOf, stillRecovers } from "./recovery.mjs";
 import { RejoinBarrier, SYNC_TIMEOUT_MS } from "./rejoins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
-import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
+import { belongsToIme, bindingsFor, isAway, isBindingName, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
 import { TargetQueue, whenPatched } from "./targets.mjs";
@@ -1388,7 +1388,7 @@ class ServerConnection {
         const ref = this.serverVsn >= REFS_SINCE ? ++this.lastRef : undefined;
         this.sendUserEvent(armed.owner, recovery.handler, {}, { form_data: recoveredValues(element) }, ref, undefined);
       } else {
-        element.dispatchEvent(new Event("change", { bubbles: true }));
+        dispatchOwn(element, new Event("change", { bubbles: true }));
       }
       sent = true;
     }
@@ -3798,8 +3798,8 @@ document.addEventListener("reset", (e) => {
   setTimeout(() => {
     if (e.defaultPrevented || !form.isConnected) return;
     FeedbackManager.reset(form);
-    form.dispatchEvent(new Event("input", { bubbles: true }));
-    form.dispatchEvent(new Event("change", { bubbles: true }));
+    dispatchOwn(form, new Event("input", { bubbles: true }));
+    dispatchOwn(form, new Event("change", { bubbles: true }));
   }, 0);
 }, true);
 
@@ -4201,10 +4201,23 @@ window.addEventListener("pageshow", (event) => {
  * inline `on<event>` attribute, which a Content Security Policy blocks.
  * Listeners live on `<html>`: before `document`, where boost intercepts link
  * clicks, so a `.prevent` still lands first. docs/design/csp-event-binding.md.
+ *
+ * `window` and `away` bindings (#234) listen on the window instead, and are
+ * found when their event comes: by the attribute names learned so far, so an
+ * element the page removed is not heard again and one a render (or a
+ * reconnect) draws again is heard once.
  */
 const EventBindings = {
   /** @type {Set<string>} */
   listened: new Set(),
+  /**
+   * The `window` and `away` binding names seen, by scope and event type, and
+   * the selector that finds the elements carrying them.
+   * @type {{window: Map<string, {names: Set<string>, selector?: string}>, away: Map<string, {names: Set<string>, selector?: string}>}}
+   */
+  scoped: { window: new Map(), away: new Map() },
+  /** While above 0, the event being dispatched is wireview's own (a recovery's change, a reset's input) */
+  own: 0,
   /** @type {Map<string, import("./events.mjs").Binding | null>} */
   parsed: new Map(),
   /** @type {WeakMap<Element, Map<string, {timer?: ReturnType<typeof setTimeout>, last?: number}>>} */
@@ -4218,7 +4231,7 @@ const EventBindings = {
     new MutationObserver((records) => {
       for (const record of records) {
         if (record.type === "attributes") {
-          if (record.attributeName?.startsWith(BINDING_PREFIX)) this.learn(record.attributeName);
+          if (record.attributeName && isBindingName(record.attributeName)) this.learn(record.attributeName);
         } else {
           record.addedNodes.forEach((node) => {
             if (node.nodeType === Node.ELEMENT_NODE) this.scan(/** @type {Element} */ (node));
@@ -4235,7 +4248,7 @@ const EventBindings = {
   scan(root) {
     for (const el of [root, ...root.querySelectorAll("*")]) {
       for (const name of el.getAttributeNames()) {
-        if (name.startsWith(BINDING_PREFIX)) this.learn(name);
+        if (isBindingName(name)) this.learn(name);
       }
     }
   },
@@ -4243,7 +4256,68 @@ const EventBindings = {
   /** @param {string} attribute */
   learn(attribute) {
     const binding = this.binding(attribute);
-    if (binding) this.listen(binding.type);
+    if (!binding) return;
+    if (binding.scope === "element") {
+      this.listen(binding.type);
+      return;
+    }
+    const byType = this.scoped[binding.scope];
+    let known = byType.get(binding.type);
+    if (!known) {
+      known = { names: new Set() };
+      byType.set(binding.type, known);
+      this.listenBeyond(binding.scope, binding.type);
+    }
+    if (!known.names.has(attribute)) {
+      known.names.add(attribute);
+      known.selector = undefined;
+    }
+  },
+
+  /**
+   * The elements on the page with a `scope` binding for `type`, in document order.
+   * @param {"window" | "away"} scope
+   * @param {string} type
+   * @returns {Element[]}
+   */
+  carrying(scope, type) {
+    const known = this.scoped[scope].get(type);
+    if (!known) return [];
+    known.selector ??= [...known.names].map((name) => `[${CSS.escape(name)}]`).join(",");
+    return [...document.querySelectorAll(known.selector)];
+  },
+
+  /**
+   * Listen on the window for the `window` or `away` bindings of `type`.
+   *
+   * A `window` binding hears the event in the window's bubble phase: after
+   * the element bindings it passed, not when one of them stopped it, and the
+   * window's own (`focus`, `blur`, `resize`). An `away` binding hears it in the
+   * window's capture phase, before anything else does: which elements it is
+   * away from is decided then, so a click that opens a menu is not also the
+   * click away from the menu it opened.
+   * @param {"window" | "away"} scope
+   * @param {string} type
+   */
+  listenBeyond(scope, type) {
+    const capture = scope === "away";
+    window.addEventListener(
+      type,
+      (event) => {
+        if (isRenderEcho(event.type, boost.inServerChange())) return;
+        // What wireview dispatches for a form (dispatchOwn) is that form's, not the page's
+        if (this.own > 0) return;
+        // A page-wide key is never an IME's (events.mjs belongsToIme)
+        if (event instanceof KeyboardEvent && belongsToIme(event)) return;
+        let hearing = this.carrying(scope, type);
+        if (scope === "away") {
+          const target = event.target instanceof Node ? event.target : null;
+          hearing = hearing.filter((el) => isAway(el, target) && isShown(el));
+        }
+        for (const el of hearing) this.run(el, event, scope);
+      },
+      capture
+    );
   },
 
   /** @param {string} attribute */
@@ -4291,12 +4365,17 @@ const EventBindings = {
    * Run `el`'s bindings for `event`.
    * @param {Element} el
    * @param {Event} event
+   * @param {import("./events.mjs").Scope} [scope="element"] - which of `el`'s bindings: its own, or a
+   *   `window` or `away` one (#234)
    * @returns {boolean} whether a binding stopped propagation
    */
-  run(el, event) {
+  run(el, event, scope = "element") {
     let stopped = false;
-    this.runUpload(el, event);
-    for (const attribute of bindingsFor(el.getAttributeNames(), event.type)) {
+    // What happened at another element (or at the window) is not this one's
+    // action: it submits nothing and commits no field of its own
+    const beyond = scope !== "element";
+    if (!beyond) this.runUpload(el, event);
+    for (const attribute of bindingsFor(el.getAttributeNames(), event.type, scope)) {
       const binding = this.binding(attribute);
       if (!binding) continue;
       /** @type {{h?: string, a?: Object, t?: string, js?: JSCommand[]}} */
@@ -4353,17 +4432,19 @@ const EventBindings = {
           // A submit, a change, leaving the field or Enter commits the fields
           // it comes from: its answer may reset them (a todo input emptied
           // after Enter). Anything else leaves them to the user (#91, #92).
-          const commit = isCommitAction(event.type, binding.steps, { submitter: isSubmitter(element) });
+          const commit = !beyond && isCommitAction(event.type, binding.steps, { submitter: isSubmitter(element) });
           // The button that submitted: a submit's, or the submit button clicked (#244)
           // The field a delegated binding's event came from (#244)
-          const source = event.target instanceof Element ? event.target : null;
-          const submitter =
-            event.type === "submit"
+          // A window or away binding's event happened elsewhere: it names no field of its own (#234)
+          const source = beyond ? null : event.target instanceof Element ? event.target : undefined;
+          const submitter = beyond
+            ? null
+            : event.type === "submit"
               ? /** @type {SubmitEvent} */ (event).submitter ?? null
               : event.type === "click" && isSubmitter(element)
                 ? element
                 : null;
-          if (event.type === "submit" && element instanceof HTMLFormElement) {
+          if (!beyond && event.type === "submit" && element instanceof HTMLFormElement) {
             // Submitted once, it is not sent again until that is over (#246)
             if (submitPending(element)) return;
             // What a submission the server asks for after sends (#246)
@@ -4434,6 +4515,35 @@ const EventBindings = {
     );
   },
 };
+
+/**
+ * Whether `el` is shown: an `away` binding on a closed menu does not hear the
+ * clicks on the rest of the page (#234).
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function isShown(el) {
+  const check = /** @type {{checkVisibility?: () => boolean}} */ (el).checkVisibility;
+  if (typeof check === "function" ? check.call(el) : el.getClientRects().length > 0) return true;
+  // A display: contents wrapper has no box of its own: it is shown when what it holds is
+  return getComputedStyle(el).display === "contents" && [...el.children].some(isShown);
+}
+
+/**
+ * Dispatch an event wireview makes for a form -- a recovery's change, a reset's
+ * input and change. The form's own bindings hear it as before; `window` and
+ * `away` bindings do not: nothing happened on the page (#234).
+ * @param {EventTarget} target
+ * @param {Event} event
+ */
+function dispatchOwn(target, event) {
+  EventBindings.own += 1;
+  try {
+    target.dispatchEvent(event);
+  } finally {
+    EventBindings.own -= 1;
+  }
+}
 
 EventBindings.init();
 
@@ -4806,7 +4916,8 @@ async function executeCommand(cmd, element, options = {}) {
               options.commit ? element : null,
               { elements: marked, eventType: options.eventType },
               options.submitter ?? null,
-              options.source ?? element
+              // null: the event happened elsewhere, at no field of this binding's (#234)
+              options.source === undefined ? element : options.source
             );
           }
         }
@@ -4939,7 +5050,7 @@ window.wireview = {
         commit ? element : null,
         { elements: marked, eventType },
         submitter,
-        options.source ?? element
+        options.source === undefined ? element : options.source
       );
     }
   },

@@ -448,6 +448,8 @@ def normalized_text(el: Element) -> str:
 # ============================================================================
 
 BINDING_PREFIX = "wire-on-"
+#: Bindings that listen beyond their element (``SCOPE_PREFIXES`` in events.mjs, #234)
+SCOPE_PREFIXES = {"window": "wire-window-", "away": "wire-away-"}
 
 #: The ``wire-auto-recover`` value that turns a form's recovery off (#245). The
 #: client's is ``RECOVERY_OFF`` in static/wireview/recovery.mjs; ``ignore`` stays a handler's name.
@@ -479,13 +481,35 @@ class Step:
 class Binding:
     type: str
     steps: tuple[Step, ...]
+    #: ``element``, ``window`` or ``away``
+    scope: str = "element"
+
+
+def _prefix_of(scope: str) -> str:
+    return BINDING_PREFIX if scope == "element" else SCOPE_PREFIXES[scope]
+
+
+def is_binding_name(name: str) -> bool:
+    """``isBindingName``: a binding of any scope."""
+    return name.startswith(BINDING_PREFIX) or any(name.startswith(p) for p in SCOPE_PREFIXES.values())
+
+
+def belongs_to_ime(event: t.Mapping[str, t.Any]) -> bool:
+    """``belongsToIme``: a key an IME composes with, or the one that starts a composition (keyCode 229)."""
+    return bool(event.get("isComposing")) or event.get("keyCode") == 229
 
 
 def parse_binding(attribute: str) -> Binding | None:
     """``parseBinding``: the event and the modifiers a binding attribute's name says."""
-    if not attribute.startswith(BINDING_PREFIX):
+    if attribute.startswith(BINDING_PREFIX):
+        scope = "element"
+    elif attribute.startswith(SCOPE_PREFIXES["window"]):
+        scope = "window"
+    elif attribute.startswith(SCOPE_PREFIXES["away"]):
+        scope = "away"
+    else:
         return None
-    type_, *tokens = attribute[len(BINDING_PREFIX) :].split(".")
+    type_, *tokens = attribute[len(_prefix_of(scope)) :].split(".")
     if not type_:
         return None
     steps: list[Step] = []
@@ -501,12 +525,12 @@ def parse_binding(attribute: str) -> Binding | None:
         else:
             steps.append(Step(token))
         i += 1
-    return Binding(type_, tuple(steps))
+    return Binding(type_, tuple(steps), scope)
 
 
-def bindings_for(names: t.Iterable[str], type_: str) -> list[str]:
+def bindings_for(names: t.Iterable[str], type_: str, scope: str = "element") -> list[str]:
     """``bindingsFor``: the attributes among ``names`` that answer to an event ``type_``, in order."""
-    exact = BINDING_PREFIX + type_
+    exact = _prefix_of(scope) + type_
     return [name for name in names if name == exact or name.startswith(exact + ".")]
 
 
@@ -798,7 +822,7 @@ def _bad_input(el: Element, fields: Fields) -> bool:
 
 
 def event_meta(
-    scope: Element, component: Element, fields: Fields, root: Element, touched: Touched, source: Element
+    scope: Element, component: Element, fields: Fields, root: Element, touched: Touched, source: Element | None
 ) -> dict[str, t.Any]:
     """``Component.eventMeta(scope, source)`` in wireview.js (#244): what an event says beyond its fields.
 
@@ -818,7 +842,7 @@ def event_meta(
         and disabled_by(el) is None
         and el.get("name")
     ]
-    target = source.get("name") if any(el is source for el in named) else None
+    target = source.get("name") if source is not None and any(el is source for el in named) else None
     unused: dict[str, None] = {}
     bad: dict[str, None] = {}
     for el in named:
@@ -915,6 +939,31 @@ def disabled_by(el: Element) -> Element | None:
             if legend is None or not legend.contains(el):
                 return ancestor
     return None
+
+
+_DISPLAY_NONE = re.compile(r"(?:^|;)\s*display\s*:\s*none\s*(?:!important\s*)?(?:;|$)", re.I)
+
+
+def is_shown(el: Element) -> bool:
+    """``isShown`` in wireview.js, as far as the markup says: no ``hidden`` and no inline ``display: none`` on
+    ``el`` or an ancestor, not in a closed ``<dialog>`` or (but for its summary) a closed ``<details>``, not a
+    hidden input or a ``<template>``'s content. A stylesheet that hides it is not seen here; the browser's
+    ``checkVisibility()`` sees it."""
+    if el.tag == "input" and input_type(el) == "hidden":
+        return False
+    child = None
+    for node in [el, *el.ancestors()]:
+        if node.tag == "template" or node.has("hidden") or _DISPLAY_NONE.search(node.get("style") or ""):
+            return False
+        # The browser's own stylesheet hides a closed dialog, and a closed details but for its summary
+        if node.tag == "dialog" and not node.has("open"):
+            return False
+        if node.tag == "details" and not node.has("open") and child is not None:
+            summary = next((c for c in node.children if isinstance(c, Element) and c.tag == "summary"), None)
+            if child is not summary:
+                return False
+        child = node
+    return True
 
 
 def is_reset_button(el: Element, root: Element) -> bool:
@@ -1018,7 +1067,14 @@ class _BindingRun:
     """What ``runSteps``' callbacks do for one binding in ``EventBindings.run``."""
 
     def __init__(
-        self, action: _Dispatch, state: _EventState, el: Element, attribute: str, value: dict[str, t.Any], type_: str
+        self,
+        action: _Dispatch,
+        state: _EventState,
+        el: Element,
+        attribute: str,
+        value: dict[str, t.Any],
+        type_: str,
+        beyond: bool = False,
     ) -> None:
         self.action, self.state, self.el, self.attribute, self.value, self.type = (
             action,
@@ -1028,6 +1084,8 @@ class _BindingRun:
             value,
             type_,
         )
+        #: A ``window`` or ``away`` binding: the event happened elsewhere, and it submits nothing of its own
+        self.beyond = beyond
 
     def prevent(self) -> None:
         if not self.state.late:
@@ -1051,6 +1109,9 @@ class _BindingRun:
         return True
 
     def fire(self) -> None:
+        if self.beyond:
+            self.action.fire(self.el, self.value, self.type, beyond=True)
+            return
         # The button that submitted: a submit's, or the submit button clicked (EventBindings.run, #244)
         submitter = self.state.submitter if self.type == "submit" else None
         if self.type == "click" and is_submitter(self.el, self.action.page.root):
@@ -1072,41 +1133,82 @@ class _Dispatch:
 
     def dispatch(
         self,
-        target: Element,
+        target: Element | None,
         type_: str,
         event: t.Mapping[str, t.Any] | None = None,
         submitter: Element | None = None,
+        own: bool = False,
     ) -> bool:
         """Dispatch ``type_`` at ``target``, bubbling (``EventBindings.bubble``). Whether its default was prevented.
 
         An event that does not bubble (``focus``, ``blur``) runs its target's
         bindings alone: the client's capture listener on the root. ``submitter``
-        is a submit's ``event.submitter``.
+        is a submit's ``event.submitter``. A ``target`` of None is the page
+        outside the render: a key with nothing focused.
+
+        The ``away`` bindings outside ``target`` hear it first (the window's
+        capture phase), and the ``window`` bindings last, unless an element
+        binding stopped it or it does not bubble (#234). ``own`` is an event
+        wireview dispatches for a form (``dispatchOwn``): those hear none of it.
         """
+        event = event or {}
         state = _EventState(submitter=submitter, source=target)
-        self.dispatched.append((type_, target))
-        # FeedbackManager's capture listeners on the document hear it first
-        self.touch(type_, target)
-        path = [target] if type_ in NON_BUBBLING else [target, *(a for a in target.ancestors() if a.tag != "#document")]
+        if target is not None:
+            self.dispatched.append((type_, target))
+        beyond = not own and not belongs_to_ime(event)
+        if beyond:
+            away = [el for el in self._carrying("away", type_) if (target is None or not el.contains(target))]
+            for el in [el for el in away if is_shown(el)]:
+                self._run(el, type_, event, state, "away")
+        if target is not None:
+            # FeedbackManager's capture listeners on the document hear it after the window's
+            self.touch(type_, target)
+        if target is None:
+            path: list[Element] = []
+        elif type_ in NON_BUBBLING:
+            path = [target]
+        else:
+            path = [target, *(a for a in target.ancestors() if a.tag != "#document")]
+        stopped = False
         for el in path:
             state.stopped = False
-            for attribute in bindings_for(el.attrs, type_):
-                binding = parse_binding(attribute)
-                if binding is None:
-                    continue
-                try:
-                    value = json.loads(el.attrs[attribute] or "{}")
-                except ValueError:
-                    # The client logs it and goes on
-                    self.skipped.append(_Skipped(el, attribute, "its value is not JSON"))
-                    continue
-                if isinstance(value, dict):
-                    run = _BindingRun(self, state, el, attribute, value, type_)
-                    if (failed := run_steps(binding.steps, event or {}, run)) is not None:
-                        self.skip(el, attribute, failed)
+            self._run(el, type_, event, state, "element")
             if state.stopped:
+                stopped = True
                 break
+        if beyond and not stopped and type_ not in NON_BUBBLING:
+            for el in self._carrying("window", type_):
+                self._run(el, type_, event, state, "window")
         return state.prevented
+
+    def _carrying(self, scope: str, type_: str) -> list[Element]:
+        """The elements of the page with a ``scope`` binding for ``type_``, in document order."""
+        root = self.page.root
+        if root is None:
+            return []
+        # querySelectorAll does not look into a <template>'s content
+        return [
+            el
+            for el in root.descendants()
+            if bindings_for(el.attrs, type_, scope) and el.closest(lambda a: a.tag == "template") is None
+        ]
+
+    def _run(self, el: Element, type_: str, event: t.Mapping[str, t.Any], state: _EventState, scope: str) -> None:
+        """``EventBindings.run``: ``el``'s ``scope`` bindings for ``type_``."""
+        for attribute in bindings_for(el.attrs, type_, scope):
+            binding = parse_binding(attribute)
+            if binding is None:
+                continue
+            try:
+                value = json.loads(el.attrs[attribute] or "{}")
+            except ValueError:
+                # The client logs it and goes on
+                self.skipped.append(_Skipped(el, attribute, "its value is not JSON"))
+                continue
+            if isinstance(value, dict):
+                run = _BindingRun(self, state, el, attribute, value, type_, beyond=scope != "element")
+                if (failed := run_steps(binding.steps, event, run)) is not None:
+                    self.skip(el, attribute, failed)
 
     def touch(self, type_: str, target: Element) -> None:
         """What ``type_`` at ``target`` touches (FeedbackManager.init): a field left or changed, a submit's form."""
@@ -1133,6 +1235,7 @@ class _Dispatch:
         type_: str,
         submitter: Element | None = None,
         source: Element | None = None,
+        beyond: bool = False,
     ) -> None:
         if "js" in value:
             pushes = [c for c in value["js"] or [] if isinstance(c, dict) and c.get("cmd") == "push"]
@@ -1150,7 +1253,7 @@ class _Dispatch:
         if handler is None:
             return
         self.sent.append(
-            self.page.server_event(el, handler, value.get("a") or {}, value.get("t"), type_, submitter, source)
+            self.page.server_event(el, handler, value.get("a") or {}, value.get("t"), type_, submitter, source, beyond)
         )
 
 
@@ -1208,6 +1311,7 @@ class Page:
         type_: str,
         submitter: Element | None = None,
         source: Element | None = None,
+        beyond: bool = False,
     ) -> ServerEvent:
         """``wireview.send(el, handler, args, {target})``: the component it goes to and the fields it carries.
 
@@ -1233,7 +1337,8 @@ class Page:
             explicit_args=dict(args),
             event_type=type_,
             element=el,
-            meta=event_meta(scope, target_el, self.fields, self.root, self.touched, source or el),
+            # A window or away binding's event happened elsewhere: no field of its own (#234)
+            meta=event_meta(scope, target_el, self.fields, self.root, self.touched, None if beyond else (source or el)),
         )
 
     def hook_id(self, el: Element, hook: str | None) -> tuple[str, str]:
@@ -1314,11 +1419,17 @@ class Page:
             return None
         return control
 
-    def key(self, el: Element, type_: str, event: t.Mapping[str, t.Any]) -> list[ServerEvent]:
-        """``keydown`` or ``keyup`` at ``el``, and Enter's implicit submission of a form after a keydown."""
-        self._refuse_disabled(el, type_)
+    def key(self, el: Element | None, type_: str, event: t.Mapping[str, t.Any]) -> list[ServerEvent]:
+        """``keydown`` or ``keyup`` at ``el``, and Enter's implicit submission of a form after a keydown.
+
+        ``el`` None is a key with nothing focused: only ``window`` and ``away`` bindings hear it (#234).
+        """
+        if el is not None:
+            self._refuse_disabled(el, type_)
         action = _Dispatch(self)
         prevented = action.dispatch(el, type_, event)
+        if el is None:
+            return self._finish(action, el, type_)
         if type_ == "keydown" and event.get("key") == "Enter" and not event.get("isComposing") and not prevented:
             self._submit_implicitly(action, el)
         return self._finish(action, el, type_)
@@ -1421,14 +1532,20 @@ class Page:
         for el in self.root.descendants():
             if el.tag in ("input", "select", "textarea") and form_of(el, self.root) is form:
                 self.fields.forget(el)
-        action.dispatch(form, "input")
-        action.dispatch(form, "change")
+        action.dispatch(form, "input", own=True)
+        action.dispatch(form, "change", own=True)
 
-    def _finish(self, action: _Dispatch, el: Element, type_: str) -> list[ServerEvent]:
+    def _finish(self, action: _Dispatch, el: Element | None, type_: str) -> list[ServerEvent]:
         action.run_timers()
         if action.sent:
             return action.sent
         reasons = "".join(f"\n  {s.element.describe()} {s.attribute}: {s.why}" for s in action.skipped)
+        if el is None:
+            raise DomError(
+                f"The {type_} with nothing focused reaches no handler: only a window binding "
+                f'({{% on "{type_}.window" ... %}}) or an away one hears it, and none fired.'
+                f"{' Skipped:' + reasons if reasons else ''}"
+            )
         events = " then ".join(dict.fromkeys(name for name, _ in action.dispatched))
         raise DomError(
             f"The {type_} on {el.describe()} reaches no handler: it dispatched {events}, and no binding of a "
@@ -1727,6 +1844,7 @@ class _Reaching(_Dispatch):
         type_: str,
         submitter: Element | None = None,
         source: Element | None = None,
+        beyond: bool = False,
     ) -> None:
         if value.get("h") is not None or "js" in value:
             self.sent.append(t.cast(ServerEvent, None))
@@ -1805,7 +1923,8 @@ def page_problems(
                 )
         else:
             probe = _Reaching(page)
-            probe.dispatch(form, "change")
+            # The recovery dispatches it as its own: window and away bindings do not hear it (#234)
+            probe.dispatch(form, "change", own=True)
             if not probe.sent:
                 problems.append(
                     (
