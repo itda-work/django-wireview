@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 15
+PROTOCOL_VERSION = 16
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -141,6 +141,9 @@ SUBMIT_SINCE = 14
 # does not send it a chain that has them -- push_js logs that, a Broadcast leaves
 # the frame out of what that connection writes.
 JS_CHAINS_SINCE = 15
+# First version whose clients run the JS() commands push_focus and pop_focus
+# (#238). Sent like JS_CHAINS_SINCE's: not to an older client.
+FOCUS_SINCE = 16
 
 
 def protocol_version(query_string: bytes | str) -> int:

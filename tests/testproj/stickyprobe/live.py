@@ -2,7 +2,7 @@ import asyncio
 import threading
 import typing as t
 
-from wireview import AsyncResult, Component
+from wireview import JS, AsyncResult, Component
 
 
 class StickyPlayer(Component):
@@ -16,6 +16,10 @@ class StickyPlayer(Component):
 
     async def increment(self):
         self.count += 1
+
+    @property
+    def remember(self) -> JS:
+        return JS().push_focus()
 
 
 class StickyTicker(Component):
@@ -41,6 +45,14 @@ class PlainCounter(Component):
 
     async def increment(self):
         self.count += 1
+
+    @property
+    def remember(self) -> JS:
+        return JS().push_focus()
+
+    @property
+    def give_back(self) -> JS:
+        return JS().pop_focus()
 
 
 class LateSticky(Component):

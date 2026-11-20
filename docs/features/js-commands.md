@@ -54,6 +54,58 @@ def expand(self) -> JS:
 `value="x"`면 없을 때 `x`로 둔다. `value=("true", "false")`처럼 두 값을 주면 첫 값이면 둘째로, 그 밖(없음 포함)이면 첫 값으로
 바꾼다 — `aria-expanded`·`aria-pressed`. 바꾼 속성은 `set_attr`처럼 다음 렌더 뒤에도 남는다(아래).
 
+## 포커스
+
+`focus(선택자)`는 맞는 첫 요소에, `focus_first(선택자)`는 그 안에서 **키보드로 갈 수 있는** 첫 요소에 포커스를 준다.
+`focus_first`가 보는 것은 `href`가 있는 링크, 버튼, 입력 칸(hidden 제외), select, textarea, `summary`, `contenteditable`,
+`tabindex`가 -1이 아닌 요소이고, 그중 disabled이거나 `inert` 안이거나 보이지 않는(`hidden`·`display: none`·
+`visibility: hidden`, 숨은 조상 포함) 것은 건너뛴다. `input_only=True`면 input(hidden 제외)과 textarea만이다. 찾기는 다음
+프레임에, 곧 같은 체인의 `show`와 그 렌더의 패치 뒤에 한다. 그 사이 boost 이동이 있었으면 `focus`·`focus_first`는 아무것도 하지
+않는다(sticky 컴포넌트 안의 요소는 한다).
+
+### 돌아갈 곳: push_focus·pop_focus
+
+모달을 닫으면 연 버튼으로 포커스가 돌아가야 한다. `push_focus()`가 바인딩이 달린 요소(`push_focus(선택자)`면 맞는 첫 요소)를
+기억하고, `pop_focus()`가 마지막에 기억한 것에 포커스를 주고 잊는다. 모달 안에서 또 모달을 열면 차례로 쌓이고 닫을 때마다
+하나씩 돌아간다.
+
+```python
+@property
+def open_settings(self) -> JS:
+    return JS().push_focus().show("#settings").focus_first("#settings")
+
+@property
+def close_settings(self) -> JS:
+    return JS().hide("#settings").pop_focus()
+```
+
+`pop_focus`는 지금 포커스를 받을 수 없는 요소를 건너뛰고(그것도 잊는다) 그 전에 기억한 것으로 간다:
+
+- 페이지에서 사라진 요소, 숨겨지거나 disabled·`inert`가 된 요소.
+- boost 이동 전의 페이지에서 기억한 요소. morph가 같은 id의 요소를 다음 페이지에 그대로 둬도 그것은 다음 페이지의 것이다.
+  sticky 컴포넌트 안의 요소만 이동을 건너 남는다.
+
+**돌아갈 요소에는 `id`를 둔다.** 렌더가 그 요소를 지우면, id가 없는 형제는 morph가 같은 요소 객체를 다른 버튼으로 고쳐 쓸 수 있다
+— 그러면 그 객체는 페이지에 남아 있어 엉뚱한 버튼으로 돌아간다. 스택은 페이지(탭)마다 하나이고 가장 최근의 32개만 남는다.
+선택자 없는 `push_focus()`는 바인딩이 달린 요소가 포커스를 받을 수 없으면(클릭을 받는 `div`, `push_js`로 보낸 체인의
+기준인 컴포넌트 루트) 지금 포커스가 있는 요소를 기억한다.
+
+### 가두기: wire-focus-wrap
+
+`wire-focus-wrap` 속성을 단 요소 안에 포커스가 있으면 Tab이 그 안을 돈다 — 마지막 요소에서 Tab은 첫 요소로, 첫 요소에서
+Shift-Tab은 마지막 요소로 간다. 요소 자신(`tabindex="-1"`)에 포커스가 있으면 Tab은 첫 요소, Shift-Tab은 마지막 요소다. 순서는
+브라우저의 Tab 순서(양수 `tabindex`가 먼저)이고 대상은 `focus_first`와 같은 규칙이다. 라디오 그룹은 브라우저처럼 한 번 —
+선택된 것, 없으면 첫 것 — 에 선다. 안에 양수 `tabindex`가 있으면 브라우저가 그 다음의 양수 `tabindex`로 밖에 나갈 수 있다 —
+가두는 요소 안에서는 양수 `tabindex`를 쓰지 않는다.
+
+```html
+<div id="settings" role="dialog" aria-modal="true" wire-focus-wrap hidden>...</div>
+```
+
+포커스가 그 밖에 있을 때 끌어오지는 않는다 — 모달을 열 때 `focus_first`로 들여보낸다. 요소나 `document`에 단 keydown
+리스너가 Tab을 `preventDefault()`하면 손대지 않는다(창에 단 리스너, `{% on "keydown.window" %}`는 그보다 늦다). IME가 조합 중인
+Tab도 손대지 않는다. 옛 `focus_first`는 가두지 않았고 지금도 가두지 않는다: 가두기는 이 속성을 단 요소만이다.
+
 ## 체인 재사용: exec와 결합
 
 `exec(속성, to=선택자)`는 그 요소의 속성에 든 체인을 **그 요소에서** 돌린다. 체인을 한 곳에 두고 여러 버튼이 부르게 할 때 쓴다.
@@ -102,7 +154,7 @@ def save_and_close(self) -> JS:
 
 ### 페이지의 스크립트가 옛것일 때
 
-`toggle_attr`·`exec`와 상대 대상은 프로토콜 15부터다. 서버가 보내는 체인(`push_js`, `Broadcast.js`)에 그것이 들어 있으면, 배포 전에 열어
+`toggle_attr`·`exec`와 상대 대상은 프로토콜 15, `push_focus`·`pop_focus`는 16부터다. 서버가 보내는 체인(`push_js`, `Broadcast.js`)에 그것이 들어 있으면, 배포 전에 열어
 옛 `wireview.js`를 가진 페이지에는 보내지 않는다 — `push_js`는 경고를 남기고, Broadcast는 그 연결이 쓰는 프레임에서 뺀다. 옛 스크립트는 모르는 명령을 건너뛰고
 객체 대상에서 오류를 내기 때문이다. 템플릿 속성에 렌더된 체인은 이 확인을 거치지 않는다 — 그런 페이지가 새 템플릿의 렌더를 받으면
 그 체인은 새로고침 전까지 돌지 않는다.
@@ -169,7 +221,8 @@ def save_and_close(self) -> JS:
 |------|---------------|
 | `toggle_attribute` | `toggle_attr`. 두 값 토글에서 지금 값이 어느 쪽도 아니면 첫 값으로 간다 |
 | `exec` | 같다. 다만 대상 `to`가 여럿이면 각 요소에서 차례로 돌고, 순환은 같은 요소·속성으로 돌아올 때 멈춘다. 전역 `wireview.exec`와 구분한다 |
-| `push_focus`·`pop_focus` | 포커스 저장·복원 스택은 없다 |
+| `push_focus`·`pop_focus` | 같다. 다만 돌아갈 수 없는 요소와 boost 이동 전 페이지의 요소(sticky 밖)는 건너뛴다 |
+| `focus_wrap` | 컴포넌트가 아니라 속성 `wire-focus-wrap`이다. 경계용 요소를 그리지 않고 Tab 키를 가로챈다 |
 | `ignore_attributes` | 특정 속성·와일드카드만 패치에서 제외하는 명령은 없다 |
 | `to: {:inner, ...}`·`{:closest, ...}` | `JS.inner()`·`JS.closest()`. 기준은 바인딩이 달린 요소이고, `push(target=)`에는 쓸 수 없다 |
 | `push`의 `loading`·`page_loading` | 임의 요소 로딩·잠금과 페이지 로딩 이벤트 옵션은 없다. `target`은 첫 일치 컴포넌트 루트를 고른다 |
@@ -182,8 +235,8 @@ show/hide 시작·종료 이벤트는 없다. 시간을 생략하면 기본 200m
 완료를 기다려 다음 push를 시작하지 않는다([실행부](https://raw.githubusercontent.com/phoenixframework/phoenix_live_view/v1.2.12/assets/js/phoenix_live_view/js.js)).
 
 표시 판정도 다르다. wireview의 `toggle`은 요소의 `hidden`을 검사한다. CSS로만 감춘 요소를 Phoenix의 가시성 판정과
-같다고 가정하지 않는다. `focus_first`의 탐색 대상도 input·textarea·select·button·tabindex 요소로 한정되어 있어,
-`href`만 가진 링크나 숨은 조상을 가진 요소까지 포함하는 일반적인 접근성 포커스 탐색과 같지 않다.
+같다고 가정하지 않는다. `focus_first`는 Phoenix처럼 요소마다 포커스를 줘 보고 확인하지 않고 위의 규칙으로 고른다 —
+`<details>`가 닫혀 있어 보이지 않는 칸처럼 규칙 밖의 경우는 다를 수 있다.
 
 Phoenix 1.2는 JS 명령을 이벤트 payload에 JSON으로 넣을 수 있다. wireview도 이벤트 인자와 `push`의 `value`에 든 `JS()`를
 명령 목록으로 싣는다([체인 재사용](#체인-재사용-exec와-결합)). Phoenix의 명령 배열과 wireview의 명령 객체 배열은 서로 다른 형식이다.

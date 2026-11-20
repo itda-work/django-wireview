@@ -3,4 +3,7 @@
 <div {% tag_header %}>
   <span data-testid="plain-count">{{ this.count }}</span>
   <button {% on "click" "increment" %} data-testid="plain-inc">+</button>
+  {# The morph keeps this button across a boosted move, but it is the next page's: pop_focus skips it (#238) #}
+  <button {% on "click" this.remember %} data-testid="plain-remember">remember</button>
+  <button {% on "click" this.give_back %} data-testid="plain-give-back">give back</button>
 </div>

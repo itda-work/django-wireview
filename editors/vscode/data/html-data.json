@@ -46,6 +46,11 @@
       "description": "The name of the input this error message belongs to. It stays hidden (`wire-no-feedback` class) until the user has touched that input."
     },
     {
+      "name": "wire-focus-wrap",
+      "description": "While the focus is inside this element, Tab from its last focusable element goes to its first, and Shift-Tab from its first goes to its last.",
+      "valueSet": "v"
+    },
+    {
       "name": "wire-auto-recover",
       "description": "On a `<form>`: after a reconnect the form's values are sent back to the server, to the handler named here or to the form's `change` binding.",
       "valueSet": "v"

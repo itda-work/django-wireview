@@ -612,3 +612,70 @@ def test_a_binding_that_execs_its_own_attribute_stops_at_once(probe):
     by(probe, "self-exec").click()
     expect(by(probe, "self-exec")).to_have_attribute("data-n", "1")  # its toggle ran once, not twice
     assert any("comes back to a chain it is running" in text for text in errors), errors
+
+
+# push_focus, pop_focus, focus_first, wire-focus-wrap (#238)
+
+
+def test_focus_first_goes_past_what_cannot_take_the_focus_to_a_link(probe):
+    """Hidden, invisible, inert, disabled and tabindex=-1 elements come before the link."""
+    by(probe, "open-a").click()
+    expect(by(probe, "a-link")).to_be_focused()
+
+
+def test_focus_first_input_only_takes_a_field(probe):
+    by(probe, "open-a").click()
+    by(probe, "first-input").click()
+    expect(by(probe, "a-input")).to_be_focused()
+
+
+def test_closing_nested_modals_gives_the_focus_back_to_each_opener(probe):
+    by(probe, "open-a").click()
+    by(probe, "open-b").click()
+    expect(by(probe, "b-drop")).to_be_focused()
+    by(probe, "close-b").click()
+    expect(by(probe, "open-b")).to_be_focused()
+    by(probe, "close-a").click()
+    expect(by(probe, "open-a")).to_be_focused()
+
+
+def test_an_opener_the_render_removed_is_skipped(probe):
+    by(probe, "open-a").click()
+    by(probe, "open-b").click()
+    by(probe, "b-drop").click()
+    expect(by(probe, "open-b")).to_have_count(0)
+    by(probe, "close-b").click()  # open-b is gone: the focus goes to the one remembered before it
+    expect(by(probe, "open-a")).to_be_focused()
+
+
+def test_tab_and_shift_tab_stay_inside_a_focus_wrap(probe):
+    by(probe, "open-a").click()
+    expect(by(probe, "a-link")).to_be_focused()
+    probe.keyboard.press("Shift+Tab")  # from the first, to the last
+    expect(by(probe, "close-a")).to_be_focused()
+    probe.keyboard.press("Tab")  # from the last, back to the first
+    expect(by(probe, "a-link")).to_be_focused()
+    probe.keyboard.press("Tab")  # inside, the browser's own move
+    expect(by(probe, "a-input")).to_be_focused()
+
+
+def test_tab_without_a_wrap_leaves_the_element(probe):
+    by(probe, "first-input").focus()
+    probe.keyboard.press("Tab")
+    expect(by(probe, "first-input")).not_to_be_focused()
+
+
+def test_a_radio_group_is_one_stop_in_a_focus_wrap(probe):
+    """The checked radio is the wrap's last stop: Tab from it wraps, though two radios come after it."""
+    by(probe, "radio-s").focus()
+    probe.keyboard.press("Tab")
+    expect(by(probe, "radio-first")).to_be_focused()
+    probe.keyboard.press("Shift+Tab")
+    expect(by(probe, "radio-s")).to_be_focused()
+
+
+def test_a_push_focus_the_server_sent_remembers_the_focused_element(probe):
+    by(probe, "server-remember").click()
+    expect(by(probe, "focus-flag")).to_have_attribute("data-pushed", "yes")
+    by(probe, "give-back").click()
+    expect(by(probe, "server-remember")).to_be_focused()

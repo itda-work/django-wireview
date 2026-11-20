@@ -570,3 +570,24 @@ class TestProtocolNeeded:
         from wireview.js import protocol_needed
 
         assert protocol_needed(chain._commands) == JS_CHAINS_SINCE
+
+
+class TestFocusStack:
+    """push_focus and pop_focus (#238, GAP-042)."""
+
+    def test_push_focus_names_its_element_or_none(self):
+        assert JS().push_focus()._commands == [{"cmd": "push_focus"}]
+        assert JS().push_focus("#opener")._commands == [{"cmd": "push_focus", "to": "#opener"}]
+        assert JS().push_focus(JS.closest("li"))._commands == [{"cmd": "push_focus", "to": {"closest": "li"}}]
+
+    def test_pop_focus(self):
+        assert JS().hide("#m").pop_focus()._commands[-1] == {"cmd": "pop_focus"}
+
+    def test_they_need_the_version_that_runs_them(self):
+        from wireview.core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE
+        from wireview.js import protocol_needed
+
+        assert protocol_needed(JS().pop_focus()._commands) == FOCUS_SINCE
+        assert protocol_needed(JS().toggle_attr("#a", "x").push_focus()._commands) == FOCUS_SINCE
+        assert protocol_needed(JS().toggle_attr("#a", "x")._commands) == JS_CHAINS_SINCE
+        assert FOCUS_SINCE > JS_CHAINS_SINCE

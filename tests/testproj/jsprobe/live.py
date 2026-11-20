@@ -258,3 +258,46 @@ class JsChains(Component):
 
     async def saved(self, q: str = "", other: str = "", **_rest):
         self.said = f"q={q} other={other}"
+
+
+class JsFocus(Component):
+    """push_focus, pop_focus, focus_first and wire-focus-wrap in a browser (#238).
+
+    Modal A opens over the page, modal B over A; each opener remembers itself.
+    """
+
+    class Meta:
+        template_name = "jsprobe/focus.html"
+
+    with_b_opener: bool = True
+
+    @property
+    def open_a(self) -> JS:
+        return JS().push_focus().show("#modal-a").focus_first("#modal-a")
+
+    @property
+    def open_b(self) -> JS:
+        return JS().push_focus().show("#modal-b").focus_first("#modal-b")
+
+    @property
+    def close_a(self) -> JS:
+        return JS().hide("#modal-a").pop_focus()
+
+    @property
+    def close_b(self) -> JS:
+        return JS().hide("#modal-b").pop_focus()
+
+    @property
+    def first_input(self) -> JS:
+        return JS().focus_first("#modal-a", input_only=True)
+
+    async def drop_b_opener(self, **_rest):
+        self.with_b_opener = False
+
+    @property
+    def give_back(self) -> JS:
+        return JS().pop_focus()
+
+    async def remember_here(self, **_rest):
+        # The chain runs on the component's root, which takes no focus: the focused element is remembered
+        await self.push_js(JS().push_focus().set_attr("#focus-flag", "data-pushed", "yes"))

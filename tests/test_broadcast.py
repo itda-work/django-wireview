@@ -37,7 +37,7 @@ from wireview import (
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import JS_CHAINS_SINCE, PROTOCOL_VERSION, UPDATE_ONLY_SINCE
+from wireview.core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE, PROTOCOL_VERSION, UPDATE_ONLY_SINCE
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state
 from wireview.core.transport import PATCH_TOPIC_MAX, PatchHub, set_broker, set_patch_hub
@@ -2999,3 +2999,20 @@ async def test_a_components_chain_with_new_commands_reaches_only_a_script_that_r
     assert _chains(heard) == expected
     refused = [r for r in caplog.records if "Not running a JS() chain" in r.getMessage()]
     assert bool(refused) is not sent
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(FOCUS_SINCE - 1, False), (FOCUS_SINCE, True)])
+async def test_a_broadcast_chain_with_focus_commands_reaches_only_a_script_that_runs_them(vsn, sent):
+    """A script that knows toggle_attr may still not know pop_focus (#238)."""
+    focus = JS().hide("#modal").pop_focus()
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcQuiet, "quiet")
+        await _join(communicator, BcFeed, "feed")
+        await Broadcast(BcFeed, "bc-feed").js(focus).js(OLD_CHAIN).asend()
+        heard = await _patched_until_quiet(communicator)
+    finally:
+        await communicator.disconnect()
+
+    assert _chains(heard) == ([focus._commands, OLD_CHAIN._commands] if sent else [OLD_CHAIN._commands])

@@ -179,3 +179,18 @@ def test_a_component_drawn_inside_a_sticky_one_hears_the_navigations_params(page
     expect_text(by(page, "label-tab"), "two")
     assert page.evaluate("() => window.__notReloaded") is True, "the move was a boosted one"
     assert page.evaluate("() => document.getElementById('shelf-label').__kept") is True, "the label crossed as it was"
+
+
+def test_pop_focus_after_a_boosted_move_skips_the_last_pages_element_and_keeps_the_sticky_ones(page, server):
+    """The stack remembers the sticky player's button, then the plain counter's. The move keeps
+    both elements (the morph pairs the counter's by id), but only the sticky one is still the
+    page the user remembered it on (#238)."""
+    open_live(page, f"{server}/stickyprobe/a/")
+    by(page, "player-remember").click()
+    by(page, "plain-remember").click()
+    page.evaluate("() => { document.querySelector('[data-testid=plain-remember]').__seen = true; }")
+    go(page, "b")
+    # The same element: a check of "still on the page" alone would give the focus back to it
+    assert page.evaluate("() => document.querySelector('[data-testid=plain-remember]').__seen === true")
+    by(page, "plain-give-back").click()
+    expect(by(page, "player-remember")).to_be_focused()

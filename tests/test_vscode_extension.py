@@ -317,6 +317,7 @@ def test_the_html_attributes_are_ones_the_client_reads():
         "wire-viewport-bottom",
         "wire-disabled-with",
         "wire-feedback-for",
+        "wire-focus-wrap",
         "wire-auto-recover",
         "wire-flash",
     }

@@ -13,9 +13,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 122 |
+| ✅ 지원 | 123 |
 | 🟡 부분 지원 (전부 GAP 번호와 이슈가 있다) | 10 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 13 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 12 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟡·🟠 행은 상태 칸에 GAP 번호와
@@ -53,7 +53,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 |----------|---:|---:|---:|---:|
 | 2.1 Core Lifecycle | 7 | 1 | 0 | 0 |
 | 2.2 Real-time Features | 5 | 0 | 0 | 0 |
-| 2.3 LiveView.JS (Client Commands) | 13 | 2 | 1 | 0 |
+| 2.3 LiveView.JS (Client Commands) | 14 | 2 | 0 | 0 |
 | 2.4 Optimistic UI | 5 | 0 | 0 | 0 |
 | 2.5 Streams | 10 | 1 | 0 | 0 |
 | 2.6 File Uploads | 9 | 0 | 2 | 0 |
@@ -96,7 +96,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker`<br>`tests/test_presence.py::TestPresenceMixin::test_typing_auto_timeout` |
 | Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
 
-### 2.3 LiveView.JS (Client Commands) 🟠
+### 2.3 LiveView.JS (Client Commands) 🟡
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -113,7 +113,7 @@ LiveView 1.2.12와 다시 대조해 GAP-038~067을 더했다(2026-11, #229). 대
 | Command chaining | ✅ | ✅ 지원 | ✅ | `tests/test_js_commands_e2e.py::test_a_chain_runs_every_command_in_order` |
 | 패치 뒤에도 남는 명령 (sticky) | ✅ | ✅ 클래스·속성·표시·진행 중인 트랜지션 (GAP-037) | ✅ | `tests/test_js_commands_e2e.py::test_what_commands_change_outlasts_the_next_render`<br>`tests/test_js_commands_e2e.py::test_a_transitions_classes_outlast_a_render_and_go_when_it_ends`<br>`tests/test_streams_e2e.py::test_an_updated_item_keeps_what_commands_changed_on_it` |
 | 속성 토글·체인 재사용·상대 선택자 | `toggle_attribute`, `exec`, `concat`, `to: {:inner, …}`·`{:closest, …}` | `JS().toggle_attr()`·`exec()`·`concat()`(`+`), `JS.inner()`·`JS.closest()` (GAP-041) | ✅ | `tests/test_js_commands_e2e.py::test_toggle_attr_finds_the_closest_card_and_outlasts_a_render`<br>`tests/test_js_commands_e2e.py::test_inner_acts_on_every_match_inside_the_bindings_element_only`<br>`tests/test_js_commands_e2e.py::test_exec_runs_the_chain_an_attribute_holds_from_its_element`<br>`tests/test_js_commands_e2e.py::test_an_exec_that_comes_back_to_itself_stops_there`<br>`tests/test_js.py::TestCombining::test_concat_leaves_both_chains_as_they_were` |
-| 포커스 스택·포커스 가두기 | `push_focus`, `pop_focus`, `focus_wrap`, 숨은·비활성 요소를 거르는 탐색 | 없음. `focus_first`는 input·textarea·select·button·tabindex만 보고 링크·숨은 조상·inert를 거르지 않는다 | 🟠 GAP-042 (#238) |  |
+| 포커스 스택·포커스 가두기 | `push_focus`, `pop_focus`, `focus_wrap`, 숨은·비활성 요소를 거르는 탐색 | `JS().push_focus()`·`pop_focus()`(사라진·boost 이전 페이지의 요소는 건너뛴다, sticky는 남는다), `wire-focus-wrap`, 링크를 포함하고 disabled·inert·숨은 것을 거르는 `focus_first` (GAP-042) | ✅ | `tests/test_js_commands_e2e.py::test_closing_nested_modals_gives_the_focus_back_to_each_opener`<br>`tests/test_js_commands_e2e.py::test_an_opener_the_render_removed_is_skipped`<br>`tests/test_js_commands_e2e.py::test_tab_and_shift_tab_stay_inside_a_focus_wrap`<br>`tests/test_js_commands_e2e.py::test_focus_first_goes_past_what_cannot_take_the_focus_to_a_link`<br>`tests/test_sticky_e2e.py::test_pop_focus_after_a_boosted_move_skips_the_last_pages_element_and_keeps_the_sticky_ones` |
 | 트랜지션 세 단계·blocking | `{transition, start, end}`, `blocking:`, 기본 시간, 트랜지션을 기다리지 않는 push, show/hide 시작·끝 이벤트 | 클래스 하나와 시간. 렌더를 건너 유지된다. 세 단계·blocking·이벤트가 없고, 시간을 생략하면 클래스가 남으며 시간 있는 트랜지션이 뒤의 push를 늦춘다 | 🟡 GAP-043 (#239) |  |
 | push·dispatch 옵션과 창 단위 서버 이벤트 | `push`의 다중 target·`loading`·`page_loading`, `dispatch`의 `blocking`·`done`, `push_event`의 window 이벤트, viewport의 JS 체인 | `push`(value, 첫 컴포넌트 루트가 대상)·`dispatch`(CustomEvent)와 훅이 받는 `push_event`만 | 🟡 GAP-044 (#240) |  |
 
@@ -344,12 +344,12 @@ LiveView 1.2.12 대조에서 남은 것(#229):
 | ID | 기능 | 설명 | 난이도 | 추적 |
 |----|------|------|:------:|----------|
 | GAP-040 | 이벤트 시간 제어 확장과 이벤트 정보 payload | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #236 |
-| GAP-042 | 포커스 스택과 포커스 가두기 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #238 |
 | GAP-043 | 트랜지션 세 단계·blocking·비차단 체인 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #239 |
 | GAP-045 | 속성 단위 패치 제외와 포커스 칸의 서버 우선 패치 | [2절](#2-상세-기능-비교) 행 참고 | 미정 | #241 |
 | ~~GAP-048~~ | ~~폼 payload 의미(disabled·submitter·_target·사용 여부·reset)~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#244) |
 | ~~GAP-038~~ | ~~창 단위 이벤트와 요소 밖 클릭(click-away) 바인딩~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#234) |
 | ~~GAP-041~~ | ~~JS() 속성 토글·체인 재사용·상대 선택자~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#237) |
+| ~~GAP-042~~ | ~~포커스 스택과 포커스 가두기~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#238) |
 | ~~GAP-049~~ | ~~컴포넌트 재시작의 폼 복구와 복구 끄기~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#245) |
 | ~~GAP-050~~ | ~~서버가 지시하는 HTTP 폼 제출과 제출·업로드 잠금~~ | [2절](#2-상세-기능-비교) 행 참고 | 미정 | ✅ 완료 (#246) |
 | ~~GAP-056~~ | ~~DOM 바인딩을 읽는 컴포넌트 테스트 헬퍼와 테스트 경고 설정~~ | ~~[2절](#2-상세-기능-비교) 행 참고~~ | ~~미정~~ | ✅ 완료 (#252) |

@@ -3,5 +3,7 @@
 <div {% tag_header %}>
   <span data-testid="player-count">{{ this.count }}</span>
   <button {% on "click" "increment" %} data-testid="player-inc">+</button>
+  {# The focus stack keeps it across a boosted move: it is still on the page (#238) #}
+  <button {% on "click" this.remember %} data-testid="player-remember">remember</button>
   <i wire-hook="StickyTraveller" data-who="player"></i>
 </div>

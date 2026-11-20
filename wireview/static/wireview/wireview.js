@@ -15,6 +15,7 @@ import { RejoinBarrier, SYNC_TIMEOUT_MS } from "./rejoins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { chainIn, comesBack, relativeTarget, toggledAttribute } from "./js-chains.mjs";
+import { FOCUSABLE, FocusStack, INPUTS, WRAP_ATTRIBUTE, radioStops, tabOrder, wrapTarget } from "./focus.mjs";
 import { belongsToIme, bindingsFor, isAway, isBindingName, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
@@ -4538,6 +4539,82 @@ function isShown(el) {
 }
 
 /**
+ * Whether `el` can take the focus now (#238): not disabled, not inert, shown and
+ * not hidden by `visibility`. `tabbable` also asks that Tab reach it (tabindex
+ * not -1) -- what focus_first and a focus wrap look for.
+ * @param {Element} el
+ * @param {{tabbable?: boolean}} [options]
+ * @returns {el is HTMLElement}
+ */
+function canFocus(el, { tabbable = true } = {}) {
+  if (!(el instanceof HTMLElement || el instanceof SVGElement)) return false;
+  if (!el.matches(FOCUSABLE) || el.matches(":disabled") || el.closest("[inert]")) return false;
+  if (tabbable && /** @type {HTMLElement} */ (el).tabIndex < 0) return false;
+  // Only a details' first summary is its toggle; the browser's Tab skips another
+  if (el.localName === "summary" && !(el.parentElement?.localName === "details" && el.parentElement.querySelector(":scope > summary") === el)) {
+    return false;
+  }
+  return isShown(el) && getComputedStyle(el).visibility !== "hidden";
+}
+
+/**
+ * A radio's group, as Tab sees it: its name within its form (or the document).
+ * @param {HTMLElement} el
+ * @returns {string | null}
+ */
+function radioGroup(el) {
+  if (!(el instanceof HTMLInputElement) || el.type !== "radio" || !el.name) return null;
+  const form = el.form;
+  return `${form ? [...document.forms].indexOf(form) : -1}:${el.name}`;
+}
+
+/**
+ * The elements inside `container` Tab reaches, in Tab order (#238).
+ * @param {Element} container
+ * @param {{inputOnly?: boolean}} [options]
+ * @returns {HTMLElement[]}
+ */
+function tabbables(container, { inputOnly = false } = {}) {
+  const found = /** @type {HTMLElement[]} */ ([...container.querySelectorAll(inputOnly ? INPUTS : FOCUSABLE)].filter((el) => canFocus(el)));
+  // Tab stops once in a radio group
+  const stops = radioStops(found, radioGroup, (el) => /** @type {HTMLInputElement} */ (el).checked);
+  return tabOrder(stops, (el) => el.tabIndex);
+}
+
+/**
+ * Whether a frame the command waited for still finds `el` on the page it was
+ * asked on: a boosted navigation in between made it the next page's, unless it
+ * is in a sticky component (#238).
+ * @param {Element} el
+ * @param {number} page
+ */
+function stillThisPage(el, page) {
+  return boost.pageGeneration() === page || el.closest("[wire-sticky]") !== null;
+}
+
+/** What push_focus remembered, for pop_focus (#238) */
+const focusStack = /** @type {FocusStack<HTMLElement>} */ (new FocusStack());
+
+// A Tab off the edge of a wire-focus-wrap element comes back in at its other edge (#238).
+// After the keydown listeners of elements and the document: one that handled the Tab prevented it.
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (belongsToIme(event)) return;
+  const active = document.activeElement;
+  const wrap = active instanceof Element ? active.closest(`[${WRAP_ATTRIBUTE}]`) : null;
+  if (!wrap) return;
+  const order = tabbables(wrap);
+  // A radio stands for its group: the one Tab stops at
+  const group = active instanceof HTMLElement ? radioGroup(active) : null;
+  const at = group === null ? active : order.find((el) => radioGroup(el) === group) ?? active;
+  const next = wrapTarget(order, /** @type {HTMLElement} */ (at), event.shiftKey);
+  if (next) {
+    event.preventDefault();
+    next.focus();
+  }
+});
+
+/**
  * Dispatch an event wireview makes for a form -- a recovery's change, a reset's
  * input and change. The form's own bindings hear it as before; `window` and
  * `away` bindings do not: nothing happened on the page (#234).
@@ -4919,7 +4996,8 @@ async function executeCommand(cmd, element, options = {}) {
     case "focus": {
       const target = targets[0];
       if (target) {
-        window.requestAnimationFrame(() => target.focus());
+        const page = boost.pageGeneration();
+        window.requestAnimationFrame(() => stillThisPage(target, page) && target.focus());
       }
       break;
     }
@@ -4927,18 +5005,35 @@ async function executeCommand(cmd, element, options = {}) {
     case "focus_first": {
       const target = targets[0];
       if (target) {
-        const selector = cmd.input_only
-          ? "input:not([disabled]):not([type=hidden]), textarea:not([disabled])"
-          : "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])";
-        const firstFocusable = /** @type {HTMLElement|null} */ (
-          target.querySelector(selector)
-        );
-        if (firstFocusable) {
-          window.requestAnimationFrame(() => firstFocusable.focus());
-        }
+        // Looked for in the next frame, after the patch and the show this chain may have made (#238)
+        const page = boost.pageGeneration();
+        window.requestAnimationFrame(() => {
+          if (stillThisPage(target, page)) tabbables(target, { inputOnly: Boolean(cmd.input_only) })[0]?.focus();
+        });
       }
       break;
     }
+
+    // The focus stack (#238): remember an element, then give the focus back to it
+    case "push_focus": {
+      // Without a selector, the binding's element -- or, when that cannot take the focus
+      // (a component root push_js ran on, a clickable div), the element that has it
+      const active = document.activeElement;
+      const target = cmd.to || canFocus(element, { tabbable: false }) ? targets[0] : active instanceof HTMLElement && active !== document.body ? active : null;
+      if (target) focusStack.push(target, boost.pageGeneration());
+      break;
+    }
+
+    case "pop_focus":
+      window.requestAnimationFrame(() => {
+        const page = boost.pageGeneration();
+        const back = focusStack.pop(
+          ({ element: el, page: from }) =>
+            el.isConnected && (from === page || el.closest("[wire-sticky]") !== null) && canFocus(el, { tabbable: false })
+        );
+        back?.focus();
+      });
+      break;
 
     // Server communication
     case "push":

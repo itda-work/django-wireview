@@ -114,6 +114,8 @@ class XTodoList(Component):
 `navigate`, `dispatch`, `exec`. 체이닝되고 `a + b`(`concat`)는 원본을 바꾸지 않는 새 체인이다. 첫 인자는 대상 선택자다(`add_class("#row", "done")`) — 맞는 요소 전부에 적용된다.
 목록 항목마다 같은 체인을 쓸 때는 `JS.closest(".card")`·`JS.inner(".chevron")`로 바인딩이 달린 요소에서 찾는다.
 `exec("data-cancel", to="#dialog")`는 그 속성에 렌더한 체인(`data-cancel="{{ this.cancel_js }}"`)을 그 요소에서 돌린다.
+모달은 `JS().push_focus().show("#m").focus_first("#m")`로 열고 `JS().hide("#m").pop_focus()`로 닫는다 — 연 버튼으로 포커스가 돌아간다(그 버튼에 `id`를 둔다).
+모달 요소에 `wire-focus-wrap`을 달면 Tab이 그 안을 돈다.
 명령이 바꾼 클래스·속성·표시는 다음 렌더 뒤에도 남는다(LiveView의 sticky). 응답까지만의 로딩 표시는 명령이 아니라
 로딩 클래스(`wireview-click-loading`)와 `wire-disabled-with`로 한다.
 

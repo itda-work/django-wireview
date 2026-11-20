@@ -1,0 +1,42 @@
+{% load wireview %}
+
+{# The openers have ids: a render that removes one does not make another button of it (#238) #}
+<div {% tag_header %}>
+  <button id="open-a" data-testid="open-a" {% on "click" this.open_a %}>open a</button>
+  <div id="modal-a" data-testid="modal-a" wire-focus-wrap hidden>
+    {# None of these takes the focus: focus_first goes past them to the link #}
+    <div hidden>
+      <button data-testid="a-hidden">hidden</button>
+    </div>
+    <div style="visibility: hidden">
+      <button data-testid="a-invisible">invisible</button>
+    </div>
+    <div inert>
+      <button data-testid="a-inert">inert</button>
+    </div>
+    <button data-testid="a-disabled" disabled>disabled</button>
+    <span tabindex="-1" data-testid="a-minus-one">minus one</span>
+    <a href="#a" data-testid="a-link">link</a>
+    <input data-testid="a-input">
+    {% if this.with_b_opener %}
+      <button id="open-b" data-testid="open-b" {% on "click" this.open_b %}>open b</button>
+    {% endif %}
+    <button id="close-a" data-testid="close-a" {% on "click" this.close_a %}>close a</button>
+  </div>
+  <div id="modal-b" data-testid="modal-b" wire-focus-wrap hidden>
+    <button data-testid="b-drop" {% on "click" "drop_b_opener" %}>drop</button>
+    <button data-testid="close-b" {% on "click" this.close_b %}>close b</button>
+  </div>
+  <button data-testid="first-input" {% on "click" this.first_input %}>first input</button>
+  <div data-testid="radio-wrap" wire-focus-wrap>
+    <button id="radio-first" data-testid="radio-first">first</button>
+    <input type="radio" name="size" value="s" data-testid="radio-s" checked>
+    <input type="radio" name="size" value="m" data-testid="radio-m">
+    <input type="radio" name="size" value="l" data-testid="radio-l">
+  </div>
+  <button id="server-remember"
+          data-testid="server-remember"
+          {% on "click" "remember_here" %}>remember</button>
+  <span id="focus-flag" data-testid="focus-flag"></span>
+  <button data-testid="give-back" {% on "click" this.give_back %}>give back</button>
+</div>

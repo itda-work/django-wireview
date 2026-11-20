@@ -57,20 +57,24 @@ class RelativeSelector:
 #: A CSS selector over the document, or one relative to the binding's element
 Selector = str | RelativeSelector
 
-#: The commands and target forms a page's script runs only from protocol version
-#: ``JS_CHAINS_SINCE`` on (#237); an older script logs them as unknown and skips
-#: them, or fails on a target it cannot read.
-_NEW_COMMANDS = frozenset({"toggle_attr", "exec"})
+#: The commands and target forms a page's script runs only from a protocol version
+#: on (#237, #238); an older script logs them as unknown and skips them, or fails
+#: on a target it cannot read.
+_CHAINS_COMMANDS = frozenset({"toggle_attr", "exec"})
+_FOCUS_COMMANDS = frozenset({"push_focus", "pop_focus"})
 
 
 def protocol_needed(commands: t.Iterable[t.Mapping[str, t.Any]]) -> int:
-    """The protocol version a page's script needs to run ``commands``: 0, or ``JS_CHAINS_SINCE``."""
-    from .core.rendered import JS_CHAINS_SINCE
+    """The protocol version a page's script needs to run ``commands``: 0, ``JS_CHAINS_SINCE`` or ``FOCUS_SINCE``."""
+    from .core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE
 
+    needed = 0
     for command in commands:
-        if command.get("cmd") in _NEW_COMMANDS or isinstance(command.get("to"), dict):
-            return JS_CHAINS_SINCE
-    return 0
+        if command.get("cmd") in _FOCUS_COMMANDS:
+            needed = max(needed, FOCUS_SINCE)
+        elif command.get("cmd") in _CHAINS_COMMANDS or isinstance(command.get("to"), dict):
+            needed = max(needed, JS_CHAINS_SINCE)
+    return needed
 
 
 class _Encoder(DjangoJSONEncoder):
@@ -516,6 +520,32 @@ class JS:
         """
         return self._add_command("focus", to=selector)
 
+    def push_focus(self, selector: Selector | None = None) -> JS:
+        """
+        Remember an element to give the focus back to with ``pop_focus()`` (#238).
+
+        Args:
+            selector: CSS selector, or ``JS.inner()``/``JS.closest()``; the first element it
+                matches. If None, the binding's element (for ``push_js``, the component's).
+
+        Example:
+            JS().push_focus().show("#modal").focus_first("#modal")
+        """
+        return self._add_command("push_focus", to=selector)
+
+    def pop_focus(self) -> JS:
+        """
+        Focus the element ``push_focus()`` remembered last, and forget it (#238).
+
+        An element that is gone, cannot take the focus now, or was remembered on the
+        page before a boosted navigation (unless it is in a sticky component) is
+        skipped: the one remembered before it is tried.
+
+        Example:
+            JS().hide("#modal").pop_focus()
+        """
+        return self._add_command("pop_focus")
+
     def focus_first(
         self,
         selector: Selector | None = None,
@@ -523,11 +553,13 @@ class JS:
         input_only: bool = False,
     ) -> JS:
         """
-        Focus the first focusable element within a container.
+        Focus the first element within a container that can take the focus from the keyboard:
+        a link with an href, a button, a field, a ``[tabindex]`` that is not -1, ``contenteditable``,
+        ``summary`` -- not one that is disabled, ``inert``, hidden or inside something hidden (#238).
 
         Args:
             selector: CSS selector for the container (the first it matches).
-            input_only: If True, only focus input elements.
+            input_only: If True, only an ``input`` (not hidden) or ``textarea``.
 
         Example:
             JS().focus_first("#form")

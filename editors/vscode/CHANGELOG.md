@@ -17,6 +17,7 @@ the release workflow refuses a tag whose section has no date
 - A completion snippet for django-wireview's `{% island %}` tag (#221).
 - `wire-boost` offers the value `false`, which leaves the links on or inside the element to the browser (#227).
 - `modifier-place`: `{% on %}` reports a `window` or `away` modifier anywhere but right after the event, and `away` with `prevent` or `stop`, as django-wireview refuses them; completion offers `window` and `away` only there (#234).
+- `wire-focus-wrap` is offered and described: Tab and Shift-Tab stay inside the element (#238).
 
 ### Fixed
 
