@@ -1110,13 +1110,13 @@ class _BindingRun:
 
     def fire(self) -> None:
         if self.beyond:
-            self.action.fire(self.el, self.value, self.type, beyond=True)
+            self.action.fire(self.el, self.value, self.type, beyond=True, attribute=self.attribute)
             return
         # The button that submitted: a submit's, or the submit button clicked (EventBindings.run, #244)
         submitter = self.state.submitter if self.type == "submit" else None
         if self.type == "click" and is_submitter(self.el, self.action.page.root):
             submitter = self.el
-        self.action.fire(self.el, self.value, self.type, submitter, self.state.source)
+        self.action.fire(self.el, self.value, self.type, submitter, self.state.source, attribute=self.attribute)
 
 
 class _Dispatch:
@@ -1224,6 +1224,51 @@ class _Dispatch:
             _, _, later = self.timers.pop(0)
             later()
 
+    def _push_in(self, el: Element, commands: t.Any, running: list[tuple[Element, str]]) -> str | None:
+        """The event a push in ``commands`` sends, run from ``el`` -- through the chains its ``exec``s run (#237).
+
+        A chain the helpers cannot follow (a selector they do not read, an attribute that holds no chain)
+        may push: it is reported as one, so a test does not take a push it did not see for none.
+        """
+        for command in commands if isinstance(commands, list) else []:
+            if not isinstance(command, dict):
+                continue
+            if command.get("cmd") == "push":
+                return str(command.get("event"))
+            if command.get("cmd") != "exec":
+                continue
+            attribute = str(command.get("attr"))
+            try:
+                holders = self._targets(el, command.get("to"))
+            except ValueError:
+                return f"whatever the chain in {attribute} pushes"
+            for holder in holders:
+                if (holder, attribute) in running or not holder.has(attribute):
+                    continue  # the client stops a chain that comes back, and runs nothing for no attribute
+                try:
+                    held = json.loads(holder.get(attribute) or "")
+                except ValueError:
+                    continue  # the client logs it and runs nothing
+                chain = held.get("js") if isinstance(held, dict) else held
+                push = self._push_in(holder, chain, [*running, (holder, attribute)])
+                if push is not None:
+                    return push
+        return None
+
+    def _targets(self, el: Element, to: t.Any) -> list[Element]:
+        """The elements a command's ``to`` names from ``el`` (``resolveTargets`` in wireview.js)."""
+        if not to:
+            return [el]
+        if isinstance(to, dict) and isinstance(to.get("inner"), str):
+            return Selector(to["inner"]).select(el)
+        if isinstance(to, dict) and isinstance(to.get("closest"), str):
+            selector = Selector(to["closest"])
+            found = el.closest(selector.matches)
+            return [found] if found is not None else []
+        if isinstance(to, str):
+            return Selector(to).select(self.page.root)
+        return []
+
     def skip(self, el: Element, attribute: str, failed: Step) -> None:
         modifier = failed.name if failed.arg is None else f"{failed.name} {failed.arg!r}"
         self.skipped.append(_Skipped(el, attribute, f"its {modifier} modifier does not hold for this event"))
@@ -1236,12 +1281,14 @@ class _Dispatch:
         submitter: Element | None = None,
         source: Element | None = None,
         beyond: bool = False,
+        attribute: str | None = None,
     ) -> None:
         if "js" in value:
-            pushes = [c for c in value["js"] or [] if isinstance(c, dict) and c.get("cmd") == "push"]
-            if pushes:
+            # The binding's own chain is running: an exec of its attribute comes back to it
+            push = self._push_in(el, value["js"] or [], [(el, attribute)] if attribute else [])
+            if push is not None:
                 raise DomError(
-                    f"{el.describe()} runs a JS() chain on {type_} that pushes {pushes[0].get('event')!r}: "
+                    f"{el.describe()} runs a JS() chain on {type_} that pushes {push!r}: "
                     "the test helpers do not run JavaScript, so they cannot say what that push sends. Test the "
                     "handler with call(), and the chain in a browser."
                 )
@@ -1845,6 +1892,7 @@ class _Reaching(_Dispatch):
         submitter: Element | None = None,
         source: Element | None = None,
         beyond: bool = False,
+        attribute: str | None = None,
     ) -> None:
         if value.get("h") is not None or "js" in value:
             self.sent.append(t.cast(ServerEvent, None))

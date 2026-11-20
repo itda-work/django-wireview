@@ -33,6 +33,79 @@ class Panel(Component):
 - 선택자가 있으면 문서에서 **그것과 맞는 모든 요소**다. `JS().add_class("#list .item", "read")`는 항목 전부에
   붙는다.
 - `focus`·`focus_first`만 맞는 요소 중 첫 요소 하나다 — 포커스는 한 곳에만 있을 수 있다.
+- 선택자 자리에 `JS.inner(선택자)`를 넣으면 **바인딩이 달린 요소 안**의 맞는 요소 전부, `JS.closest(선택자)`면 그 요소와
+  조상 중 **가장 가까운** 하나다. 같은 템플릿을 목록의 항목마다 그려도 각 버튼이 자기 카드만 건드린다. 맞는 것이 없으면
+  아무것도 하지 않는다.
+
+```python
+@property
+def expand(self) -> JS:
+    # 누른 버튼이 든 카드. 카드 안의 카드면 안쪽 것
+    return JS().toggle_attr(JS.closest(".card"), "aria-expanded", ("true", "false"))
+```
+
+"바인딩이 달린 요소"는 이벤트가 난 요소가 아니라 `{% on %}`이 붙은 요소다 — 그룹에 단 바인딩은 안의 버튼을 눌러도
+그룹이 기준이다. `push_js`로 서버가 보낸 체인은 컴포넌트의 루트, `exec`가 돌린 체인은 그 속성을 가진 요소가 기준이다.
+`push(target=)`은 컴포넌트를 고르는 문서 전체의 선택자라 상대 대상을 받지 않는다(`TypeError`).
+
+## 속성 토글
+
+`toggle_attr(선택자, 속성)`은 속성이 있으면 지우고 없으면 빈 값으로 둔다(`hidden`·`open`·`disabled`처럼 있음이 뜻인 속성).
+`value="x"`면 없을 때 `x`로 둔다. `value=("true", "false")`처럼 두 값을 주면 첫 값이면 둘째로, 그 밖(없음 포함)이면 첫 값으로
+바꾼다 — `aria-expanded`·`aria-pressed`. 바꾼 속성은 `set_attr`처럼 다음 렌더 뒤에도 남는다(아래).
+
+## 체인 재사용: exec와 결합
+
+`exec(속성, to=선택자)`는 그 요소의 속성에 든 체인을 **그 요소에서** 돌린다. 체인을 한 곳에 두고 여러 버튼이 부르게 할 때 쓴다.
+속성에는 렌더한 `JS()` 그대로(`data-cancel="{{ this.cancel_js }}"`)나 바인딩의 속성(`wire-on-click`)을 둔다. `to`를 비우면
+바인딩이 달린 요소 자신의 속성이다.
+
+```python
+@property
+def cancel_js(self) -> JS:
+    return JS().hide(JS.inner(".panel"))
+
+
+@property
+def cancel(self) -> JS:
+    return JS().exec("data-cancel", to="#dialog")
+```
+
+```html
+<div id="dialog" data-cancel="{{ this.cancel_js }}"><div class="panel">...</div></div>
+<button {% on "click" this.cancel %}>취소</button>
+<button {% on "keydown.window.esc" this.cancel %} hidden></button>
+```
+
+- 속성이 없으면 아무것도 하지 않는다. 체인이 아닌 값이면 콘솔에 오류를 남기고 건너뛴다.
+- `exec`가 이미 돌고 있는 같은 요소·같은 속성으로 돌아오면 거기서 멈추고 콘솔에 오류를 남긴다. 체인의 나머지는 계속 돈다.
+- 돌린 체인의 `push`는 그 속성을 가진 요소의 컴포넌트로 간다. 폼의 칸·커밋·로딩 표시는 사용자가 누른 요소의 것이다 — 폼의 submit이 `exec`로 돌린 `push`도 그 폼의 칸을 싣는다.
+- 바인딩이 자기 속성을 `exec`하면(`exec("wire-on-click")`) 거기서 멈춘다.
+
+`a.concat(b)` 또는 `a + b`는 두 체인을 이은 **새** 체인이다. `a`와 `b`는 바뀌지 않으므로 공통 부분을 속성 하나로 두고 여러 체인이
+이어 쓸 수 있다.
+
+```python
+@property
+def close(self) -> JS:
+    return JS().hide("#modal")
+
+
+@property
+def save_and_close(self) -> JS:
+    return self.close + JS().push("save")  # self.close는 여전히 hide 하나다
+```
+
+체인을 이벤트 인자나 `push`의 `value`에 넣으면 명령 목록으로 실린다 — `JS().push("save", value={"undo": JS().show("#m")})`의
+`value`는 `{"undo": [{"cmd": "show", "to": "#m"}]}`이다. 템플릿에 `{{ this.chain }}`으로 렌더한 것과 같은 모양이라 그 값을 속성에
+두면 `exec`가 읽는다.
+
+### 페이지의 스크립트가 옛것일 때
+
+`toggle_attr`·`exec`와 상대 대상은 프로토콜 15부터다. 서버가 보내는 체인(`push_js`, `Broadcast.js`)에 그것이 들어 있으면, 배포 전에 열어
+옛 `wireview.js`를 가진 페이지에는 보내지 않는다 — `push_js`는 경고를 남기고, Broadcast는 그 연결이 쓰는 프레임에서 뺀다. 옛 스크립트는 모르는 명령을 건너뛰고
+객체 대상에서 오류를 내기 때문이다. 템플릿 속성에 렌더된 체인은 이 확인을 거치지 않는다 — 그런 페이지가 새 템플릿의 렌더를 받으면
+그 체인은 새로고침 전까지 돌지 않는다.
 
 ## 렌더 뒤에도 남는다
 
@@ -94,11 +167,11 @@ class Panel(Component):
 
 | 항목 | 현재 wireview |
 |------|---------------|
-| `toggle_attribute` | `set_attr`·`remove_attr`만 있다. 속성 유무 또는 두 값의 토글 명령은 없다 |
-| `exec`·`concat` | 다른 속성에 든 명령 실행·기존 체인 결합 빌더는 없다. 전역 `wireview.exec`와 구분한다 |
+| `toggle_attribute` | `toggle_attr`. 두 값 토글에서 지금 값이 어느 쪽도 아니면 첫 값으로 간다 |
+| `exec` | 같다. 다만 대상 `to`가 여럿이면 각 요소에서 차례로 돌고, 순환은 같은 요소·속성으로 돌아올 때 멈춘다. 전역 `wireview.exec`와 구분한다 |
 | `push_focus`·`pop_focus` | 포커스 저장·복원 스택은 없다 |
 | `ignore_attributes` | 특정 속성·와일드카드만 패치에서 제외하는 명령은 없다 |
-| `to: {:inner, ...}`·`{:closest, ...}` | 선택자는 문서 전체의 CSS 문자열이며 상대 범위 선택은 없다 |
+| `to: {:inner, ...}`·`{:closest, ...}` | `JS.inner()`·`JS.closest()`. 기준은 바인딩이 달린 요소이고, `push(target=)`에는 쓸 수 없다 |
 | `push`의 `loading`·`page_loading` | 임의 요소 로딩·잠금과 페이지 로딩 이벤트 옵션은 없다. `target`은 첫 일치 컴포넌트 루트를 고른다 |
 | `patch` | 별도 JS 명령이 없다. 서버의 `push_to`·`replace_to`와 `navigate`를 구분한다 |
 | `dispatch`의 `blocking`·`done`·`dispatcher` | 제공하지 않는다. click도 `MouseEvent`가 아닌 `CustomEvent`로 보낸다 |
@@ -112,9 +185,9 @@ show/hide 시작·종료 이벤트는 없다. 시간을 생략하면 기본 200m
 같다고 가정하지 않는다. `focus_first`의 탐색 대상도 input·textarea·select·button·tabindex 요소로 한정되어 있어,
 `href`만 가진 링크나 숨은 조상을 가진 요소까지 포함하는 일반적인 접근성 포커스 탐색과 같지 않다.
 
-Phoenix 1.2는 JS 명령을 이벤트 payload에 JSON으로 넣을 수 있다. wireview도 `to_json`과 서버의
-`js` 명령 전송을 제공한다. 다만 JS 객체를 임의 payload에 넣었을 때 자동 인코딩하는 규약은 없으며,
-Phoenix의 명령 배열과 wireview의 명령 객체 배열은 서로 다른 형식이다.
+Phoenix 1.2는 JS 명령을 이벤트 payload에 JSON으로 넣을 수 있다. wireview도 이벤트 인자와 `push`의 `value`에 든 `JS()`를
+명령 목록으로 싣는다([체인 재사용](#체인-재사용-exec와-결합)). Phoenix의 명령 배열과 wireview의 명령 객체 배열은 서로 다른 형식이다.
+`concat` 대신 `+`도 쓴다.
 
 `show`·`toggle`의 `display` 지정은 지원한다. 생략하면 inline display를 비워 CSS에 맡기므로
 Phoenix의 block/table-row/table-cell 기본 선택과 다르다. CSS가 계속 숨기면 show만으로 보이지 않을 수 있다.

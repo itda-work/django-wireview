@@ -18,6 +18,8 @@ property and the template names it:
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import json
 import re
 import typing as t
@@ -37,7 +39,60 @@ class TransitionConfig(t.TypedDict, total=False):
 Transition = str | tuple[str, int] | TransitionConfig | None
 
 _DURATION = re.compile(r"\d+(\.\d+)?(ms|s)?")
-Selector = str
+# What exec reads: an attribute name, as an element's getAttribute takes it
+_ATTRIBUTE = re.compile(r"[^\s\"'>/=]+")
+
+
+@dataclasses.dataclass(frozen=True)
+class RelativeSelector:
+    """A command's elements found from the element its binding is on (#237): ``JS.inner(sel)``, ``JS.closest(sel)``."""
+
+    kind: t.Literal["inner", "closest"]
+    selector: str
+
+    def to_json(self) -> dict[str, str]:
+        return {self.kind: self.selector}
+
+
+#: A CSS selector over the document, or one relative to the binding's element
+Selector = str | RelativeSelector
+
+#: The commands and target forms a page's script runs only from protocol version
+#: ``JS_CHAINS_SINCE`` on (#237); an older script logs them as unknown and skips
+#: them, or fails on a target it cannot read.
+_NEW_COMMANDS = frozenset({"toggle_attr", "exec"})
+
+
+def protocol_needed(commands: t.Iterable[t.Mapping[str, t.Any]]) -> int:
+    """The protocol version a page's script needs to run ``commands``: 0, or ``JS_CHAINS_SINCE``."""
+    from .core.rendered import JS_CHAINS_SINCE
+
+    for command in commands:
+        if command.get("cmd") in _NEW_COMMANDS or isinstance(command.get("to"), dict):
+            return JS_CHAINS_SINCE
+    return 0
+
+
+class _Encoder(DjangoJSONEncoder):
+    """JSON for a chain and for what carries one: a ``JS`` is its list of commands (#237)."""
+
+    def default(self, o: t.Any) -> t.Any:
+        if isinstance(o, JS):
+            return o._commands
+        if isinstance(o, RelativeSelector):
+            return o.to_json()
+        return super().default(o)
+
+
+def dumps(value: t.Any) -> str:
+    """``value`` as JSON, a ``JS()`` in it as its commands: an event's arguments, a pushed value."""
+    return json.dumps(value, cls=_Encoder, separators=(",", ":"))
+
+
+def _selector(selector: str) -> str:
+    if not isinstance(selector, str) or not selector.strip():
+        raise ValueError(f"a relative target takes a CSS selector, not {selector!r}")
+    return selector
 
 
 class JS:
@@ -67,8 +122,52 @@ class JS:
         cmd: dict[str, t.Any] = {"cmd": name}
         # Filter out None values
         cmd.update({k: v for k, v in kwargs.items() if v is not None})
+        if isinstance(cmd.get("to"), RelativeSelector):
+            cmd["to"] = cmd["to"].to_json()
         self._commands.append(cmd)
         return self
+
+    # === Targets ===
+
+    @staticmethod
+    def inner(selector: str) -> RelativeSelector:
+        """The elements inside the binding's element that ``selector`` matches, as a command's target (#237).
+
+        Example:
+            JS().toggle_class(JS.inner(".chevron"), "open")
+        """
+        return RelativeSelector("inner", _selector(selector))
+
+    @staticmethod
+    def closest(selector: str) -> RelativeSelector:
+        """The nearest of the binding's element and its ancestors that ``selector`` matches (#237).
+
+        Example:
+            JS().hide(JS.closest(".card"))
+        """
+        return RelativeSelector("closest", _selector(selector))
+
+    # === Combining ===
+
+    def concat(self, *others: JS) -> JS:
+        """A new chain: this one's commands, then each of ``others``'. None of them changes (#237).
+
+        Example:
+            close = JS().hide("#modal")
+            save = close.concat(JS().push("save"))   # close is still only the hide
+        """
+        joined = JS()
+        for chain in (self, *others):
+            if not isinstance(chain, JS):
+                raise TypeError(f"concat() joins JS() chains, not {type(chain).__name__}")
+            joined._commands.extend(copy.deepcopy(chain._commands))
+        return joined
+
+    def __add__(self, other: JS) -> JS:
+        """``a + b`` is ``a.concat(b)``: a new chain, neither of them changed."""
+        if not isinstance(other, JS):
+            return NotImplemented
+        return self.concat(other)
 
     @staticmethod
     def _normalize_transition(
@@ -335,6 +434,51 @@ class JS:
         """
         return self._add_command("remove_attr", to=selector, attr=attr)
 
+    def toggle_attr(
+        self,
+        selector: Selector | None = None,
+        attr: str | None = None,
+        value: str | tuple[str, str] | list[str] = "",
+    ) -> JS:
+        """
+        Toggle an attribute (#237). What it changes outlasts the renders after it, as ``set_attr``'s does.
+
+        Args:
+            selector: CSS selector, or ``JS.inner()``/``JS.closest()``; the command acts on every element it matches.
+            attr: Attribute name.
+            value: A ``str``: the attribute is removed when there, set to this when not. A pair ``(a, b)``:
+                set to ``b`` when it is ``a``, else to ``a``.
+
+        Example:
+            JS().toggle_attr("#menu", "open")
+            JS().toggle_attr(JS.closest("[aria-expanded]"), "aria-expanded", ("true", "false"))
+        """
+        if not attr:
+            raise ValueError("toggle_attr() needs the attribute's name")
+        if isinstance(value, (tuple, list)):
+            if len(value) != 2 or not all(isinstance(v, str) for v in value):
+                raise ValueError(f"toggle_attr() takes a value or a pair of values, not {value!r}")
+            return self._add_command("toggle_attr", to=selector, attr=attr, vals=list(value))
+        if not isinstance(value, str):
+            raise ValueError(f"toggle_attr() takes a str value or a pair of them, not {value!r}")
+        return self._add_command("toggle_attr", to=selector, attr=attr, val=value)
+
+    def exec(self, attr: str, *, to: Selector | None = None) -> JS:
+        """
+        Run the chain an attribute holds, on each element ``to`` matches -- the binding's element by default (#237).
+
+        The attribute holds a ``JS()`` chain as the page renders it: ``data-cancel="{{ this.cancel_js }}"``,
+        or a binding's own attribute. Each runs from the element that holds it. A chain that, through
+        ``exec``, comes back to an attribute it is already running is stopped there, with an error in
+        the console.
+
+        Example:
+            JS().exec("data-cancel", to="#modal")
+        """
+        if not isinstance(attr, str) or not _ATTRIBUTE.fullmatch(attr):
+            raise ValueError(f"exec() takes an attribute's name, not {attr!r}")
+        return self._add_command("exec", attr=attr, to=to)
+
     def set_value(
         self,
         selector: Selector | None = None,
@@ -402,7 +546,7 @@ class JS:
         event: str,
         *,
         value: dict[str, t.Any] | None = None,
-        target: Selector | None = None,
+        target: str | None = None,
     ) -> JS:
         """
         Push an event to the server.
@@ -420,6 +564,8 @@ class JS:
             JS().push("delete", value={"id": 123})
             JS().push("submit", target="#other-component")
         """
+        if isinstance(target, RelativeSelector):
+            raise TypeError("push(target=) names a component by a CSS selector over the document, not JS.inner/closest")
         return self._add_command(
             "push",
             event=event,
@@ -500,7 +646,7 @@ class JS:
         Returns:
             JSON string representation of all commands.
         """
-        return json.dumps(self._commands, cls=DjangoJSONEncoder)
+        return json.dumps(self._commands, cls=_Encoder)
 
     def __str__(self) -> str:
         """Return JSON representation for template use."""

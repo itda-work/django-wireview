@@ -422,3 +422,151 @@ def test_a_transition_dict_declares_only_what_the_client_reads():
     body = re.search(r"async function runTransition\(handle, config\) \{\n(.*?)\n\}", source, re.S)
     assert body, "runTransition moved: point this test at what reads a transition"
     assert set(TransitionConfig.__annotations__) == set(re.findall(r"config\.(\w+)", body.group(1)))
+
+
+# toggle_attr, exec, relative targets, combining, JS() in arguments (#237, GAP-041)
+
+
+class TestToggleAttr:
+    def test_present_or_absent(self):
+        assert JS().toggle_attr("#menu", "open")._commands == [
+            {"cmd": "toggle_attr", "to": "#menu", "attr": "open", "val": ""}
+        ]
+
+    def test_between_two_values(self):
+        assert JS().toggle_attr(None, "aria-expanded", ("true", "false"))._commands == [
+            {"cmd": "toggle_attr", "attr": "aria-expanded", "vals": ["true", "false"]}
+        ]
+
+    @pytest.mark.parametrize("value", [("a",), ("a", "b", "c"), ("a", 1)])
+    def test_a_pair_is_two_strings(self, value):
+        with pytest.raises(ValueError, match="pair"):
+            JS().toggle_attr("#m", "x", value)
+
+    def test_a_list_pair_is_a_pair(self):
+        assert JS().toggle_attr("#m", "x", ["a", "b"])._commands[0]["vals"] == ["a", "b"]
+
+    @pytest.mark.parametrize("value", [True, 1, None])
+    def test_a_value_is_a_string(self, value):
+        with pytest.raises(ValueError, match="str"):
+            JS().toggle_attr("#m", "x", value)
+
+    def test_it_needs_the_attribute(self):
+        with pytest.raises(ValueError, match="name"):
+            JS().toggle_attr("#m")
+
+
+class TestRelativeTargets:
+    def test_inner_and_closest_render_as_objects(self):
+        commands = JS().hide(JS.closest(".card")).add_class(JS.inner(".chevron"), "open")._commands
+        assert commands[0]["to"] == {"closest": ".card"}
+        assert commands[1]["to"] == {"inner": ".chevron"}
+
+    def test_every_command_with_a_target_takes_one(self):
+        to = JS.inner("li")
+        chain = (
+            JS()
+            .show(to)
+            .toggle(to)
+            .remove_class(to, "a")
+            .toggle_class(to, "a")
+            .transition(to, "pulse")
+            .set_attr(to, "a", "1")
+            .remove_attr(to, "a")
+            .set_value(to, "")
+            .focus(to)
+            .focus_first(to)
+            .dispatch("x", to=to)
+            .exec("data-x", to=to)
+        )
+        assert all(command["to"] == {"inner": "li"} for command in chain._commands)
+
+    @pytest.mark.parametrize("selector", ["", "  ", None, 3])
+    def test_a_relative_target_takes_a_selector(self, selector):
+        with pytest.raises(ValueError, match="CSS selector"):
+            JS.inner(selector)
+
+    def test_push_names_its_component_over_the_document(self):
+        with pytest.raises(TypeError, match="push"):
+            JS().push("save", target=JS.closest("[wireview-component]"))  # type: ignore[arg-type]
+
+
+class TestExec:
+    def test_names_an_attribute(self):
+        assert JS().exec("data-cancel", to="#modal")._commands == [
+            {"cmd": "exec", "attr": "data-cancel", "to": "#modal"}
+        ]
+        assert JS().exec("wire-on-click")._commands == [{"cmd": "exec", "attr": "wire-on-click"}]
+
+    @pytest.mark.parametrize("attr", ["", "data x", 'a"b', "a=b", None])
+    def test_not_an_attribute_name_is_refused(self, attr):
+        with pytest.raises(ValueError, match="attribute"):
+            JS().exec(attr)
+
+
+class TestCombining:
+    def test_concat_leaves_both_chains_as_they_were(self):
+        close = JS().hide("#modal")
+        save = JS().push("save")
+        both = close.concat(save)
+        assert [c["cmd"] for c in both._commands] == ["hide", "push"]
+        assert close._commands == [{"cmd": "hide", "to": "#modal"}]
+        assert save._commands == [{"cmd": "push", "event": "save"}]
+
+    def test_a_later_command_on_the_result_does_not_reach_the_originals(self):
+        close = JS().hide("#modal")
+        both = close + JS().push("save", value={"n": 1})
+        both.add_class("#x", "y")
+        both._commands[1]["value"]["n"] = 2
+        assert len(close) == 1
+        assert both is not close
+
+    def test_the_copy_is_deep(self):
+        save = JS().push("save", value={"n": 1})
+        joined = JS().concat(save)
+        joined._commands[0]["value"]["n"] = 2
+        assert save._commands[0]["value"] == {"n": 1}
+
+    def test_only_chains_join(self):
+        with pytest.raises(TypeError):
+            JS().concat("hide")  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            JS() + [{"cmd": "hide"}]  # type: ignore[operator]
+
+    def test_many_at_once(self):
+        a, b, c = JS().show("#a"), JS().show("#b"), JS().show("#c")
+        assert [cmd["to"] for cmd in a.concat(b, c)._commands] == ["#a", "#b", "#c"]
+
+
+class TestJsInArguments:
+    def test_a_chain_in_a_pushed_value_goes_as_its_commands(self):
+        chain = JS().push("save", value={"undo": JS().show("#m")})
+        assert json.loads(chain.to_json())[0]["value"] == {"undo": [{"cmd": "show", "to": "#m"}]}
+
+    def test_a_chain_in_a_bindings_arguments_goes_as_its_commands(self):
+        from wireview.event_transpiler import binding
+
+        _, value = binding("click", "remove", {"undo": JS().show("#m")})
+        assert json.loads(value)["a"] == {"undo": [{"cmd": "show", "to": "#m"}]}
+
+
+class TestProtocolNeeded:
+    def test_older_commands_need_nothing(self):
+        from wireview.js import protocol_needed
+
+        assert protocol_needed(JS().show("#a").set_attr("#a", "x", "1").push("save")._commands) == 0
+
+    @pytest.mark.parametrize(
+        "chain",
+        [
+            JS().toggle_attr("#a", "x"),
+            JS().exec("data-x"),
+            JS().show(JS.inner("li")),
+            JS().dispatch("x", to=JS.closest("div")),
+        ],
+    )
+    def test_new_ones_need_the_version_that_runs_them(self, chain):
+        from wireview.core.rendered import JS_CHAINS_SINCE
+        from wireview.js import protocol_needed
+
+        assert protocol_needed(chain._commands) == JS_CHAINS_SINCE

@@ -187,3 +187,74 @@ class JsProbeSlowJoin(Component):
         # Slow, so a click sent now waits behind it and its render lands first
         await asyncio.sleep(SLOW)
         self.nudged += 1
+
+
+class JsChains(Component):
+    """toggle_attr, exec, JS.inner/closest and combined chains in a browser (#237).
+
+    The server redraws every card and chip with its count: what the commands
+    changed on them outlasts that.
+    """
+
+    class Meta:
+        template_name = "jsprobe/chains.html"
+
+    count: int = 0
+
+    @property
+    def expand(self) -> JS:
+        # The card the button is in, the inner one for the inner button
+        return JS().toggle_attr(JS.closest(".card"), "aria-expanded", ("true", "false"))
+
+    @property
+    def open_menu(self) -> JS:
+        return JS().toggle_attr(JS.closest("nav"), "open")
+
+    @property
+    def mark_chips(self) -> JS:
+        # Every chip inside the element the binding is on, none elsewhere
+        return JS().add_class(JS.inner(".chip"), "marked")
+
+    @property
+    def cancel_js(self) -> JS:
+        # Run from #dialog by exec: its inner panel, not the clicking button's
+        return JS().hide(JS.inner(".panel")).set_attr(None, "data-cancelled", "yes")
+
+    @property
+    def cancel(self) -> JS:
+        return JS().exec("data-cancel", to="#dialog")
+
+    @property
+    def loop(self) -> JS:
+        # data-loop holds this very chain: exec comes back to it and stops
+        return JS().exec("data-loop", to="#looper").toggle_attr("#looper", "data-ran", ("1", "2"))
+
+    @property
+    def close_part(self) -> JS:
+        return JS().toggle_attr("#sheet", "data-closed")
+
+    @property
+    def close_and_count(self) -> JS:
+        return self.close_part + JS().push("bump")
+
+    async def bump(self, **_rest):
+        self.count += 1
+
+    said: str = ""
+
+    @property
+    def save_through(self) -> JS:
+        # The push is in #saver's attribute, outside the form: it still sends the form's fields
+        return JS().exec("data-save", to="#saver")
+
+    @property
+    def save_js(self) -> JS:
+        return JS().push("saved")
+
+    @property
+    def self_exec(self) -> JS:
+        # Its own attribute: the chain is already running there, so this stops at once
+        return JS().exec("wire-on-click").toggle_attr(None, "data-n", ("1", "2"))
+
+    async def saved(self, q: str = "", other: str = "", **_rest):
+        self.said = f"q={q} other={other}"

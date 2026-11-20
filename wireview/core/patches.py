@@ -38,6 +38,7 @@ from django.utils import timezone, translation
 
 from .. import telemetry
 from ..debug import render_queries
+from ..js import protocol_needed
 from ..utils import db
 from . import page_request
 from .rendered import UPDATE_ONLY_SINCE
@@ -308,7 +309,8 @@ class Broadcast:
                     )
                 )
             else:
-                frames.append(cut("exec_js", {"id": _ID_SLOT, "commands": op[1]}))
+                # A chain with commands an older client cannot run goes only to newer ones (#237)
+                frames.append(cut("exec_js", {"id": _ID_SLOT, "commands": op[1]}, protocol_needed(op[1])))
         return frames
 
     def _render(self, template_name: str, item: t.Any) -> str:

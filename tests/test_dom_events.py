@@ -437,6 +437,14 @@ class DomDisabled(Component):
     def push_chain(self) -> JS:
         return JS().push("pushed")
 
+    @property
+    def hide_chain(self) -> JS:
+        return JS().hide()
+
+    @property
+    def exec_then(self) -> JS:
+        return JS().exec("data-then", to=JS.closest("[data-then]"))
+
     async def hit(self, **kwargs) -> None:
         HEARD.append(("DomDisabled", "hit", kwargs))
 
@@ -453,6 +461,7 @@ class DomDisabled(Component):
         ("[data-testid=in-off]", r"inside the disabled <button"),
         ("[data-testid=in-fieldset]", r"inside the disabled <fieldset"),
         ("[data-testid=pusher]", r"JS\(\) chain .* pushes 'pushed'"),
+        ("[data-testid=exec-pusher]", r"JS\(\) chain .* pushes 'pushed'"),
         ("[data-testid=unprevented]", r"Nothing prevents the submit"),
         ("[data-testid=plain-submit]", r"Nothing prevents the submit"),
         ("[data-testid=no-component]", r"is in no component's element"),
@@ -461,6 +470,18 @@ class DomDisabled(Component):
 async def test_a_click_no_user_can_make_fails(selector, match):
     view = await mount(DomDisabled)
     await _fails(view, lambda v: v.click(selector), match)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("testid", ["exec-quiet", "exec-loop"])
+async def test_a_chain_that_execs_no_push_sends_nothing(testid):
+    """What exec runs is followed: to a chain without a push, and around one that comes back to itself (#237).
+
+    Such a click reaches no handler, which the helper says, naming the chain it skipped -- not a push.
+    """
+    view = await mount(DomDisabled)
+    await _fails(view, lambda v: v.click(f"[data-testid={testid}]"), r"(?s)reaches no handler.*runs a JS\(\) chain")
 
 
 @pytest.mark.integration

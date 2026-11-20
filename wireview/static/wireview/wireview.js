@@ -14,6 +14,7 @@ import { Recoveries, recoveryOf, stillRecovers } from "./recovery.mjs";
 import { RejoinBarrier, SYNC_TIMEOUT_MS } from "./rejoins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
+import { chainIn, comesBack, relativeTarget, toggledAttribute } from "./js-chains.mjs";
 import { belongsToIme, bindingsFor, isAway, isBindingName, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
@@ -4451,7 +4452,14 @@ const EventBindings = {
             rememberSubmitter(element, submitter);
           }
           if (value.js) {
-            window.wireview.exec(element, value.js, { commit, eventType: event.type, submitter, source });
+            // The binding's own chain is running: an exec of its attribute comes back to it (#237)
+            window.wireview.exec(element, value.js, {
+              commit,
+              eventType: event.type,
+              submitter,
+              source,
+              running: [[element, attribute]],
+            });
           } else if (value.h !== undefined) {
             window.wireview.send(element, value.h, { ...(value.a || {}) }, {
               eventType: event.type,
@@ -4646,13 +4654,14 @@ function debugLog(category, message, data) {
 /**
  * @typedef {Object} JSCommand
  * @property {string} cmd - Command name
- * @property {string} [to] - Target selector
+ * @property {string|import("./js-chains.mjs").RelativeTarget} [to] - Target selector, or one relative to the element (#237)
+ * @property {string} [attr] - Attribute name (set_attr, remove_attr, toggle_attr, exec)
+ * @property {string} [val] - Attribute value (set_attr, toggle_attr)
+ * @property {[string, string]} [vals] - The two values toggle_attr alternates
  * @property {string} [event] - Event name for push/dispatch
  * @property {Object} [value] - Data for push command
  * @property {string} [target] - Target component for push
  * @property {string} [classes] - CSS classes to add/remove
- * @property {string} [attr] - Attribute name
- * @property {string} [val] - Attribute value
  * @property {string} [url] - URL for navigation
  * @property {boolean} [replace] - Replace history for navigate
  * @property {Object} [detail] - Detail for dispatch event
@@ -4673,13 +4682,22 @@ function debugLog(category, message, data) {
 
 /**
  * The elements a command acts on: every element `selector` matches, as in
- * LiveView's `to:`, or the command's own element when it names none.
- * @param {string|null|undefined} selector - CSS selector or null
+ * LiveView's `to:`, or the command's own element when it names none. A
+ * relative target is found from that element (#237): `{inner: sel}` the ones
+ * inside it, `{closest: sel}` the nearest of it and its ancestors.
+ * @param {string|import("./js-chains.mjs").RelativeTarget|null|undefined} selector
  * @param {HTMLElement} currentElement - Fallback element
  * @returns {HTMLElement[]}
  */
 function resolveTargets(selector, currentElement) {
   if (!selector) return [currentElement];
+  const relative = relativeTarget(selector);
+  if (relative?.kind === "inner") return /** @type {HTMLElement[]} */ ([...currentElement.querySelectorAll(relative.selector)]);
+  if (relative?.kind === "closest") {
+    const found = /** @type {HTMLElement|null} */ (currentElement.closest(relative.selector));
+    return found ? [found] : [];
+  }
+  if (typeof selector !== "string") return [];
   return /** @type {HTMLElement[]} */ ([...document.querySelectorAll(selector)]);
 }
 
@@ -4772,8 +4790,8 @@ function keepStickyOps(item, next) {
  * stays through the renders that morph it (boost.sticky, #219).
  * @param {JSCommand} cmd - Command to execute
  * @param {HTMLElement} element - Context element (event target)
- * @param {{commit?: boolean, eventType?: string, submitter?: Element | null, source?: Element | null}} [options] - a `push` commits the fields it comes
- *   from (#92) and marks its element loading for `eventType`
+ * @param {{commit?: boolean, eventType?: string, submitter?: Element | null, source?: Element | null, running?: Array<[Element, string]>, origin?: HTMLElement}} [options] - a `push` commits the fields it comes
+ *   from (#92) and marks its element loading for `eventType`; `running` the `exec`s this chain is inside, `origin` the element its first chain started at (#237)
  * @returns {Promise<void>}
  */
 async function executeCommand(cmd, element, options = {}) {
@@ -4857,6 +4875,38 @@ async function executeCommand(cmd, element, options = {}) {
       }
       break;
 
+    case "toggle_attr":
+      if (cmd.attr) {
+        const attr = cmd.attr;
+        await eachTarget(targets, (target) => sticky.setAttribute(target, attr, toggledAttribute(target.getAttribute(attr), cmd)));
+      }
+      break;
+
+    // The chain an attribute holds, run from its element (#237)
+    case "exec":
+      if (cmd.attr) {
+        const attr = cmd.attr;
+        const running = options.running ?? [];
+        for (const target of targets) {
+          if (comesBack(running, target, attr)) {
+            console.error("wireview: exec of %s on %o comes back to a chain it is running: stopped there", attr, target);
+            continue;
+          }
+          const held = chainIn(target.getAttribute(attr));
+          if ("unreadable" in held) {
+            console.error("wireview: exec of %s on %o: %s", attr, target, held.unreadable);
+          } else if ("commands" in held) {
+            await window.wireview.exec(target, /** @type {JSCommand[]} */ (held.commands), {
+              ...options,
+              // A push in it reads the form, commits and shows loading where the user acted
+              origin: options.origin ?? element,
+              running: [...running, [target, attr]],
+            });
+          }
+        }
+      }
+      break;
+
     case "set_value":
       for (const target of targets) {
         if ("value" in target) {
@@ -4902,22 +4952,24 @@ async function executeCommand(cmd, element, options = {}) {
         if (componentEl) {
           const component = connection.components[componentEl.id];
           if (component) {
+            // In a chain an exec ran, the element the user acted at, not the attribute's (#237)
+            const origin = options.origin ?? element;
             const form = /** @type {HTMLFormElement|null} */ (
-              element.closest("form")
+              origin.closest("form")
             );
             const formScope =
               form && componentEl.contains(form) ? form : componentEl;
-            const marked = markLoading(element, options.eventType);
+            const marked = markLoading(origin, options.eventType);
             // A push inside a committing binding commits like the binding would (#92).
             component.dispatch(
               cmd.event,
               cmd.value || {},
               formScope,
-              options.commit ? element : null,
+              options.commit ? origin : null,
               { elements: marked, eventType: options.eventType },
               options.submitter ?? null,
               // null: the event happened elsewhere, at no field of this binding's (#234)
-              options.source === undefined ? element : options.source
+              options.source === undefined ? origin : options.source
             );
           }
         }
@@ -5060,8 +5112,9 @@ window.wireview = {
    * Commands are executed sequentially in the order provided.
    * @param {HTMLElement} element - Context element (typically event.target)
    * @param {JSCommand[]} commands - Array of commands to execute
-   * @param {{commit?: boolean, eventType?: string, submitter?: Element | null, source?: Element | null}} [options] - whether a `push`
-   *   in the chain commits its fields (#92), the event that started the chain, and the button that submitted (#244)
+   * @param {{commit?: boolean, eventType?: string, submitter?: Element | null, source?: Element | null, running?: Array<[Element, string]>, origin?: HTMLElement}} [options] - whether a `push`
+   *   in the chain commits its fields (#92), the event that started the chain, the button that submitted (#244),
+   *   and the `exec`s it is inside (#237)
    * @returns {Promise<void>}
    */
   async exec(element, commands, options = {}) {

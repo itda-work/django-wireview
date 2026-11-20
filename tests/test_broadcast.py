@@ -37,7 +37,7 @@ from wireview import (
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import PROTOCOL_VERSION, UPDATE_ONLY_SINCE
+from wireview.core.rendered import JS_CHAINS_SINCE, PROTOCOL_VERSION, UPDATE_ONLY_SINCE
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state
 from wireview.core.transport import PATCH_TOPIC_MAX, PatchHub, set_broker, set_patch_hub
@@ -2946,3 +2946,56 @@ async def test_the_tutorials_list_is_filled_by_the_model_broadcast_once():
 
     assert [item.text for item in view.component.items] == ["New item"]
     assert "<li>New item</li>" in view.render()
+
+
+# JS() commands an older script cannot run (#237)
+
+NEW_CHAIN = JS().toggle_attr(JS.closest(".card"), "open")
+OLD_CHAIN = JS().add_class("#x", "seen")
+
+
+class BcPushingJs(BcFeed):
+    async def chains(self, **_rest):
+        await self.push_js(NEW_CHAIN)
+        await self.push_js(OLD_CHAIN)
+
+
+def _chains(heard: list[dict[str, t.Any]]) -> list[list[dict[str, t.Any]]]:
+    return [m["payload"]["commands"] for m in heard if m["command"] == "exec_js"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(JS_CHAINS_SINCE - 1, False), (JS_CHAINS_SINCE, True)])
+async def test_a_broadcast_chain_with_new_commands_reaches_only_a_script_that_runs_them(vsn, sent):
+    """An older script logs toggle_attr as unknown and throws on a relative target (#237)."""
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcQuiet, "quiet")
+        await _join(communicator, BcFeed, "feed")
+        await Broadcast(BcFeed, "bc-feed").js(NEW_CHAIN).js(OLD_CHAIN).asend()
+        heard = await _patched_until_quiet(communicator)
+    finally:
+        await communicator.disconnect()
+
+    expected = [NEW_CHAIN._commands, OLD_CHAIN._commands] if sent else [OLD_CHAIN._commands]
+    assert _chains(heard) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(JS_CHAINS_SINCE - 1, False), (JS_CHAINS_SINCE, True)])
+async def test_a_components_chain_with_new_commands_reaches_only_a_script_that_runs_them(vsn, sent, caplog):
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcPushingJs, "pusher")
+        await _event(communicator, "pusher", "chains")
+        # The old chain goes out after the new one, or in its place
+        heard = await _until(
+            communicator, lambda m: m["command"] == "exec_js" and m["payload"]["commands"] == OLD_CHAIN._commands
+        )
+    finally:
+        await communicator.disconnect()
+
+    expected = [NEW_CHAIN._commands, OLD_CHAIN._commands] if sent else [OLD_CHAIN._commands]
+    assert _chains(heard) == expected
+    refused = [r for r in caplog.records if "Not running a JS() chain" in r.getMessage()]
+    assert bool(refused) is not sent

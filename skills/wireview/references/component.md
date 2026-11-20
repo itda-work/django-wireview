@@ -110,8 +110,10 @@ class XTodoList(Component):
 | `await self.wire.push_to(url)` / `replace_to` / `redirect_to` | 내비게이션. `push_to`·`replace_to`는 같은 경로(쿼리만 다름)면 patch — 가져오지 않고 같은 인스턴스가 `params_changed()`를 받는다 — 다른 경로면 그 페이지를 가져온다. `redirect_to`는 언제나 가져온다. 컴포넌트 밖 템플릿이 `request.GET`을 읽는 페이지는 `redirect_to`로 |
 
 `JS()` 빌더: `show`, `hide`, `toggle`, `add_class`, `remove_class`, `toggle_class`,
-`transition`, `set_attr`, `remove_attr`, `set_value`, `focus`, `focus_first`, `push`,
-`navigate`, `dispatch`. 체이닝된다. 첫 인자는 대상 선택자다(`add_class("#row", "done")`) — 맞는 요소 전부에 적용된다.
+`transition`, `set_attr`, `remove_attr`, `toggle_attr`, `set_value`, `focus`, `focus_first`, `push`,
+`navigate`, `dispatch`, `exec`. 체이닝되고 `a + b`(`concat`)는 원본을 바꾸지 않는 새 체인이다. 첫 인자는 대상 선택자다(`add_class("#row", "done")`) — 맞는 요소 전부에 적용된다.
+목록 항목마다 같은 체인을 쓸 때는 `JS.closest(".card")`·`JS.inner(".chevron")`로 바인딩이 달린 요소에서 찾는다.
+`exec("data-cancel", to="#dialog")`는 그 속성에 렌더한 체인(`data-cancel="{{ this.cancel_js }}"`)을 그 요소에서 돌린다.
 명령이 바꾼 클래스·속성·표시는 다음 렌더 뒤에도 남는다(LiveView의 sticky). 응답까지만의 로딩 표시는 명령이 아니라
 로딩 클래스(`wireview-click-loading`)와 `wire-disabled-with`로 한다.
 

@@ -529,3 +529,86 @@ def test_debug_profiling_counts_events_and_patches(probe):
     assert report["eventCount"] >= 2
     assert report["roundTrip"]["count"] >= 2
     assert report["patch"]["count"] >= 2
+
+
+# toggle_attr, exec, relative targets, combined chains (#237)
+
+
+def test_toggle_attr_finds_the_closest_card_and_outlasts_a_render(probe):
+    outer, inner = by(probe, "outer-card"), by(probe, "inner-card")
+    expect(inner).not_to_have_attribute("aria-expanded", re.compile(".*"))  # the server draws none
+    by(probe, "inner-expand").click()
+    expect(inner).to_have_attribute("aria-expanded", "true")
+    expect(outer).not_to_have_attribute("aria-expanded", re.compile(".*"))  # the nearest card, not every one
+    by(probe, "outer-expand").click()
+    by(probe, "inner-expand").click()
+    expect(outer).to_have_attribute("aria-expanded", "true")
+    expect(inner).to_have_attribute("aria-expanded", "false")
+
+    by(probe, "menu-toggle").click()
+    expect(by(probe, "menu")).to_have_attribute("open", "")
+
+    by(probe, "chains-bump").click()
+    expect_text(by(probe, "chains-count"), "1")
+    expect(inner).to_contain_text("inner 1")  # the render reached the cards
+    expect(outer).to_have_attribute("aria-expanded", "true")
+    expect(inner).to_have_attribute("aria-expanded", "false")
+    expect(by(probe, "menu")).to_have_attribute("open", "")
+
+    by(probe, "menu-toggle").click()  # present: the one-value toggle removes it
+    by(probe, "chains-bump").click()
+    expect_text(by(probe, "chains-count"), "2")
+    expect(by(probe, "menu")).not_to_have_attribute("open", re.compile(".*"))
+
+
+def test_inner_acts_on_every_match_inside_the_bindings_element_only(probe):
+    by(probe, "group-mark").click()  # bubbles to the group's binding: the group is its element
+    for n in (1, 2, 3):
+        expect(by(probe, f"chip-{n}")).to_have_class("chip marked")
+    expect(by(probe, "chip-outside")).to_have_class("chip")
+    by(probe, "chains-bump").click()
+    expect(by(probe, "chip-1")).to_contain_text("1 1")
+    expect(by(probe, "chip-3")).to_have_class("chip marked")
+
+
+def test_exec_runs_the_chain_an_attribute_holds_from_its_element(probe):
+    by(probe, "cancel").click()
+    expect(by(probe, "dialog-panel")).to_be_hidden()
+    expect(by(probe, "far-panel")).to_be_visible()  # inner from #dialog, not from the button
+    expect(by(probe, "dialog")).to_have_attribute("data-cancelled", "yes")
+
+
+def test_an_exec_that_comes_back_to_itself_stops_there(probe):
+    errors = []
+    probe.on("console", lambda message: message.type == "error" and errors.append(message.text))
+    by(probe, "loop").click()
+    # The button's chain runs the looper's once, whose exec comes back to it and stops; each
+    # chain then goes on to its toggle: two toggles, "1" then "2", not one or an endless run
+    expect(by(probe, "looper")).to_have_attribute("data-ran", "2")
+    assert any("comes back to a chain it is running" in text for text in errors), errors
+    by(probe, "chains-bump").click()  # the page still answers
+    expect_text(by(probe, "chains-count"), "1")
+
+
+def test_a_combined_chain_leaves_its_part_as_it_was(probe):
+    by(probe, "close-only").click()
+    expect(by(probe, "sheet")).to_have_attribute("data-closed", "")
+    expect_text(by(probe, "chains-count"), "0")
+    by(probe, "close-and-count").click()
+    expect_text(by(probe, "chains-count"), "1")
+    expect(by(probe, "sheet")).not_to_have_attribute("data-closed", re.compile(".*"))
+
+
+def test_a_push_an_exec_ran_sends_the_form_the_user_submitted(probe):
+    """The push is in an attribute outside the form; the form's fields go, not the component's (#237)."""
+    by(probe, "save-q").fill("typed")
+    by(probe, "save-submit").click()
+    expect_text(by(probe, "said"), "q=typed other=")
+
+
+def test_a_binding_that_execs_its_own_attribute_stops_at_once(probe):
+    errors = []
+    probe.on("console", lambda message: message.type == "error" and errors.append(message.text))
+    by(probe, "self-exec").click()
+    expect(by(probe, "self-exec")).to_have_attribute("data-n", "1")  # its toggle ran once, not twice
+    assert any("comes back to a chain it is running" in text for text in errors), errors

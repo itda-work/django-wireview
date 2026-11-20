@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 14
+PROTOCOL_VERSION = 15
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -135,6 +135,12 @@ EVENT_META_SINCE = 13
 # (``wire.submit_form``, #246). An older client would ignore the field and the
 # page would stay: it is not sent one, and the request is logged instead.
 SUBMIT_SINCE = 14
+# First version whose clients run the JS() commands toggle_attr and exec and
+# the targets JS.inner() and JS.closest() (#237). An older client logs an
+# unknown command and fails on a target it cannot read as a selector: the server
+# does not send it a chain that has them -- push_js logs that, a Broadcast leaves
+# the frame out of what that connection writes.
+JS_CHAINS_SINCE = 15
 
 
 def protocol_version(query_string: bytes | str) -> int:

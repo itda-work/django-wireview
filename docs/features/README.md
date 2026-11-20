@@ -68,7 +68,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다. Phoenix LiveV
 
 | 기능 | 설명 | 문서 |
 |------|------|------|
-| **JS Commands** | 클라이언트 측 DOM 조작. 선택자와 맞는 요소 전부에, 바꾼 것은 렌더 뒤에도 남는다(sticky) | [문서](./js-commands.md) |
+| **JS Commands** | 클라이언트 측 DOM 조작. 선택자와 맞는 요소 전부에(또는 `JS.inner`·`JS.closest`로 바인딩의 요소에서), 바꾼 것은 렌더 뒤에도 남는다(sticky). `toggle_attr`, 속성의 체인을 돌리는 `exec`, 원본을 바꾸지 않는 결합 `a + b` | [문서](./js-commands.md) |
 | **CSP** | 인라인 스크립트 없는 이벤트 바인딩(창 단위 `keydown.window`, 요소 밖 `click.away` 포함), `'unsafe-inline'` 없는 정책과 함께 동작 | [문서](./csp.md) |
 | **JavaScript Hooks** | 서드파티 JS 라이브러리 통합 | [문서](./hooks.md) |
 | **섬 (island)** | `{% island %}`: React·지도처럼 페이지의 JS가 그리는 영역에 서버 상태를 props로. `wireview.islands` | [문서](./islands.md) |

@@ -12,6 +12,21 @@
     <button type="button" data-testid="in-fieldset" {% on "click" "hit" %}>fieldset</button>
   </fieldset>
   <button type="button" data-testid="pusher" {% on "click" this.push_chain %}>push</button>
+  {# exec runs the chain an attribute holds: the helpers follow it to the push (#237) #}
+  <div data-then="{{ this.push_chain }}">
+    <button type="button"
+            data-testid="exec-pusher"
+            {% on "click" this.exec_then %}>then</button>
+  </div>
+  <div data-then="{{ this.hide_chain }}">
+    <button type="button"
+            data-testid="exec-quiet"
+            {% on "click" this.exec_then %}>quiet</button>
+  </div>
+  <button type="button"
+          data-testid="exec-loop"
+          data-then="{{ this.exec_then }}"
+          {% on "click" this.exec_then %}>loop</button>
   <form {% on "submit" "hit" %}>
     <button data-testid="unprevented">go</button>
   </form>

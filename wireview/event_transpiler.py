@@ -7,11 +7,8 @@ script. The inline ``onclick`` transpiler this module was named for went with
 
 from __future__ import annotations
 
-import json
 import re
 import typing as t
-
-from django.core.serializers.json import DjangoJSONEncoder
 
 if t.TYPE_CHECKING:
     from .js import JS
@@ -76,7 +73,7 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
     first). The value says what to run: ``{"h": handler, "a": args, "t":
     target}`` for a server handler, ``{"js": commands}`` for a ``JS()`` chain.
     """
-    from .js import JS
+    from .js import JS, dumps
 
     if not _BINDING_NAME.fullmatch(event_and_modifiers):
         raise ValueError(
@@ -139,4 +136,5 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
         rest = event_and_modifiers.split(".")
         del rest[1]
         name = SCOPE_PREFIXES[scope] + ".".join(rest)
-    return name, json.dumps(value, cls=DjangoJSONEncoder, separators=(",", ":"))
+    # A JS() among the arguments goes as its commands (#237)
+    return name, dumps(value)

@@ -1,0 +1,41 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="chains-count">{{ this.count }}</span>
+  <button data-testid="chains-bump" {% on "click" "bump" %}>bump</button>
+  <div class="card" data-testid="outer-card">
+    outer {{ this.count }}
+    <button data-testid="outer-expand" {% on "click" this.expand %}>expand outer</button>
+    <div class="card" data-testid="inner-card">
+      inner {{ this.count }}
+      <button data-testid="inner-expand" {% on "click" this.expand %}>expand inner</button>
+    </div>
+  </div>
+  <nav data-testid="menu">
+    menu {{ this.count }}
+    <button data-testid="menu-toggle" {% on "click" this.open_menu %}>menu</button>
+  </nav>
+  <div data-testid="group" {% on "click" this.mark_chips %}>
+    {% for n in "123" %}<span class="chip" data-testid="chip-{{ n }}">{{ n }} {{ this.count }}</span>{% endfor %}
+    <button data-testid="group-mark">mark</button>
+  </div>
+  <span class="chip" data-testid="chip-outside">outside</span>
+  <div id="dialog" data-testid="dialog" data-cancel="{{ this.cancel_js }}">
+    <div class="panel" data-testid="dialog-panel">panel {{ this.count }}</div>
+  </div>
+  <div class="panel" data-testid="far-panel">far</div>
+  <button data-testid="cancel" {% on "click" this.cancel %}>cancel</button>
+  <div id="looper" data-testid="looper" data-loop="{{ this.loop }}"></div>
+  <button data-testid="loop" {% on "click" this.loop %}>loop</button>
+  <div id="sheet" data-testid="sheet">sheet</div>
+  <button data-testid="close-only" {% on "click" this.close_part %}>close</button>
+  <button data-testid="close-and-count" {% on "click" this.close_and_count %}>close and count</button>
+  <form data-testid="save-form" {% on "submit.prevent" this.save_through %}>
+    <input name="q" data-testid="save-q">
+    <button type="submit" data-testid="save-submit">save</button>
+  </form>
+  <input name="other" value="outside">
+  <div id="saver" data-save="{{ this.save_js }}"></div>
+  <span data-testid="said">{{ this.said }}</span>
+  <button data-testid="self-exec" {% on "click" this.self_exec %}>self</button>
+</div>

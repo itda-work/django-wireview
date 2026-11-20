@@ -65,6 +65,7 @@ from .core.transport import (
 from .debug import render_queries
 from .features import presence, upload_store
 from .features.uploads import upload_group_name
+from .js import protocol_needed
 from .live_component import LiveComponent, run_updates
 from .repository import ComponentRepository, InvalidEvent
 from .utils import parse_request_data
@@ -2012,6 +2013,16 @@ class WireviewSession:
     async def component_exec_js(self, id: str, commands: list):
         """Execute JS commands on the client."""
         log.debug(f">>> EXEC-JS {id}")
+        needed = protocol_needed(commands)
+        if needed > self.repo.vsn:
+            log.warning(
+                "Not running a JS() chain on %s: it has commands its script does not know (protocol %d, the page's"
+                " is %d) -- the page has to load the current wireview.js (a reload)",
+                id,
+                needed,
+                self.repo.vsn,
+            )
+            return
         await self.send_command("exec_js", {"id": id, "commands": commands})
 
     async def component_push_event(
