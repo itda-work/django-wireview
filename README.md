@@ -71,7 +71,7 @@ Django로 백엔드를 만들고 있고 프런트엔드 전담이 없는 팀에 
 | **Vaadin Flow** (Java) | HTTP, 푸시는 WebSocket | 내장. `@Push` | 서버 세션의 UI 객체 트리 | sticky session 필요 | UI unit 테스트 |
 | **Spring REST + SPA** (Java) | HTTP, 필요하면 WebSocket | 직접 만든다. STOMP 등 | 클라이언트 | 무상태 API | API와 프런트를 따로 |
 
-**가장 가까운 것은 Phoenix LiveView입니다.** wireview는 그 모델을 Django로 옮긴 것이라 기능표 147행 중 123행이 같습니다. 설계상 제외한 둘(중첩 LiveView의 프로세스 격리, long polling 폴백) 말고도, LiveView 1.2와 견주어 아직 없는 기능 12행과 일부만 있는 기능 10행이 GAP 번호와 이슈로 남아 있습니다 — JS 명령·훅·폼·업로드의 옵션, 테스트 헬퍼, 포털 같은 것들입니다([기능 갭](https://github.com/itda-work/django-wireview/blob/main/docs/FEATURE-GAP.md)). 고르는 기준은 언어와 팀입니다. 이미 Django의 모델·폼·admin·인증 위에 있으면 wireview, Elixir 팀이거나 BEAM의 프로세스 격리와 연결당 메모리가 필요하면 LiveView입니다.
+**가장 가까운 것은 Phoenix LiveView입니다.** wireview는 그 모델을 Django로 옮긴 것이라 기능표 147행 중 124행이 같습니다. 설계상 제외한 둘(중첩 LiveView의 프로세스 격리, long polling 폴백) 말고도, LiveView 1.2와 견주어 아직 없는 기능 12행과 일부만 있는 기능 9행이 GAP 번호와 이슈로 남아 있습니다 — JS 명령·훅·폼·업로드의 옵션, 테스트 헬퍼, 포털 같은 것들입니다([기능 갭](https://github.com/itda-work/django-wireview/blob/main/docs/FEATURE-GAP.md)). 고르는 기준은 언어와 팀입니다. 이미 Django의 모델·폼·admin·인증 위에 있으면 wireview, Elixir 팀이거나 BEAM의 프로세스 격리와 연결당 메모리가 필요하면 LiveView입니다.
 
 **Livewire, django-unicorn, htmx는 상호작용마다 HTTP 요청을 보냅니다.** WebSocket 인프라 없이 어느 호스팅에서나 돌고 scale-to-zero가 됩니다. 대신 서버가 먼저 보내는 것(알림, 진행률, 접속자, 다른 사람의 변경)은 Livewire가 Echo와 Reverb를, htmx가 SSE·WebSocket 확장을 따로 붙여야 합니다. 화면의 핵심이 그것이면 wireview, 폼과 목록이 전부면 그쪽이 가볍습니다.
 
@@ -971,19 +971,20 @@ async def clear_input(self):
 `selector`를 비우면 명령이 붙은 엘리먼트 자신이 대상이다. 선택자는 맞는 엘리먼트 전부에 적용된다(`focus`·`focus_first`는
 첫 엘리먼트). 명령이 바꾼 클래스·속성·표시 상태는 그 엘리먼트를 다시 그리는 렌더 뒤에도 남는다 — LiveView처럼
 ([JS 명령](https://github.com/itda-work/django-wireview/blob/main/docs/features/js-commands.md)). `*` 뒤의 인자는 키워드로만 넘긴다.
-`transition`은 클래스 이름 문자열 `"fade-out"`, 시간을 함께 주는 튜플 `("fade-out", 300)`, 또는 dict
+`transition`은 클래스 이름 문자열 `"fade-out"`, 시간을 함께 주는 튜플 `("fade-out", 300)`, 세 단계 튜플
+`("ease-out duration-300", "opacity-100", "opacity-0")`(transition·start·end, 네 번째 항목이 시간이고 생략하면 200ms), 또는 dict
 `{"transition": "fade-out", "time": 300}`이다. 문자열은 클래스 이름뿐이라 `"fade-out 300ms"`처럼
-시간을 섞으면 `ValueError`다 — 시간은 튜플이나 dict로 준다.
+시간을 섞으면 `ValueError`다 — 시간은 튜플이나 dict로 준다. 체인은 트랜지션이 끝나기를 기다리고, 그 명령에 `wait=False`를 주면 기다리지 않는다.
 
 **표시:**
-- `show(selector=None, *, transition=None, display=None)`
-- `hide(selector=None, *, transition=None)`
-- `toggle(selector=None, *, show_transition=None, hide_transition=None, display=None)`
+- `show(selector=None, *, transition=None, display=None, wait=True)`
+- `hide(selector=None, *, transition=None, wait=True)`
+- `toggle(selector=None, *, show_transition=None, hide_transition=None, display=None, wait=True)`
 
 **CSS 클래스:**
-- `add_class(selector=None, classes=None, *, transition=None)`
-- `remove_class(selector=None, classes=None, *, transition=None)`
-- `toggle_class(selector=None, classes=None, *, transition=None)`
+- `add_class(selector=None, classes=None, *, transition=None, wait=True)`
+- `remove_class(selector=None, classes=None, *, transition=None, wait=True)`
+- `toggle_class(selector=None, classes=None, *, transition=None, wait=True)`
 
 **속성:**
 - `set_attr(selector=None, attr=None, value=None)`
@@ -998,7 +999,7 @@ async def clear_input(self):
 - 속성 `wire-focus-wrap` - 그 안의 Tab·Shift-Tab이 안을 돈다
 
 **트랜지션:**
-- `transition(selector=None, transition=None, *, time=None)`
+- `transition(selector=None, transition=None, *, time=None, wait=True)`
 
 **서버 통신:**
 - `push(event, *, value=None, target=None)` - 서버로 이벤트 전송. `value`는 dict다

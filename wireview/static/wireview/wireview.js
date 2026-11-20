@@ -15,6 +15,7 @@ import { RejoinBarrier, SYNC_TIMEOUT_MS } from "./rejoins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { chainIn, comesBack, relativeTarget, toggledAttribute } from "./js-chains.mjs";
+import { phasesOf, runPhases } from "./transitions.mjs";
 import { FOCUSABLE, FocusStack, INPUTS, WRAP_ATTRIBUTE, radioStops, tabOrder, wrapTarget } from "./focus.mjs";
 import { belongsToIme, bindingsFor, isAway, isBindingName, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
@@ -4749,11 +4750,16 @@ function debugLog(category, message, data) {
  * @property {number} [time] - Transition duration in ms (for transition command)
  * @property {TransitionConfig} [show] - Show transition for toggle
  * @property {TransitionConfig} [hide] - Hide transition for toggle
+ * @property {string} [start] - A three-phase transition's start classes (transition command, #239)
+ * @property {string} [end] - A three-phase transition's end classes (transition command, #239)
+ * @property {boolean} [wait] - false: the chain goes on without waiting for this command (#239)
  */
 
 /**
  * @typedef {Object} TransitionConfig
  * @property {string} [transition] - CSS class(es) to apply
+ * @property {string} [start] - Three phases: the classes it starts from (#239)
+ * @property {string} [end] - Three phases: the classes it ends at (#239)
  * @property {number} [time] - Transition duration in ms
  */
 
@@ -4812,16 +4818,27 @@ async function transitionThen(target, config, finish) {
  * @returns {Promise<void>}
  */
 async function runTransition(handle, config) {
-  const element = handle.current();
-  if (!config || !config.transition || !element) return;
-  const classes = config.transition.split(" ").filter(Boolean);
-  if (!(config.time && config.time > 0)) {
-    element.classList.add(...classes);
-    return;
-  }
-  const release = boost.sticky.transient(element, classes);
-  await new Promise((resolve) => setTimeout(resolve, config.time));
-  release();
+  if (!handle.current()) return;
+  await runPhases(phasesOf(config), {
+    // On the element it is by then: a stream update replaces it, a navigation forgets it (#219)
+    hold: (classes) => {
+      const element = handle.current();
+      return element && classes.length ? boost.sticky.transient(element, classes) : () => {};
+    },
+    keep: (classes) => handle.current()?.classList.add(...classes),
+    frame: () => new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined))),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
+}
+
+/**
+ * Tell the page a show or hide begins or ends on `el` (#239): `wireview:show-start`,
+ * `wireview:show-end`, `wireview:hide-start`, `wireview:hide-end`. They bubble.
+ * @param {Element | null} el
+ * @param {"show-start" | "show-end" | "hide-start" | "hide-end"} name
+ */
+function announceVisibility(el, name) {
+  el?.dispatchEvent(new CustomEvent(`wireview:${name}`, { bubbles: true }));
 }
 
 /**
@@ -4861,6 +4878,33 @@ function keepStickyOps(item, next) {
 }
 
 /**
+ * Show `target`, then run its transition, announcing both ends (#239).
+ * @param {HTMLElement} target
+ * @param {string | undefined} display
+ * @param {TransitionConfig | null | undefined} transition
+ */
+async function showWith(target, display, transition) {
+  announceVisibility(target, "show-start");
+  boost.sticky.show(target, display || "");
+  const handle = boost.sticky.handle(target);
+  await runTransition(handle, transition);
+  announceVisibility(handle.current(), "show-end");
+}
+
+/**
+ * Run `target`'s transition, then hide it, announcing both ends (#239).
+ * @param {HTMLElement} target
+ * @param {TransitionConfig | null | undefined} transition
+ */
+async function hideWith(target, transition) {
+  announceVisibility(target, "hide-start");
+  await transitionThen(target, transition, (now) => {
+    boost.sticky.hide(now);
+    announceVisibility(now, "hide-end");
+  });
+}
+
+/**
  * Executes a single JS command.
  *
  * What a command changes on an element -- its classes, attributes, visibility --
@@ -4878,25 +4922,17 @@ async function executeCommand(cmd, element, options = {}) {
   switch (cmd.cmd) {
     // Visibility commands
     case "show":
-      await eachTarget(targets, async (target) => {
-        sticky.show(target, cmd.display || "");
-        await applyTransition(target, cmd.transition);
-      });
+      await eachTarget(targets, (target) => showWith(target, cmd.display, cmd.transition));
       break;
 
     case "hide":
-      await eachTarget(targets, (target) => transitionThen(target, cmd.transition, (now) => sticky.hide(now)));
+      await eachTarget(targets, (target) => hideWith(target, cmd.transition));
       break;
 
     case "toggle":
-      await eachTarget(targets, async (target) => {
-        if (target.hidden) {
-          sticky.show(target, cmd.display || "");
-          await applyTransition(target, cmd.show);
-        } else {
-          await transitionThen(target, cmd.hide, (now) => sticky.hide(now));
-        }
-      });
+      await eachTarget(targets, (target) =>
+        target.hidden ? showWith(target, cmd.display, cmd.show) : hideWith(target, cmd.hide)
+      );
       break;
 
     // CSS class commands
@@ -4931,9 +4967,13 @@ async function executeCommand(cmd, element, options = {}) {
     case "transition":
       if (cmd.transition) {
         // For transition command, cmd.transition is always a string (class names)
-        const transition = /** @type {string} */ (cmd.transition);
-        const time = /** @type {number|undefined} */ (cmd.time);
-        await eachTarget(targets, (target) => applyTransition(target, { transition, time }));
+        const config = {
+          transition: /** @type {string} */ (cmd.transition),
+          start: cmd.start,
+          end: cmd.end,
+          time: /** @type {number|undefined} */ (cmd.time),
+        };
+        await eachTarget(targets, (target) => applyTransition(target, config));
       }
       break;
 
@@ -5219,7 +5259,10 @@ window.wireview = {
       // page in: the rest is not that page's. A sticky component's chain goes on,
       // as the component does (#219).
       if (boost.pageGeneration() !== page && !(element.isConnected && element.closest("[wire-sticky]"))) return;
-      await executeCommand(cmd, element, options);
+      const running = executeCommand(cmd, element, options);
+      // wait: false -- the rest of the chain does not wait for this command's transition (#239)
+      if (cmd.wait === false) running.catch((error) => console.error("wireview: a JS() command failed", error));
+      else await running;
     }
   },
 

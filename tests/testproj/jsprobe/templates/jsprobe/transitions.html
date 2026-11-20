@@ -1,0 +1,21 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <style>
+    .t-run { transition: opacity 300ms linear; }
+    .t-start { opacity: 0; }
+    .t-end { opacity: 1; }
+  </style>
+  <span data-testid="tr-count">{{ this.count }}</span>
+  <div id="fade" data-testid="fade" hidden>fade</div>
+  <button data-testid="fade-in" {% on "click" this.fade_in %}>fade in</button>
+  <button data-testid="fade-out" {% on "click" this.fade_out %}>fade out</button>
+  <button data-testid="instant" {% on "click" this.instant %}>instant</button>
+  <div id="tr-slow" data-testid="tr-slow">slow</div>
+  <button data-testid="held" {% on "click" this.held %}>held</button>
+  <button data-testid="not-held" {% on "click" this.not_held %}>not held</button>
+  {% if this.with_ghost %}<div id="ghost" data-testid="ghost">ghost {{ this.count }}</div>{% endif %}
+  <button data-testid="haunt" {% on "click" this.haunt %}>haunt</button>
+  <button data-testid="drop-ghost" {% on "click" "drop_ghost" %}>drop</button>
+  <button data-testid="bring-ghost" {% on "click" "bring_ghost" %}>bring</button>
+</div>

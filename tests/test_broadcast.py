@@ -37,7 +37,7 @@ from wireview import (
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE, PROTOCOL_VERSION, UPDATE_ONLY_SINCE
+from wireview.core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE, PROTOCOL_VERSION, TRANSITIONS_SINCE, UPDATE_ONLY_SINCE
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state
 from wireview.core.transport import PATCH_TOPIC_MAX, PatchHub, set_broker, set_patch_hub
@@ -3016,3 +3016,27 @@ async def test_a_broadcast_chain_with_focus_commands_reaches_only_a_script_that_
         await communicator.disconnect()
 
     assert _chains(heard) == ([focus._commands, OLD_CHAIN._commands] if sent else [OLD_CHAIN._commands])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(TRANSITIONS_SINCE - 1, False), (TRANSITIONS_SINCE, True)])
+@pytest.mark.parametrize(
+    "chain",
+    [
+        JS().show("#modal", transition=("ease", "opacity-0", "opacity-100")),
+        JS().transition("#card", "shake", time=400, wait=False).push("save"),
+    ],
+    ids=["three-phases", "no-wait"],
+)
+async def test_a_broadcast_chain_with_new_transitions_reaches_only_a_script_that_runs_them(vsn, sent, chain):
+    """An older script would put on only the transition's classes, or wait anyway (#239)."""
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcQuiet, "quiet")
+        await _join(communicator, BcFeed, "feed")
+        await Broadcast(BcFeed, "bc-feed").js(chain).js(OLD_CHAIN).asend()
+        heard = await _patched_until_quiet(communicator)
+    finally:
+        await communicator.disconnect()
+
+    assert _chains(heard) == ([chain._commands, OLD_CHAIN._commands] if sent else [OLD_CHAIN._commands])

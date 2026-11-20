@@ -148,7 +148,9 @@ def test_the_transition_forms_listed_are_the_ones_js_takes():
     accepted_part, rest = line.split("이다.", 1)
     forms = [ast.literal_eval(code) for code in re.findall(r"`([(\"{][^`]*)`", accepted_part)]
     accepted = [arg for arg in t.get_args(Transition) if arg is not type(None)]
-    assert [type(form) for form in forms] == [str, tuple, dict] and len(accepted) == 3, line
+    # str, (classes, ms), (transition, start, end) with or without a time, and the dict
+    assert [type(form) for form in forms] == [str, tuple, tuple, dict] and len(accepted) == 5, line
+    assert [len(form) for form in forms if isinstance(form, tuple)] == [2, 3], line
     for form in forms:
         JS().hide(transition=form)
     # And what it says about a duration in the string

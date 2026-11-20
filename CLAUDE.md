@@ -223,6 +223,8 @@ wireview/
 └── static/wireview/       locks.mjs (제출 중 컨트롤의 잠금과 복원), form-parts.mjs (동명 필드가 있는 폼의 속성·컨트롤 조회),
                            wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            focus.mjs (포커스의 순수 판단: focus_first·wire-focus-wrap이 보는 후보, Tab 순서, wrap이 보낼 곳, push_focus·pop_focus의 스택. 지금 포커스를 받을 수 있는가(disabled·inert·보임)는 wireview.js의 canFocus, #238),
+                           transitions.mjs (JS() 트랜지션의 단계: 클래스 하나(시간 동안·시간 없으면 남김)와 세 단계(start → transition → end, 기본 200ms). DOM과 시계를 받아 가상 시계로 테스트한다. 클래스는 sticky.transient로 붙여 렌더를 건너고 요소 교체를 따른다.
+                           명령의 wait: false는 executeCommands가 기다리지 않는다. 그런 체인·세 단계를 서버가 보내는 것은 vsn 17부터, #239),
                            js-chains.mjs (JS()의 상대 대상 JS.inner·closest, toggle_attr의 다음 값, exec가 읽는 속성의 체인과 순환 판정, #237. 서버가 보내는 그런 체인은 vsn 15부터 — js.protocol_needed),
                            streams.mjs (스트림 DOM 판단 순수 함수. pinContainerIds: morph 전에 렌더의 컨테이너에 화면 컨테이너의 id를 붙여 자리 짝짓기로 지워지지 않게 한다),
                            targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별.
@@ -363,7 +365,7 @@ tests/
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),
                            csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,
-                           jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처(JsChains는 중첩 카드의 closest·inner·toggle_attr·exec와 그 순환·결합, #237. JsFocus는 중첩 모달의 push_focus·pop_focus·focus_first·wire-focus-wrap, #238 — stickyprobe의 remember·give_back 버튼이 boost 이동과 sticky를 본다),
+                           jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처(JsChains는 중첩 카드의 closest·inner·toggle_attr·exec와 그 순환·결합, #237. JsTransitions는 세 단계·wait=False·show/hide 이벤트·트랜지션 중 지워진 요소(#239). JsFocus는 중첩 모달의 push_focus·pop_focus·focus_first·wire-focus-wrap, #238 — stickyprobe의 remember·give_back 버튼이 boost 이동과 sticky를 본다),
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처(feedback/ 는 같은 이름의 칸을 가진 두 폼·form= 연결 칸·폼 밖 피드백·reset — 건드림이 폼마다인지, #244),
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지, form/ 에서 auto_upload=False 파일이 폼 제출 때 올라가고 실패·취소·끊김에는 제출이 가지 않는지(#264)를 보는 E2E(test_uploads_e2e.py)의 픽스처,
                            inheritprobe/ 는 다중 테이블 상속 모델들이다(3단, pk를 따로 둔 자식, 키 타입이 다른 부모). mutation()이 받은 자식 인스턴스가 부모 컬럼을 덮지 않고 제 부모 행에 붙어 있는지 본다(test_mutation_instance.py, 마이그레이션 없음),

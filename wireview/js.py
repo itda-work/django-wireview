@@ -30,13 +30,27 @@ __all__ = ("JS",)
 
 
 class TransitionConfig(t.TypedDict, total=False):
-    """Configuration for CSS transitions."""
+    """Configuration for CSS transitions.
+
+    ``transition`` alone: its classes stay on for ``time`` ms (for good without a time).
+    With ``start`` and ``end`` it runs in three phases, as Phoenix's ``{transition, start, end}``:
+    ``start`` first, then ``transition`` (the classes that animate), then ``end`` in ``start``'s
+    place; ``time`` ms later ``transition`` and ``end`` come off. Its time is 200 ms when not
+    given (#239).
+    """
 
     transition: str
+    start: str
+    end: str
     time: int
 
 
-Transition = str | tuple[str, int] | TransitionConfig | None
+#: ``"fade"``, ``("fade", 300)``, ``("ease-out duration-300", "opacity-0", "opacity-100")``
+#: with an optional time as a fourth item, or a ``TransitionConfig``
+Transition = str | tuple[str, int] | tuple[str, str, str] | tuple[str, str, str, int] | TransitionConfig | None
+
+#: A three-phase transition's time when none is given (Phoenix's default)
+DEFAULT_TRANSITION_TIME = 200
 
 _DURATION = re.compile(r"\d+(\.\d+)?(ms|s)?")
 # What exec reads: an attribute name, as an element's getAttribute takes it
@@ -64,12 +78,24 @@ _CHAINS_COMMANDS = frozenset({"toggle_attr", "exec"})
 _FOCUS_COMMANDS = frozenset({"push_focus", "pop_focus"})
 
 
+def _new_transition(command: t.Mapping[str, t.Any]) -> bool:
+    """A command an older script would run wrong: not waiting, or a three-phase transition (#239)."""
+    if command.get("wait") is False or "start" in command or "end" in command:
+        return True
+    return any(
+        isinstance(command.get(key), dict) and ("start" in command[key] or "end" in command[key])
+        for key in ("transition", "show", "hide")
+    )
+
+
 def protocol_needed(commands: t.Iterable[t.Mapping[str, t.Any]]) -> int:
-    """The protocol version a page's script needs to run ``commands``: 0, ``JS_CHAINS_SINCE`` or ``FOCUS_SINCE``."""
-    from .core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE
+    """The protocol version a page's script needs to run ``commands``: 0 or the first that knows them all."""
+    from .core.rendered import FOCUS_SINCE, JS_CHAINS_SINCE, TRANSITIONS_SINCE
 
     needed = 0
     for command in commands:
+        if _new_transition(command):
+            needed = max(needed, TRANSITIONS_SINCE)
         if command.get("cmd") in _FOCUS_COMMANDS:
             needed = max(needed, FOCUS_SINCE)
         elif command.get("cmd") in _CHAINS_COMMANDS or isinstance(command.get("to"), dict):
@@ -91,6 +117,28 @@ class _Encoder(DjangoJSONEncoder):
 def dumps(value: t.Any) -> str:
     """``value`` as JSON, a ``JS()`` in it as its commands: an event's arguments, a pushed value."""
     return json.dumps(value, cls=_Encoder, separators=(",", ":"))
+
+
+_PHASES = ("transition", "start", "end")
+
+
+def _class_names(classes: t.Any, part: str) -> str:
+    if not isinstance(classes, str):
+        raise ValueError(f"a transition's {part} is a string of class names, not {classes!r}")
+    # "fade-in 200ms" reads like CSS shorthand, but the string is only class names:
+    # "200ms" would stay on the element as a class and nothing would wait (#110).
+    durations = [token for token in classes.split() if _DURATION.fullmatch(token)]
+    if durations:
+        raise ValueError(
+            f"transition={classes!r}: {durations[0]!r} is not a class name. "
+            f"Pass the duration separately: ({classes.split()[0]!r}, 200)"
+        )
+    return classes
+
+
+def _wait(wait: bool) -> bool | None:
+    """Sent only when False: a chain waits for a transition unless told not to."""
+    return None if wait else False
 
 
 def _selector(selector: str) -> str:
@@ -181,18 +229,30 @@ class JS:
         if transition is None:
             return None
         if isinstance(transition, str):
-            # "fade-in 200ms" reads like CSS shorthand, but the string is only class names:
-            # "200ms" would stay on the element as a class and nothing would wait (#110).
-            durations = [token for token in transition.split() if _DURATION.fullmatch(token)]
-            if durations:
-                raise ValueError(
-                    f"transition={transition!r}: {durations[0]!r} is not a class name. "
-                    f"Pass the duration separately: ({transition.split()[0]!r}, 200)"
-                )
-            return {"transition": transition}
+            return {"transition": _class_names(transition, "transition")}
         if isinstance(transition, tuple):
-            return {"transition": transition[0], "time": transition[1]}
-        return dict(transition)
+            if len(transition) == 2 and isinstance(transition[0], str) and isinstance(transition[1], int):
+                return {"transition": _class_names(transition[0], "transition"), "time": transition[1]}
+            if len(transition) in (3, 4) and all(isinstance(part, str) for part in transition[:3]):
+                run, start, end = (_class_names(t.cast(str, part), name) for part, name in zip(transition, _PHASES))
+                time = transition[3] if len(transition) == 4 else DEFAULT_TRANSITION_TIME
+                if not isinstance(time, int):
+                    raise ValueError(f"transition={transition!r}: the fourth item is the time in ms")
+                return {"transition": run, "start": start, "end": end, "time": time}
+            raise ValueError(
+                f"transition={transition!r}: a pair (classes, ms) or three class strings "
+                "(transition, start, end) with an optional time"
+            )
+        config: dict[str, t.Any] = dict(transition)
+        unknown = set(config) - set(TransitionConfig.__annotations__)
+        if unknown:
+            raise ValueError(f"transition={transition!r}: unknown keys {sorted(unknown)}")
+        for name in _PHASES:
+            if name in config:
+                config[name] = _class_names(config[name], name)
+        if ("start" in config or "end" in config) and "time" not in config:
+            config["time"] = DEFAULT_TRANSITION_TIME
+        return config
 
     # === Visibility Commands ===
 
@@ -202,6 +262,7 @@ class JS:
         *,
         transition: Transition = None,
         display: str | None = None,
+        wait: bool = True,
     ) -> JS:
         """
         Show an element.
@@ -213,6 +274,7 @@ class JS:
                        Can be a string, tuple of (class, duration_ms),
                        or TransitionConfig dict.
             display: CSS display value to set (default: block).
+            wait: False runs the rest of the chain at once, the transition going on (#239).
 
         Example:
             JS().show("#modal")
@@ -224,6 +286,7 @@ class JS:
             to=selector,
             transition=self._normalize_transition(transition),
             display=display,
+            wait=_wait(wait),
         )
 
     def hide(
@@ -231,6 +294,7 @@ class JS:
         selector: Selector | None = None,
         *,
         transition: Transition = None,
+        wait: bool = True,
     ) -> JS:
         """
         Hide an element.
@@ -248,6 +312,7 @@ class JS:
             "hide",
             to=selector,
             transition=self._normalize_transition(transition),
+            wait=_wait(wait),
         )
 
     def toggle(
@@ -257,6 +322,7 @@ class JS:
         show_transition: Transition = None,
         hide_transition: Transition = None,
         display: str | None = None,
+        wait: bool = True,
     ) -> JS:
         """
         Toggle element visibility.
@@ -278,6 +344,7 @@ class JS:
             show=self._normalize_transition(show_transition),
             hide=self._normalize_transition(hide_transition),
             display=display,
+            wait=_wait(wait),
         )
 
     # === CSS Class Commands ===
@@ -288,6 +355,7 @@ class JS:
         classes: str | list[str] | None = None,
         *,
         transition: Transition = None,
+        wait: bool = True,
     ) -> JS:
         """
         Add CSS class(es) to an element.
@@ -308,6 +376,7 @@ class JS:
             to=selector,
             classes=classes,
             transition=self._normalize_transition(transition),
+            wait=_wait(wait),
         )
 
     def remove_class(
@@ -316,6 +385,7 @@ class JS:
         classes: str | list[str] | None = None,
         *,
         transition: Transition = None,
+        wait: bool = True,
     ) -> JS:
         """
         Remove CSS class(es) from an element.
@@ -335,6 +405,7 @@ class JS:
             to=selector,
             classes=classes,
             transition=self._normalize_transition(transition),
+            wait=_wait(wait),
         )
 
     def toggle_class(
@@ -343,6 +414,7 @@ class JS:
         classes: str | list[str] | None = None,
         *,
         transition: Transition = None,
+        wait: bool = True,
     ) -> JS:
         """
         Toggle CSS class(es) on an element.
@@ -362,6 +434,7 @@ class JS:
             to=selector,
             classes=classes,
             transition=self._normalize_transition(transition),
+            wait=_wait(wait),
         )
 
     # === Transition Commands ===
@@ -372,6 +445,7 @@ class JS:
         transition: Transition = None,
         *,
         time: int | None = None,
+        wait: bool = True,
     ) -> JS:
         """
         Apply a CSS transition to an element.
@@ -384,11 +458,14 @@ class JS:
                        Can be a string, tuple of (class, duration_ms),
                        or TransitionConfig dict.
             time: Duration in milliseconds (overrides transition tuple).
+            wait: False runs the rest of the chain at once, the transition going on (#239).
 
         Example:
             JS().transition("#card", "shake")
             JS().transition("#btn", "pulse", time=500)
             JS().transition("#modal", ("fade-in", 300))
+            JS().transition("#card", ("ease-out duration-300", "opacity-0", "opacity-100"))
+            JS().transition("#card", "shake", time=400, wait=False).push("save")
         """
         config = self._normalize_transition(transition) or {}
         if time is not None:
@@ -397,7 +474,10 @@ class JS:
             "transition",
             to=selector,
             transition=config.get("transition"),
+            start=config.get("start"),
+            end=config.get("end"),
             time=config.get("time"),
+            wait=_wait(wait),
         )
 
     # === Attribute Commands ===

@@ -182,7 +182,7 @@ def test_a_boosted_navigation_forgets_them(probe):
     expect(by(probe, "box")).not_to_have_class(re.compile(r"\b(hot|big)\b"))
 
 
-@pytest.mark.parametrize("button", ["slow-hide", "fade-then-hide"])
+@pytest.mark.parametrize("button", ["slow-hide", "fade-then-hide", "phases-hide"])
 def test_a_command_still_running_when_the_page_changes_leaves_the_next_page_alone(probe, button):
     """A hide waits for its transition, in the command itself or as the chain's next one;
     the navigation lands first. The box is the next page's then, and neither the hide
@@ -193,7 +193,7 @@ def test_a_command_still_running_when_the_page_changes_leaves_the_next_page_alon
     expect(probe).to_have_url(re.compile(r"\?again=1$"))
     probe.wait_for_timeout(2000)  # past the transition's end
     expect(by(probe, "box")).to_be_visible()
-    expect(by(probe, "box")).not_to_have_class(re.compile(r"\bfading\b"))
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\b(fading|from|to)\b"))
     by(probe, "increment-server").click()
     expect_text(by(probe, "count"), "1")
     expect(by(probe, "box")).to_be_visible()
@@ -679,3 +679,82 @@ def test_a_push_focus_the_server_sent_remembers_the_focused_element(probe):
     expect(by(probe, "focus-flag")).to_have_attribute("data-pushed", "yes")
     by(probe, "give-back").click()
     expect(by(probe, "server-remember")).to_be_focused()
+
+
+# Three-phase transitions, wait=False, show/hide events (#239)
+
+RECORD = """() => {
+  window.__phases = [];
+  window.__events = [];
+  const fade = document.getElementById("fade");
+  new MutationObserver(() => {
+    const now = [...fade.classList].filter((c) => c.startsWith("t-")).sort().join(" ");
+    if (window.__phases[window.__phases.length - 1] !== now) window.__phases.push(now);
+  }).observe(fade, { attributes: true, attributeFilter: ["class"] });
+  for (const name of ["show-start", "show-end", "hide-start", "hide-end"]) {
+    document.addEventListener(`wireview:${name}`, (event) => {
+      if (event.target === fade) window.__events.push(`${name} hidden=${fade.hidden}`);
+    });
+  }
+}"""
+
+
+def test_a_three_phase_transition_runs_start_then_transition_then_end_and_takes_them_off(probe):
+    probe.evaluate(RECORD)
+    by(probe, "fade-in").click()
+    expect(by(probe, "fade")).to_be_visible()
+    probe.wait_for_function("() => window.__phases.length >= 4")
+    assert probe.evaluate("window.__phases") == ["t-start", "t-run t-start", "t-end t-run", ""]
+    # It ends where show leaves it: fully shown, whatever frame the CSS animation was on
+    probe.wait_for_function("() => getComputedStyle(document.getElementById('fade')).opacity === '1'")
+
+
+def test_show_and_hide_announce_their_start_and_end(probe):
+    probe.evaluate(RECORD)
+    by(probe, "fade-in").click()
+    probe.wait_for_function("() => window.__events.length >= 2")
+    by(probe, "fade-out").click()
+    expect(by(probe, "fade")).to_be_hidden()
+    probe.wait_for_function("() => window.__events.length >= 4")
+    assert probe.evaluate("window.__events") == [
+        "show-start hidden=true",
+        "show-end hidden=false",
+        "hide-start hidden=false",
+        "hide-end hidden=true",
+    ]
+    assert probe.evaluate("[...document.getElementById('fade').classList]") == []
+
+
+def test_a_transition_of_zero_puts_no_class_on(probe):
+    probe.evaluate(RECORD)
+    by(probe, "fade-in").click()
+    probe.wait_for_function("() => window.__phases.length >= 4")
+    probe.evaluate("window.__phases = []")
+    by(probe, "instant").click()
+    expect(by(probe, "fade")).to_be_hidden()
+    probe.wait_for_timeout(100)
+    assert probe.evaluate("window.__phases") == []
+
+
+def test_a_chain_waits_for_its_transition_unless_told_not_to(probe):
+    by(probe, "held").click()
+    expect(by(probe, "tr-slow")).to_have_class("slowing")
+    probe.wait_for_timeout(800)
+    expect_text(by(probe, "tr-count"), "0")  # as before: the push waits for the 2 s transition
+
+    expect_text(by(probe, "tr-count"), "1")  # once it is over
+    by(probe, "not-held").click()
+    expect(by(probe, "tr-count")).to_have_text("2", timeout=1000)  # at once
+    expect(by(probe, "tr-slow")).to_have_class("slowing")  # while the transition goes on
+    expect(by(probe, "tr-slow")).not_to_have_class("slowing", timeout=4000)
+
+
+def test_an_element_removed_in_a_transition_comes_back_without_its_classes(probe):
+    by(probe, "haunt").click()
+    expect(by(probe, "ghost")).to_have_class(re.compile(r"\bt-run\b"))
+    by(probe, "drop-ghost").click()
+    expect(by(probe, "ghost")).to_have_count(0)
+    by(probe, "bring-ghost").click()
+    expect(by(probe, "ghost")).to_have_count(1)
+    probe.wait_for_timeout(2300)  # past the transition's end
+    assert probe.evaluate("[...document.getElementById('ghost').classList]") == []

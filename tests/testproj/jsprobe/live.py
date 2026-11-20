@@ -93,6 +93,11 @@ class JsProbe(Component):
         return JS().hide("#box", transition=("fading", 1500))
 
     @property
+    def phases_hide(self) -> JS:
+        # Three phases: the classes the next page must not get are the fading ones (#239)
+        return JS().hide("#box", transition=("fading", "from", "to", 1500))
+
+    @property
     def fade_then_hide(self) -> JS:
         # The hide is the chain's next command, after the transition's wait
         return JS().transition("#box", "fading", time=1500).hide("#box")
@@ -301,3 +306,47 @@ class JsFocus(Component):
     async def remember_here(self, **_rest):
         # The chain runs on the component's root, which takes no focus: the focused element is remembered
         await self.push_js(JS().push_focus().set_attr("#focus-flag", "data-pushed", "yes"))
+
+
+class JsTransitions(Component):
+    """Three-phase transitions, wait=False and the show/hide events with real CSS (#239)."""
+
+    class Meta:
+        template_name = "jsprobe/transitions.html"
+
+    count: int = 0
+    with_ghost: bool = True
+
+    @property
+    def fade_in(self) -> JS:
+        return JS().show("#fade", transition=("t-run", "t-start", "t-end", 300))
+
+    @property
+    def fade_out(self) -> JS:
+        return JS().hide("#fade", transition=("t-run", "t-end", "t-start", 300))
+
+    @property
+    def instant(self) -> JS:
+        return JS().hide("#fade", transition=("t-run", "t-end", "t-start", 0))
+
+    @property
+    def held(self) -> JS:
+        # As before: the push goes when the transition is over
+        return JS().transition("#tr-slow", "slowing", time=2000).push("bump")
+
+    @property
+    def not_held(self) -> JS:
+        return JS().transition("#tr-slow", "slowing", time=2000, wait=False).push("bump")
+
+    @property
+    def haunt(self) -> JS:
+        return JS().transition("#ghost", ("t-run", "t-start", "t-end", 2000))
+
+    async def bump(self, **_rest):
+        self.count += 1
+
+    async def drop_ghost(self, **_rest):
+        self.with_ghost = False
+
+    async def bring_ghost(self, **_rest):
+        self.with_ghost = True

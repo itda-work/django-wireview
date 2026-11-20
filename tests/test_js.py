@@ -416,11 +416,11 @@ def test_a_transition_dict_declares_only_what_the_client_reads():
 
     from wireview.js import TransitionConfig
 
-    source = (Path(__file__).resolve().parent.parent / "wireview/static/wireview/wireview.js").read_text(
+    source = (Path(__file__).resolve().parent.parent / "wireview/static/wireview/transitions.mjs").read_text(
         encoding="utf-8"
     )
-    body = re.search(r"async function runTransition\(handle, config\) \{\n(.*?)\n\}", source, re.S)
-    assert body, "runTransition moved: point this test at what reads a transition"
+    body = re.search(r"export function phasesOf\(config\) \{\n(.*?)\n\}", source, re.S)
+    assert body, "phasesOf moved: point this test at what reads a transition"
     assert set(TransitionConfig.__annotations__) == set(re.findall(r"config\.(\w+)", body.group(1)))
 
 
@@ -591,3 +591,66 @@ class TestFocusStack:
         assert protocol_needed(JS().toggle_attr("#a", "x").push_focus()._commands) == FOCUS_SINCE
         assert protocol_needed(JS().toggle_attr("#a", "x")._commands) == JS_CHAINS_SINCE
         assert FOCUS_SINCE > JS_CHAINS_SINCE
+
+
+# Three-phase transitions and chains that do not wait (#239, GAP-043)
+
+
+class TestTransitions:
+    def test_three_class_strings_are_transition_start_end_with_the_default_time(self):
+        assert JS().show("#m", transition=("ease", "o-0", "o-100"))._commands == [
+            {
+                "cmd": "show",
+                "to": "#m",
+                "transition": {"transition": "ease", "start": "o-0", "end": "o-100", "time": 200},
+            }
+        ]
+
+    def test_a_fourth_item_is_the_time(self):
+        assert JS().hide("#m", transition=("ease", "o-100", "o-0", 0))._commands[0]["transition"]["time"] == 0
+
+    def test_a_dict_with_start_or_end_gets_the_default_time(self):
+        config = JS().add_class("#c", "on", transition={"transition": "ease", "end": "big"})._commands[0]["transition"]
+        assert config == {"transition": "ease", "end": "big", "time": 200}
+
+    def test_one_class_string_keeps_its_meaning(self):
+        assert JS().show("#m", transition="fade")._commands[0]["transition"] == {"transition": "fade"}
+        assert JS().show("#m", transition=("fade", 300))._commands[0]["transition"] == {
+            "transition": "fade",
+            "time": 300,
+        }
+
+    def test_the_transition_command_carries_its_phases(self):
+        assert JS().transition("#c", ("ease", "a", "b"))._commands == [
+            {"cmd": "transition", "to": "#c", "transition": "ease", "start": "a", "end": "b", "time": 200}
+        ]
+
+    def test_wait_is_sent_only_when_false(self):
+        assert "wait" not in JS().show("#m", transition="fade")._commands[0]
+        assert JS().transition("#c", "shake", time=400, wait=False)._commands[0]["wait"] is False
+        assert JS().toggle("#m", wait=False)._commands[0]["wait"] is False
+
+    @pytest.mark.parametrize(
+        "transition",
+        [
+            ("a", "b"),
+            ("a", "b", "c", "300"),
+            ("a", 1, "c"),
+            {"transition": "a", "duration": 3},
+            ("ease", "o-0 200ms", "o-1"),
+        ],
+    )
+    def test_what_is_not_a_transition_is_refused(self, transition):
+        with pytest.raises(ValueError):
+            JS().show("#m", transition=transition)
+
+    def test_the_protocol_a_chain_needs(self):
+        from wireview.core.rendered import FOCUS_SINCE, TRANSITIONS_SINCE
+        from wireview.js import protocol_needed
+
+        assert protocol_needed(JS().show("#m", transition=("fade", 300)).push("x")._commands) == 0
+        assert protocol_needed(JS().show("#m", transition=("a", "b", "c"))._commands) == TRANSITIONS_SINCE
+        assert protocol_needed(JS().toggle("#m", show_transition=("a", "b", "c"))._commands) == TRANSITIONS_SINCE
+        assert protocol_needed(JS().transition("#c", ("a", "b", "c"))._commands) == TRANSITIONS_SINCE
+        assert protocol_needed(JS().transition("#c", "x", time=1, wait=False)._commands) == TRANSITIONS_SINCE
+        assert protocol_needed(JS().pop_focus()._commands) == FOCUS_SINCE

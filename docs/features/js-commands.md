@@ -159,6 +159,60 @@ def save_and_close(self) -> JS:
 객체 대상에서 오류를 내기 때문이다. 템플릿 속성에 렌더된 체인은 이 확인을 거치지 않는다 — 그런 페이지가 새 템플릿의 렌더를 받으면
 그 체인은 새로고침 전까지 돌지 않는다.
 
+## 트랜지션
+
+`show`·`hide`·`toggle`·`add_class`·`remove_class`·`toggle_class`의 `transition=`과 `transition()`은 세 모양을 받는다.
+
+| 모양 | 하는 일 |
+|------|---------|
+| `"shake"` | 클래스를 붙이고 끝난다. 시간이 없으므로 빼지 않는다 — 그 클래스를 갖지 않는 다음 렌더가 지운다 |
+| `("shake", 400)` | 400ms 동안 붙였다가 뺀다 |
+| `("ease-out duration-300", "opacity-0", "opacity-100")` | 세 단계(Phoenix의 `{transition, start, end}`). 시간을 생략하면 200ms, 네 번째 항목으로 준다 |
+
+세 단계는 이렇게 돈다: `start`를 붙여 한 번 그리고, 다음 프레임에 `transition`(움직임을 정하는 클래스)을 더하고, 그
+다음 프레임에 `start`를 빼며 `end`를 붙인다. 시간이 지나면 `transition`과 `end`를 뺀다. 그래서 CSS는 `start`에서
+`end`로 움직이고, 끝난 요소에는 아무 클래스도 남지 않는다 — 끝 상태는 `show`·`hide`가 만든 것(보임·숨김)이다.
+
+```python
+JS().show("#modal", transition=("ease-out duration-300", "opacity-0", "opacity-100"))
+JS().hide("#modal", transition=("ease-in duration-200", "opacity-100", "opacity-0", 200))
+JS().transition("#card", {"transition": "ease", "start": "scale-95", "end": "scale-100", "time": 150})
+```
+
+시간이 0이면 클래스를 하나도 붙이지 않고 명령의 변화만 바로 일어난다. 진행 중인 트랜지션의 클래스는 렌더를 건너
+남고([렌더 뒤에도 남는다](#렌더-뒤에도-남는다)), 렌더가 요소를 지웠다 다시 그리면 새 요소에는 붙지 않는다. boost
+이동 뒤의 새 페이지 요소에도 붙지 않는다.
+
+### 기다리지 않는 체인
+
+트랜지션이 있는 명령은 끝날 때까지 체인의 다음 명령을 기다리게 한다 — 1.7까지와 같은 기본값이다. `wait=False`를 주면
+트랜지션은 그대로 돌고 다음 명령이 바로 시작한다.
+
+```python
+# 400ms 흔든 뒤에 저장 (기본)
+JS().transition("#card", "shake", time=400).push("save")
+# 흔들면서 바로 저장
+JS().transition("#card", "shake", time=400, wait=False).push("save")
+```
+
+Phoenix는 언제나 `wait=False`처럼 돈다. 기다리는 의미에 기대는 앱 — `hide(transition=...)`가 끝나야 `push`가 가서
+서버 렌더가 숨는 요소를 밀어내지 않던 것 — 이 있어 기본값은 바꾸지 않았다. 바꿀지는 2.0에서 정한다. 옮겨 가려면
+트랜지션이 서버 왕복과 무관한 체인부터 `wait=False`를 적는다. `hide`·`remove_class`처럼 트랜지션 뒤에 바뀌는 명령은
+`wait=False`여도 자기 변화는 트랜지션 뒤에 한다 — 기다리지 않는 것은 체인의 나머지다.
+
+### show·hide의 이벤트
+
+`show`·`hide`(와 `toggle`)는 대상 요소에서 `wireview:show-start`·`wireview:show-end`·`wireview:hide-start`·`wireview:hide-end`를
+쏜다. 버블링하므로 `document`에서 받을 수 있다. `show-start`는 보이기 전, `show-end`는 트랜지션이 끝난 뒤, `hide-start`는
+트랜지션 전, `hide-end`는 숨긴 뒤다. 트랜지션이 없으면 둘이 바로 이어진다.
+
+```js
+document.addEventListener("wireview:hide-end", (event) => event.target.querySelector("video")?.pause());
+```
+
+`toggle`은 전처럼 요소의 `hidden`을 보고 보일지 숨길지 정한다. CSS(`display: none` 클래스)로만 감춘 요소는 보이는 것으로
+친다.
+
 ## 렌더 뒤에도 남는다
 
 명령이 요소에 바꾼 것은 그 요소를 다시 그리는 렌더 뒤에도 남는다(LiveView의 sticky와 같다, #219). 렌더는 요소를
@@ -171,7 +225,7 @@ def save_and_close(self) -> JS:
 | `add_class`·`remove_class`·`toggle_class` | 명령이 실제로 더하거나 뺀 클래스 |
 | `set_attr`·`remove_attr` | 그 속성의 마지막 값, 또는 없음 |
 | `show`·`hide`·`toggle` | 마지막으로 보이거나 숨긴 상태 |
-| `transition`, 명령의 `transition=` | 양수 시간을 지정한 트랜지션의 클래스. 시간이 끝나면 빠진다. 시간을 생략한 경우는 아래 차이 참고 |
+| `transition`, 명령의 `transition=` | 진행 중인 트랜지션의 클래스(세 단계면 그 단계의 것). 시간이 끝나면 빠진다. 시간 없는 한 묶음은 남기지 않는다 |
 
 - **클래스는 명령이 만든 차이만 기록한다.** 이미 있던 클래스를 `add_class`하면 아무것도 기록하지 않는다. 그래서 뒤의
   렌더가 그 클래스를 빼면 빠진다. 앞서 명령으로 뺀 클래스를 다시 더하면 그 기록이 지워지고, 요소는 다시 서버의 HTML을
@@ -206,7 +260,7 @@ def save_and_close(self) -> JS:
 ## 체인의 순서
 
 명령은 적은 순서로 돈다. 시간을 준 트랜지션(`("fade-out", 300)`)은 끝날 때까지 다음 명령을 기다리게 한다 — 서버
-왕복을 트랜지션과 함께 시작하려면 `push`를 앞에 둔다. 선택자가 여러 요소와 맞으면 그 요소들의 트랜지션은 함께 돈다.
+왕복을 트랜지션과 함께 시작하려면 그 명령에 `wait=False`를 주거나 `push`를 앞에 둔다([기다리지 않는 체인](#기다리지-않는-체인)). 선택자가 여러 요소와 맞으면 그 요소들의 트랜지션은 함께 돈다.
 트랜지션을 기다린 명령(`hide(transition=...)`, `add_class(..., transition=...)`)은 끝날 때의 요소에 마저 적용된다 —
 그 사이 스트림 갱신이 항목을 바꿨으면 새 항목에, boost 이동이 있었으면 새 페이지의 것이므로 아무것도 하지 않는다.
 체인의 나머지 명령도 boost 이동 뒤에는 돌지 않는다. sticky 컴포넌트 안에서 시작한 체인만 이동을 건너 이어진다.
@@ -229,10 +283,15 @@ def save_and_close(self) -> JS:
 | `patch` | 별도 JS 명령이 없다. 서버의 `push_to`·`replace_to`와 `navigate`를 구분한다 |
 | `dispatch`의 `blocking`·`done`·`dispatcher` | 제공하지 않는다. click도 `MouseEvent`가 아닌 `CustomEvent`로 보낸다 |
 
-트랜지션은 클래스 문자열과 시간만 받는다. Phoenix의 세 클래스 묶음(transition/start/end), `blocking` 옵션,
-show/hide 시작·종료 이벤트는 없다. 시간을 생략하면 기본 200ms 후 제거하는 것이 아니라 클래스가 남으며 다음 렌더가
-덮어쓸 수 있다. 시간 있는 트랜지션은 **다음 `push`까지 지연**시킨다. Phoenix는 명령을 순서대로 시작하되 트랜지션
-완료를 기다려 다음 push를 시작하지 않는다([실행부](https://raw.githubusercontent.com/phoenixframework/phoenix_live_view/v1.2.12/assets/js/phoenix_live_view/js.js)).
+트랜지션은 다음이 다르다.
+
+- **체인이 기본으로 기다린다.** Phoenix는 명령을 차례로 시작하되 트랜지션 완료를 기다리지 않는다([실행부](https://raw.githubusercontent.com/phoenixframework/phoenix_live_view/v1.2.12/assets/js/phoenix_live_view/js.js)).
+  wireview는 `wait=False`를 준 명령만 그렇다.
+- **클래스 하나짜리 문자열은 시간이 없으면 남는다.** Phoenix는 기본 200ms 뒤에 뺀다. 세 단계로 주면 wireview도 200ms다.
+- **렌더를 막지 않는다(`blocking`이 없다).** Phoenix의 기본 `blocking: true`는 트랜지션이 도는 동안 그 요소의 패치를
+  미룬다. wireview는 패치를 바로 적용하고 진행 중인 트랜지션의 클래스만 새 HTML에 다시 얹는다 — 서버가 보낸 내용이
+  트랜지션 때문에 늦게 보이지 않는다. 트랜지션이 끝나기 전에 그 요소의 내용을 서버가 바꾸지 않아야 한다면 `push`를
+  트랜지션 뒤에 둔다(기본 동작).
 
 표시 판정도 다르다. wireview의 `toggle`은 요소의 `hidden`을 검사한다. CSS로만 감춘 요소를 Phoenix의 가시성 판정과
 같다고 가정하지 않는다. `focus_first`는 Phoenix처럼 요소마다 포커스를 줘 보고 확인하지 않고 위의 규칙으로 고른다 —
